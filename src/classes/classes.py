@@ -7,13 +7,12 @@ import attrs as attrs
 import seaborn as sns
 from attr import field
 from dotenv import load_dotenv
+from ldb_schema.datasets import Dataset
+from ldb_schema.paths import Paths, ClusterPaths
 
 from models.query_former.dataloader import query_former_batch_to
 from models.workload_driven.dataset.mscn_batching import mscn_plan_collator
 from models.workload_driven.dataset.plan_tree_batching import plan_batch_to, baseline_plan_collator
-from cross_db_benchmark.benchmark_tools.database import DatabaseSystem, ExecutionMode
-from cross_db_benchmark.datasets.datasets import Database, database_list
-from classes.paths import Paths, ClusterPaths
 from training.batch_to_funcs import dace_batch_to, simple_batch_to, batch_to
 from training.featurizations import Featurization, DACEFeaturization, QPPNetFeaturization, \
     PostgresEstSystemCardDetail, DACEFeaturizationNoCosts, QPPNetNoCostsFeaturization, FlatModelFeaturization, \
@@ -65,32 +64,6 @@ class ModelType:
     WL_AGNOSTIC = "wl_agnostic"
 
 
-class ColorManager:
-    DARK = sns.color_palette("muted", 8)
-    ALTERNATIVE = sns.color_palette("pastel", 8)
-    COLOR_MAP = {
-        ModelName.POSTGRES: DARK[7],
-        ModelName.FLAT: DARK[5],
-        ModelName.MSCN: DARK[4],
-        ModelName.E2E: DARK[3],
-        ModelName.ZEROSHOT: DARK[6],
-        ModelName.QPP_NET: DARK[2],
-        ModelName.QUERY_FORMER: DARK[0],
-        ModelName.DACE: DARK[1],
-        ModelName.FLAT_ACT_CARDS: ALTERNATIVE[5],
-        ModelName.ZEROSHOT_ACT_CARD: ALTERNATIVE[6],
-        ModelName.DACE_ACT_CARDS: ALTERNATIVE[1],
-        ModelName.DACE_NO_COSTS: ALTERNATIVE[1],
-        ModelName.QPP_NET_NO_COSTS: ALTERNATIVE[2],
-        ModelName.QPP_NET_ACT_CARDS: ALTERNATIVE[2]
-    }
-    COLOR_PALETTE = {name.DISPLAY_NAME: color for (name, color) in COLOR_MAP.items()}
-
-    @staticmethod
-    def get_color(model_name: Name) -> str:
-        return ColorManager.COLOR_MAP.get(model_name)
-
-
 @attrs.define(frozen=True, slots=False)
 class ModelConfig:
     name: Name = field(default=None)
@@ -119,51 +92,47 @@ class ModelConfig:
     tree_layer_name: dict = field(default=None)
     limit_queries: bool = None
     limit_queries_affected_wl: bool = None
-    execution_mode: ExecutionMode = ExecutionMode.RAW_OUTPUT
     input_format: InputFormats = field(default=None)
     hyperparameter: Path = None
     column_statistics: bool = False
     word_embeddings: bool = False
 
-    def color(self) -> str:
-        return ColorManager.get_color(self.name)
-
-    def get_model_dir(self, source_path: Paths, database: Database, retrain: bool = False) -> Path:
+    def get_model_dir(self, source_path: Paths, database: Dataset, retrain: bool = False) -> Path:
         if retrain:
             return source_path.retraining_models / self.name.NAME / database.db_name
         else:
             return source_path.models / self.name.NAME / database.db_name
 
-    def get_eval_dir(self, source_path: Paths, database: Database, retrain: bool = False) -> Path:
+    def get_eval_dir(self, source_path: Paths, database: Dataset, retrain: bool = False) -> Path:
         if retrain:
             return source_path.retraining_evaluation / self.name.NAME / database.db_name
         else:
             return source_path.evaluation / self.name.NAME / database.db_name
 
-    def get_statistics(self, source_path: Paths, database: Database) -> Path:
+    def get_statistics(self, source_path: Paths, dataset: Dataset) -> Path:
         if self.name in [ModelName.MSCN, ModelName.QUERY_FORMER]:
-            if database == Database('imdb'):
-                return source_path.augmented_plans_baseline / database.db_name / 'statistics_combined.json'
+            if dataset == Dataset('imdb'):
+                return source_path.augmented_plans_baseline / dataset.db_name / 'statistics_combined.json'
             else:
-                return source_path.augmented_plans_baseline / database.db_name / 'statistics.json'
+                return source_path.augmented_plans_baseline / dataset.db_name / 'statistics.json'
         if isinstance(self, QPPNetModelConfig):
-            return source_path.json / database.db_name / 'feature_stats_training_data_scans_joins_physical.json'
+            return source_path.json / dataset.db_name / 'feature_stats_training_data_scans_joins_physical.json'
         else:
             return source_path.parsed_plans / 'statistics_complex_workload_combined.json'
 
-    def get_column_stats(self, database: Database) -> Optional[Path]:
+    def get_column_stats(self, database: Dataset) -> Optional[Path]:
         if self.column_statistics:
             return Path(f'./cross_db_benchmark/datasets/{database.db_name}/column_statistics.json')
         else:
             return None
 
-    def get_word_embeddings(self, source_path: Paths, database: Database) -> Optional[Path]:
+    def get_word_embeddings(self, source_path: Paths, database: Dataset) -> Optional[Path]:
         if self.word_embeddings:
             return source_path.sentences / database.db_name / 'word2vec.m'
         else:
             return None
 
-    def get_training_workloads(self, target_db: Database, wl_name: str = "workload_100k_s1_c8220") -> List[str]:
+    def get_training_workloads(self, target_db: Dataset, wl_name: str = "workload_100k_s1_c8220") -> List[str]:
         if self.type == ModelType.WL_AGNOSTIC:
             training_workloads = []
             for db in database_list:
@@ -178,7 +147,7 @@ class ModelConfig:
             path = self.get_data_base_dir() / target_db.db_name / f"{wl_name}.json"
             return [str(path)]
 
-    def get_test_workloads(self, target_db: Database) -> str:
+    def get_test_workloads(self, target_db: Dataset) -> str:
         return str(self.get_data_base_dir() / target_db.db_name / "workload_100k_s1_c8220.json")
 
     def get_data_base_dir(self) -> Path:
@@ -233,7 +202,6 @@ class AnalyticalActCardModelConfig(TabularModelConfig):
 class QPPNetModelConfig(ModelConfig):
     name: Name = ModelName.QPP_NET
     type: ModelType = ModelType.WL_DRIVEN
-    execution_mode: ExecutionMode = ExecutionMode.JSON_OUTPUT
     optimizer_kwargs: dict = dict(lr=1e-3)
     featurization: Featurization = QPPNetFeaturization
     loss_class_name: str = "QPPLoss"
@@ -266,7 +234,6 @@ class E2EModelConfig(ModelConfig):
     hidden_dim_pred: int = 256
     batch_to_func: Callable = plan_batch_to
     collator_func: Callable = baseline_plan_collator
-    execution_mode: ExecutionMode = ExecutionMode.RAW_OUTPUT
     input_format: str = InputFormats.baseline_parsed
     column_statistics: bool = True
     word_embeddings: bool = True
@@ -325,10 +292,8 @@ class ZeroShotModelConfig(ModelConfig):
     output_dim: int = 1
     batch_size: int = 64
     tree_layer_name: str = 'MscnConv'  # GATConv MscnConv
-    database: DatabaseSystem = DatabaseSystem.POSTGRES
     batch_to_func: Callable = batch_to
     collator_func: Callable = postgres_plan_collator
-    execution_mode: ExecutionMode = ExecutionMode.RAW_OUTPUT
     device: str = "cuda:0"
     input_format: str = InputFormats.parsed
     hyperparameter: Path = Path(f'conf/tuned_hyperparameters/tune_est_best_config.json')
@@ -350,7 +315,6 @@ class MSCNModelConfig(ModelConfig):
     mscn_est_layers: int = 1
     batch_to_func: Callable = batch_to
     collator_func: Callable = mscn_plan_collator
-    execution_mode: ExecutionMode = ExecutionMode.RAW_OUTPUT
     input_format: str = InputFormats.baseline_parsed
     column_statistics: bool = True
     word_embeddings: bool = True
@@ -360,7 +324,6 @@ class MSCNModelConfig(ModelConfig):
 class DACEModelConfig(ModelConfig):
     name: Name = ModelName.DACE
     type: ModelType = ModelType.WL_AGNOSTIC
-    execution_mode: ExecutionMode = ExecutionMode.RAW_OUTPUT
     node_length: int = 22  # This needs to be equals to the number of operator types plus the remaining node feats.
     hidden_dim: int = 128
     output_dim: int = 1
@@ -401,7 +364,6 @@ class QueryFormerModelConfig(ModelConfig):
     type: ModelType = ModelType.WL_DRIVEN
     device: str = "cuda:0"
     hidden_dim_plan: int = 256
-    execution_mode: ExecutionMode = ExecutionMode.RAW_OUTPUT
     input_format: str = InputFormats.baseline_parsed
     column_statistics: bool = True
     word_embeddings: bool = True

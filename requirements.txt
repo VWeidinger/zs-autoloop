@@ -1,12 +1,11 @@
 pandas
-psycopg2-binary
 tqdm
 scikit-learn
 numpy
 torch==2.0.1
 torchvision
 pydantic
-dgl
+dgl~=1.1.2.post1
 osfclient
 paramiko
 scp
@@ -30,7 +29,7 @@ lightgbm
 func-timeout
 joblib
 wandb
-lightning==2.0.9
+load_dotenv
 loralib==0.1.2
 numpy==1.24.3
 pytorch_lightning==2.0.9

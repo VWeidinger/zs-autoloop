@@ -19,12 +19,13 @@ def get_all_json_files(directory):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--database', default=None)
+    parser.add_argument('--database', default=None, nargs="*")
     parser.add_argument('--workload', default=None, nargs="*")
     parser.add_argument('--target', default=None)
     args = parser.parse_args()
     json_files = []
     for workload in args.workload:
-        json_files += get_all_json_files(f'../data/runs/json/{args.database}/{workload}')
+        for database in args.database:
+            json_files += get_all_json_files(f'../data/runs/parsed_plans/{database}_scaled1/{workload}')  # ToDo: Load correct scaling name
     print(len(json_files))
     gather_feature_statistics(json_files, args.target)

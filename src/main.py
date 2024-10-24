@@ -8,6 +8,7 @@ import numpy as np
 import torch
 import torch.optim as opt
 import wandb
+from ldb_schema.load_schema import load_json
 from torch import nn
 from torch.optim.optimizer import Optimizer
 from torch.utils.data import DataLoader
@@ -130,7 +131,7 @@ def init_metrics(loss_class_name: str) -> List[Metric]:
 
 def readout_hyperparameters(hyperparameter_path: Path) -> dict:
     print(f"Reading hyperparameters from {hyperparameter_path}")
-    hyperparams = load_json(hyperparameter_path, namespace=False)
+    hyperparams = load_json(str(hyperparameter_path), namespace=False)
 
     fc_out_kwargs = dict(activation_class_name='LeakyReLU',
                          activation_class_kwargs={},
@@ -318,13 +319,13 @@ def get_model_config(model_type: str, m_args: dict) -> ModelConfig:
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--mode', choices=["train", "predict", "explain", "retrain"])
+    parser.add_argument('--mode', choices=["train", "predict", "explain", "retrain"], required=True)
     parser.add_argument('--model_type', required=True)
-    parser.add_argument('--workload_runs', default=None, nargs='+')
+    parser.add_argument('--workload_runs', default=None, nargs='+', required=True)
     parser.add_argument('--test_workload_runs', default=None, nargs='+')
-    parser.add_argument('--statistics_file', default=None)
+    parser.add_argument('--statistics_file', default=None, required=True)
     parser.add_argument('--column_statistics', default=None)
-    parser.add_argument('--model_dir', default=None)
+    parser.add_argument('--model_dir', default=None, required=True)
     parser.add_argument('--target_dir', default=None, required=True)
     parser.add_argument('--device', default='cpu')
     parser.add_argument('--hyperparameter_path', default=None)

@@ -23,7 +23,7 @@ def generate_commands(databases: List[Database], seeds: list[int], python_versio
                                         str(model.get_data_base_dir() / "imdb" / "seq_retraining" / "seq_retraining.json")]
             retraining_workload_runs = " ".join(retraining_workload_runs)
             test_workload_runs = model.get_test_workloads(database)
-            statistics_path = model.get_statistics(source_path=ClusterPaths(), database=database)
+            statistics_path = model.get_statistics(source_path=ClusterPaths(), dataset=database)
             if model == QPPNetModelConfig():
                 statistics_path = ClusterPaths().json / "imdb/feature_stats_retraining.json"
             for seed in seeds:

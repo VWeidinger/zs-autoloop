@@ -21,7 +21,7 @@ def generate_commands(databases: List[Database], seeds: list[int], python_versio
         for model in model_list:
             workload_runs = " ".join(model.get_training_workloads(database))
             test_workload_runs = model.get_test_workloads(database)
-            statistics_path = model.get_statistics(source_path=ClusterPaths(), database=database)
+            statistics_path = model.get_statistics(source_path=ClusterPaths(), dataset=database)
 
             for seed in seeds:
                 command = (f"python{python_version} main.py "
