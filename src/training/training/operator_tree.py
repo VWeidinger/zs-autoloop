@@ -12,21 +12,34 @@ class OperatorTree:
 
     def __init__(self, query_plan: dict, depth: int = 0):
         self.depth = depth
-        self.planning_time: float = Optional[float]
-        self.runtime: float = Optional[float]
+        self.query_planning_time: float = Optional[float]
+        self.query_runtime: float = Optional[float]
         self.children: List[OperatorTree] = []
         self.encoded_features = None
-        if isinstance(query_plan, SimpleNamespace):
-            query_plan = vars(query_plan)
-        current_children = query_plan.pop('Plans', [])
-        self.properties: dict = query_plan
-        for child in current_children:
-            if isinstance(child, SimpleNamespace):
-                child = vars(child)
-            self.children.append(OperatorTree(child, depth + 1))
-        self.node_type = self.properties.pop('Node Type')
+
+        # Read out query statistics and put them at the top node
+        if depth == 0:
+            self.query_properties: dict = query_plan
+            self.query_runtime = query_plan.get("Execution Time")
+            self.query_planning_time = query_plan.get("Planning Time")
+            assert self.query_runtime is not None or self.query_planning_time is not None, \
+                "No runtime or planning time found"
+            self.plan = query_plan.get('Plan', {})
+        else:
+            self.plan = query_plan
+
+        # Recursively build operator tree
+        if self.has_children():
+            for child in self.plan['Plans']:
+                self.children.append(OperatorTree(child, depth + 1))
+
+        self.node_type = self.plan.pop('Node Type')
         if self.node_type in ["Hash Join", "Nested Loop", "Merge Join"]:
             self.node_type = "Join"  # Joins have the same set of features according to https://arxiv.org/pdf/1902.00132
+
+
+    def has_children(self) -> bool:
+        return "Plans" in self.plan.keys()
 
     def add_runtimes(self, runtime: float, planning_time: float):
         self.runtime = runtime
@@ -49,7 +62,7 @@ class OperatorTree:
 
     def encode_recursively(self, column_statistics: dict, feature_statistics: dict, featurization: QPPNetFeaturization):
         self.encoded_features = torch.Tensor(
-            self.encode_features(self.properties, self.node_type, feature_statistics, column_statistics, featurization))
+            self.encode_features(self.plan, self.node_type, feature_statistics, column_statistics, featurization))
         for children in self.children:
             children.encode_recursively(column_statistics=column_statistics, feature_statistics=feature_statistics, featurization=featurization)
 
@@ -127,7 +140,7 @@ class OperatorTree:
         for column_name in column_statistics[table_name].keys():
             if column_name in filter_condition:
                 col_stats = column_statistics[table_name][column_name]
-                if col_stats['datatype'] in ["int", "float"] and col_stats['num_unique'] > 1:
+                if col_stats['data_type'] in ["int", "float"] and col_stats['num_unique'] > 1:
                     # Return min, mean and max scaled by max value as a simple scaling
                     value = column_statistics[table_name][column_name][feature_name.lower()]
                     max_val = column_statistics[table_name][column_name]["max"]
@@ -161,6 +174,6 @@ class OperatorTree:
 
 def operator_tree_from_json(query_plan: dict) -> OperatorTree:
     # operator_tree = OperatorTree(query_plan=vars(query_plan['Plan']))
-    operator_tree = OperatorTree(query_plan=query_plan['Plan'])
+    operator_tree = OperatorTree(query_plan=query_plan)
     operator_tree.add_runtimes(runtime=query_plan['Execution Time']/1000, planning_time=query_plan['Planning Time']/1000)
     return operator_tree

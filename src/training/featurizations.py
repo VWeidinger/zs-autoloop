@@ -10,7 +10,7 @@ class Featurization:
 
 
 class DACEFeaturization(Featurization):
-    PLAN_FEATURES = ["op_name", "est_cost", "est_card"]
+    PLAN_FEATURES = ["op_name", "pg_cost", "est_card"]
 
 
 class DACEFeaturizationNoCosts(Featurization):
@@ -18,7 +18,7 @@ class DACEFeaturizationNoCosts(Featurization):
 
 
 class DACEActCardFeaturization(Featurization):
-    PLAN_FEATURES = ["op_name", "est_cost", "act_card"]
+    PLAN_FEATURES = ["op_name", "pg_cost", "act_card"]
 
 
 class FlatModelFeaturization(Featurization):

@@ -30,7 +30,7 @@ class TrainingServers:
 
 
 class InputFormats:
-    parsed = "parsed"
+    parsed = "parsed_plans"
     baseline_parsed = 'baseline'
     json = 'json'
 
@@ -102,17 +102,17 @@ class ModelConfig:
     def get_eval_dir(self, source_path: Paths, database: Dataset) -> Path:
         return source_path.Data.evaluation / self.name.NAME / database.db_name
 
-    def get_statistics(self, source_path: Paths, dataset: Dataset) -> Path:
-        #if self.name in [ModelName.MSCN, ModelName.QUERY_FORMER]:
+    def get_statistics(self, source_path: Paths, dataset: Dataset, format: InputFormats) -> Path:
+        # if self.name in [ModelName.MSCN, ModelName.QUERY_FORMER]:
         #    if dataset == Dataset('imdb'):
         #        return source_path.Data. / dataset.db_name / 'statistics_combined.json'
         #    else:
         #        return source_path.Data.augmented_plans_baseline / dataset.db_name / 'statistics.json'
-        return source_path.Data.root / 'feature_statistics' / 'feature_statistics.json'
+        return source_path.Data.root / 'feature_statistics' / f'{format}_feature_statistics.json'
 
-    def get_column_stats(self, database: Dataset) -> Optional[Path]:
+    def get_column_stats(self, dataset: Dataset) -> Optional[Path]:
         if self.column_statistics:
-            return Path(f'./cross_db_benchmark/datasets/{database.db_name}/column_statistics.json')
+            return ClusterPaths().Data.root / "dataset_statistics" / dataset.db_name / f"column_statistics_scaled{dataset.scale}.json"
         else:
             return None
 
@@ -128,22 +128,22 @@ class ModelConfig:
             training_workloads = []
             for db in training_datasets:
                 if db.db_name != target_dataset.db_name:
-                    path = self.get_data_base_dir() / Path(db.db_name) / f"{wl_name}.json"
+                    path = self.get_data_base_dir() / f"{db.db_name}_scaled{db.scale}" / f"{wl_name}.json"
                     training_workloads.append(str(path))
 
             # assert len(training_workloads) == 19, f"Found {len(training_workloads)}, but it should be 19"
             return training_workloads
 
         elif self.type == ModelType.WL_DRIVEN:
-            path = self.get_data_base_dir() / target_dataset.db_name / f"{wl_name}.json"
+            path = self.get_data_base_dir() / f"{target_dataset.db_name}_scaled{target_dataset.scale}" / f"{wl_name}.json"
             return [str(path)]
 
     def get_test_workloads(self, target_db: Dataset) -> str:
-        return str(self.get_data_base_dir() / target_db.db_name / "workload_100k_s1.json")
+        return str(self.get_data_base_dir() / f"{target_db.db_name}_scaled{target_db.scale}" / "workload_100k_s1.json")
 
     def get_data_base_dir(self) -> Path:
         if self.input_format == InputFormats.baseline_parsed:
-            return ClusterPaths().Data.augmented_plans_baseline
+            return ClusterPaths().Data.augmented_plans
         elif self.input_format == InputFormats.parsed:
             return ClusterPaths().Data.parsed_plans
         elif self.input_format == InputFormats.json:
@@ -202,7 +202,6 @@ class QPPNetModelConfig(ModelConfig):
     device: str = "cpu"
     input_format: str = InputFormats.json
     column_statistics: bool = True
-
 
 @attrs.define(frozen=True, slots=False)
 class QPPModelNoCostsConfig(QPPNetModelConfig):
@@ -330,7 +329,7 @@ class DACEModelConfig(ModelConfig):
     loss_class_kwargs: dict = dict()
     featurization: Featurization = DACEFeaturization
     device: str = "cuda:0"
-    input_format: str = InputFormats.parsed
+    input_format: InputFormats = InputFormats.parsed
     optimizer_class_name: str = "Adam"
     optimizer_kwargs: dict = dict(lr=1e-3)
 

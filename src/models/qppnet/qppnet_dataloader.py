@@ -48,8 +48,8 @@ def create_qppnet_dataloader(workload_runs: WorkloadRuns,
         test_dataset, val_dataset = val_dataset.split(0.5)
         print(f"Created datasets of size: "
               f"train {len(train_dataset)}, "
-              f"validation: {len(val_dataset)}, t"
-              f"est: {len(test_dataset)}")
+              f"validation: {len(val_dataset)}, "
+              f"test: {len(test_dataset)}")
 
         train_collate_fn = functools.partial(plan_collator,
                                                  db_statistics=database_statistics,
@@ -91,7 +91,7 @@ def create_datasets(workload_run_paths,
     plans, database_statistics = read_workload_runs(workload_run_paths=workload_run_paths,
                                                     limit_queries=model_config.limit_queries,
                                                     limit_queries_affected_wl=model_config.limit_queries_affected_wl,
-                                                    execution_mode=model_config.execution_mode)
+                                                    input_format=model_config.input_format)
 
     no_plans = len(plans)
     plan_indexes = list(range(no_plans))
@@ -117,7 +117,7 @@ def create_datasets(workload_run_paths,
         val_dataset = PlanDataset([plans[i] for i in val_indexes], val_indexes)
 
     # derive label normalization
-    runtimes = np.array([getattr(p, "Execution Time") / 1000 for p in plans])
+    runtimes = np.array([p["analyze_plans"][0]["Execution Time"] / 1000 for p in plans]) # ToDo: Average over different plans, where else we do this?
     label_norm = derive_label_normalizer(model_config.loss_class_name, runtimes)
 
     return label_norm, train_dataset, val_dataset, database_statistics
@@ -132,7 +132,8 @@ def qppnet_collator(plans, feature_statistics: dict = None, db_statistics: dict 
     sample_idxs = []
     errors = []
     for sample_idx, p in plans:
-        query_plan: OperatorTree = operator_tree_from_json(vars(p))
+        analyze_plan = p["analyze_plans"][0]
+        query_plan: OperatorTree = operator_tree_from_json(analyze_plan)
         try:
             query_plan.encode_recursively(column_statistics, feature_statistics, plan_featurization)
             sample_idxs.append(sample_idx)

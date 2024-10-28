@@ -9,7 +9,7 @@ from sklearn import preprocessing
 from sklearn.pipeline import Pipeline
 from torch.utils.data import DataLoader
 
-from classes.classes import ZeroShotModelConfig, DataLoaderOptions, ModelConfig
+from classes.classes import ZeroShotModelConfig, DataLoaderOptions, ModelConfig, InputFormats
 from classes.workload_runs import WorkloadRuns
 from training.dataset.plan_dataset import PlanDataset
 from models.zeroshot.postgres_plan_batching import postgres_plan_collator
@@ -17,7 +17,8 @@ from models.zeroshot.postgres_plan_batching import postgres_plan_collator
 
 def read_workload_runs(workload_run_paths: List[Path],
                        limit_queries: bool = None,
-                       limit_queries_affected_wl: bool = None):
+                       limit_queries_affected_wl: bool = None,
+                       input_format: InputFormats = InputFormats.parsed):
     # reads several workload runs
     plans = []
     database_statistics = dict()
@@ -34,21 +35,22 @@ def read_workload_runs(workload_run_paths: List[Path],
             if path_index >= len(workload_run_paths) - limit_queries_affected_wl:
                 limit_per_ds = limit_queries // limit_queries_affected_wl
                 print(f"Capping workload {path} after {limit_per_ds} queries")
-        """
 
-        if execution_mode == ExecutionMode.RAW_OUTPUT:
-            for p_id, plan in enumerate(run.parsed_plans):
+        if input_format == InputFormats.parsed:
+            for p_id, plan in enumerate(run["parsed_plans"]):
                 plans.append(plan)
                 if limit_per_ds is not None and p_id > limit_per_ds:
                     print("Stopping now")
                     break
+        elif input_format == InputFormats.json:
+            for plan in run["query_list"]:
+                # Only learn from valid plans
+                plan["database_id"] = path_index
+                if plan["zero_card"] != True and plan["timeout"] == False and plan["invalid_hint"] != True:
+                    assert "Execution Time" in plan["analyze_plans"][0].keys(), f"Execution Time not in plan {plan}"
+                    plans.append(plan)
         else:
-        """
-        for plan in run["parsed_plans"]:
-            # Only learn from valid plans
-            plan["database_id"] = path_index
-            if plan["zero_card"] != True and plan["timeout"] == False and plan["invalid_hint"] != True:
-                plans.append(plan)
+            raise ValueError(f"Input format {input_format} not supported")
     return plans, database_statistics
 
 
@@ -63,7 +65,8 @@ def create_datasets(workload_run_paths,
 
     plans, database_statistics = read_workload_runs(workload_run_paths=workload_run_paths,
                                                     limit_queries=model_config.limit_queries,
-                                                    limit_queries_affected_wl=model_config.limit_queries_affected_wl)
+                                                    limit_queries_affected_wl=model_config.limit_queries_affected_wl,
+                                                    input_format=model_config.input_format)
 
     no_plans = len(plans)
     plan_indexes = list(range(no_plans))

@@ -31,6 +31,7 @@ class ExpRunner:
         self.osf_username = os.getenv('OSF_USERNAME')
         self.osf_password = os.getenv('OSF_PASSWORD')
         self.osf_project = os.getenv('OSF_PROJECT')
+        self.wandb_project = os.getenv('WANDB_PROJECT')
 
         if "cloudlab" in node_names[0]:
             self.ssh_username = os.getenv('CLOUDLAB_SSH_USERNAME')

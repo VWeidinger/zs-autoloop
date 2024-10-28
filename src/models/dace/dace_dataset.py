@@ -14,6 +14,7 @@ from torch.utils.data import DataLoader
 
 from classes.classes import DACEModelConfig, DataLoaderOptions
 from classes.workload_runs import WorkloadRuns
+from training.dataset.dataset_creation import read_workload_runs
 from training.dataset.plan_dataset import PlanDataset
 from training.preprocessing.feature_statistics import FeatureType
 
@@ -64,9 +65,9 @@ def create_dace_datasets(workload_run_paths,
                          model_config: DACEModelConfig,
                          val_ratio=0.15,
                          shuffle_before_split=True) -> (PlanDataset, PlanDataset):
-    plans = []
-    for workload_run in workload_run_paths:
-        plans += read_workload_run(workload_run)
+
+    plans, statistics = read_workload_runs(workload_run_paths=workload_run_paths,
+                               input_format=model_config.input_format)
 
     no_plans = len(plans)
     plan_indexes = list(range(no_plans))
@@ -111,7 +112,7 @@ def dace_collator(batch: Tuple, feature_statistics: dict, config: DACEModelConfi
                                                                                plan_parameters=config.featurization.PLAN_FEATURES,
                                                                                feature_statistics=feature_statistics)
         #labels.append(run_times[0] * config.max_runtime)
-        labels.append(torch.tensor(p.plan_runtime) / 1000)
+        labels.append(torch.tensor(p["plan_runtime_ms"]) / 1000)
         all_runtimes.append(run_times)
         seq_encodings.append(seq_encoding)
         attention_masks.append(attention_mask)
@@ -173,38 +174,17 @@ def get_loss_mask(seq_length: int,
     return loss_mask
 
 
-def read_workload_run(workload_run: Path) -> list[SimpleNamespace]:
-    plans: list[SimpleNamespace] = []
-    try:
-        workload_path = os.path.join(workload_run)
-        run = load_json(workload_path)
-    except json.JSONDecodeError:
-        raise ValueError(f"Error reading {workload_run}")
-
-    db_name = workload_run.parent.name  # This is basically the database name
-    #assert db_name in [db.db_name for db in database_list], f"Database {db_name} not found in the list of databases"
-
-    db_count = 0
-    for plan_id, plan in enumerate(run.parsed_plans):
-        plan.database_id = db_name
-        plan.plan_id = plan_id
-        plans.append(plan)
-        db_count += 1
-
-    print("Database {:s} has {:d} plans.".format(str(db_name), db_count))
-    return plans
-
-
 def scale_feature(feature_statistics: dict, feature: str, node: SimpleNamespace) -> np.ndarray:
     """Scaling a feature according to feature statistics"""
     if feature_statistics[feature]["type"] == str(FeatureType.numeric):
         scaler = feature_statistics[feature]["scaler"]
-        if hasattr(node, feature):
-            attribute = getattr(node, feature)
+        if feature in node.keys():
+            attribute = node[feature]
         else:
-            assert feature == "act_card"
-            feature = "est_card" # In some rare cases, postgres has no act_card, use est card instead
-            attribute = getattr(node, feature)
+            # In some rare cases, postgres has no act_card, use est card instead
+            assert feature == "act_card", f"Feature {feature} not found in node {node}"
+            feature = "est_card"
+            attribute = node[feature]
 
         return scaler.transform(np.array([attribute]).reshape(-1, 1))
     else:
@@ -216,7 +196,7 @@ def generate_seqs_encoding(seq: list, op_name_to_one_hot: dict, plan_parameters:
     seq_encoding = []
     for node in seq:
         # add op_name encoding
-        op_encoding = op_name_to_one_hot[node.op_name]
+        op_encoding = op_name_to_one_hot[node["op_name"]]
         seq_encoding.append(op_encoding)
         # add other features, and scale them
         for feature in plan_parameters[1:]:
@@ -282,10 +262,10 @@ def get_plan_sequence(plan: SimpleNamespace, pad_length: int = 20) -> Tuple[list
 def depth_first_search(plan: SimpleNamespace, seq: list, adjs: list,
                        parent_node_id: int, run_times: list, heights: list, cur_height: int) -> None:
     cur_node_id = len(seq)
-    seq.append(plan.plan_parameters)
+    seq.append(plan["plan_parameters"])
     heights.append(cur_height)
-    if hasattr(plan.plan_parameters, "act_time"):
-        act_time = plan.plan_parameters.act_time
+    if hasattr(plan["plan_parameters"], "act_time"):
+        act_time = plan["plan_parameters"]["act_time"]
     else:
         act_time = 0.01
     run_times.append(act_time)

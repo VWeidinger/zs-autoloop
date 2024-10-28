@@ -12,7 +12,7 @@ from classes.classes import ModelConfig, ModelType, \
 from scripts.exp_runner.exp_runner import ExpRunner
 
 
-def generate_training_commands(datasets: List[Dataset], seeds: list[int], python_version: str,
+def generate_training_commands(datasets: List[Dataset], seeds: list[int], python_version: str, wandb_project: str,
                                model_list: list[ModelConfig] = ModelConfig) -> List[str]:
 
     commands = []
@@ -20,12 +20,14 @@ def generate_training_commands(datasets: List[Dataset], seeds: list[int], python
         for target_model in model_list:
             training_runs = " ".join(target_model.get_training_workloads(training_datasets=datasets, target_dataset=target_dataset))
             test_runs = target_model.get_test_workloads(target_dataset)
-            statistics_path = target_model.get_statistics(source_path=ClusterPaths(), dataset=target_dataset)
+            statistics_path = target_model.get_statistics(source_path=ClusterPaths(),
+                                                          dataset=target_dataset,
+                                                          format=model_config.input_format)
 
             for seed in seeds:
                 command = (f"python{python_version} main.py "
                            f"--mode train "
-                           f"--wandb_project cost-eval "
+                           f"--wandb_project {wandb_project} "
                            f"--model_type {target_model.name.NAME} "
                            f"--device {target_model.device} "
                            f"--model_dir {target_model.get_model_dir(ClusterPaths(), target_dataset)} "
@@ -67,36 +69,50 @@ if __name__ == '__main__':
     pickup_steps = [Rsync(src=[ClusterPaths().Data.runs], dest=[LocalPaths().data], put=False, update=True)]
 
     datasets = [
-        Dataset('airline_scaled1'),
-        Dataset('credit_scaled5'),
-        Dataset('geneea_scaled23'),
-        Dataset('hepatitis_scaled2000'),
-        Dataset('movielens_scaled8'),
-        Dataset('tpc_h_scaled1')
+        Dataset('airline', max_no_joins=5),
+        # Dataset('imdb'),
+        # Dataset('ssb', max_no_joins=3),
+        Dataset('tpc_h', max_no_joins=5),
+        # Dataset('walmart', max_no_joins=2),
+        # Dataset('financial', scale=4),
+        # Dataset('basketball', scale=200),
+        # Dataset('accidents', scale=1, contain_unicode=True),
+        Dataset('movielens', scale=8),
+        # Dataset('baseball', scale=10),
+        Dataset('hepatitis', scale=2000),
+        # Dataset('tournament', scale=50),
+        Dataset('credit', scale=5),
+        # Dataset('employee', scale=3),
+        # Dataset('consumer', scale=6),
+        Dataset('geneea', scale=23, contain_unicode=True),
+        # Dataset('genome', scale=6),
+        # Dataset('carcinogenesis', scale=674),
+        # Dataset('seznam', scale=2),
+        # Dataset('fhnk', scale=2)
     ]
 
     seeds = [0, 1, 2]
-    node = TrainingServers.NODE03
+    node = TrainingServers.NODE04
 
     # Standard Models
-    # model = ScaledPostgresModelConfig()
-    # model = FlatModelConfig()
-    # model = E2EModelConfig()
-    # model = QPPNetModelConfig()
-    # model = MSCNModelConfig()
-    # model = DACEModelConfig()
-    # model = QueryFormerModelConfig()
-    model_config = ZeroShotModelConfig()
+    # model_config = ScaledPostgresModelConfig()
+    #model_config = FlatModelConfig()
+    # model_config = E2EModelConfig()
+    # model_config = QPPNetModelConfig()
+    # model_config = MSCNModelConfig()
+    model_config = DACEModelConfig()
+    # model_config = QueryFormerModelConfig()
+    # model_config = ZeroShotModelConfig()
 
     # Ablation Models (without postgres Estimates)
-    # model = DACEModelNoCostsConfig()
-    # model = QPPModelNoCostsConfig()
+    # model_config = DACEModelNoCostsConfig()
+    # model_config = QPPModelNoCostsConfig()
 
     # Ablation Models (actual cardinalities)
-    # model = FlatModelActCardModelConfig()
-    # model = QPPModelActCardsConfig()
-    # model = DACEModelActCardConfig()
-    # model = ZeroShotModelActCardConfig()
+    # model_config = FlatModelActCardModelConfig()
+    # model_config = QPPModelActCardsConfig()
+    # model_config = DACEModelActCardConfig()
+    # model_config = ZeroShotModelActCardConfig()
 
     runner = ExpRunner(replicate=False,
                        node_names=[node["hostname"]],
@@ -108,7 +124,8 @@ if __name__ == '__main__':
         eval_commands += generate_training_commands(datasets=datasets,
                                                     model_list=[model_config],
                                                     python_version=node["python"],
-                                                    seeds=seeds)
+                                                    seeds=seeds,
+                                                    wandb_project=runner.wandb_project)
 
     runner.run_exp(node_names=[node["hostname"]],
                    commands=eval_commands,

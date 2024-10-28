@@ -54,6 +54,12 @@ def gather_feature_statistics(workload_run_paths, target):
             raise ValueError(f"Could not read {source}")
     value_dict = gather_values_recursively(run_stats)
 
+    # Remove sql from value_dict
+    if 'sql' in value_dict:
+        del value_dict['sql']
+    if 'sql_string' in value_dict:
+        del value_dict['sql_string']
+
     print("Saving")
     # save unique values for categorical features and scale and center of RobustScaler for numerical ones
     statistics_dict = dict()

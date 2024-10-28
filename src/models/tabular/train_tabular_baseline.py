@@ -197,8 +197,8 @@ def gen_optimizer_cost_dataset(workload_runs, statistics_file, cap_training_samp
     labels = []
     for plan in plans:
         # append to all feature vectors and runtime labels
-        feature_vecs.append([plan.plan_parameters.est_cost])
-        labels.append(plan.plan_runtime / 1000)
+        feature_vecs.append([plan["plan_parameters"]["est_cost"]])
+        labels.append(plan["plan_runtime_ms"] / 1000)
 
     X_train, X_val, Y_train, Y_val = slice_train_val(cap_training_samples, feature_vecs, labels, plans, val_ratio,
                                                      shuffle)
@@ -206,7 +206,7 @@ def gen_optimizer_cost_dataset(workload_runs, statistics_file, cap_training_samp
 
 
 def gen_flattened_dataset(workload_runs, statistics_file, cap_training_samples, featurization, val_ratio=0.15, shuffle=True, ):
-    feature_statistics = load_json(statistics_file, namespace=False)
+    feature_statistics = load_json(str(statistics_file), namespace=False)
     op_idx_dict = feature_statistics['op_name']['value_dict']
     no_ops = len(op_idx_dict)
     plans, database_statistics = read_workload_runs(workload_runs)
@@ -219,31 +219,30 @@ def gen_flattened_dataset(workload_runs, statistics_file, cap_training_samples, 
         feature_row_vec = np.zeros(no_ops)
 
         def extract_features(p, featurization):
-            op_name = p.plan_parameters.op_name
+            op_name = p["plan_parameters"]["op_name"]
             op_idx = op_idx_dict[op_name]
             feature_num_vec[op_idx] += 1
             if featurization.PLAN_FEATURE == 'est_card':
-                if 'est_card' in vars(p.plan_parameters):
-                    feature_row_vec[op_idx] += p.plan_parameters.est_card
+                if 'est_card' in p["plan_parameters"].keys():
+                    feature_row_vec[op_idx] += p["plan_parameters"]["est_card"]
                 else:
-                    feature_row_vec[op_idx] += p.plan_parameters.est_rows
+                    feature_row_vec[op_idx] += p["plan_parameters"]["est_rows"]
             elif featurization.PLAN_FEATURE == 'act_card':
-                if 'act_card' in vars(p.plan_parameters):
-                    feature_row_vec[op_idx] += p.plan_parameters.act_card
-                elif 'act_rows' in vars(p.plan_parameters):
-                    feature_row_vec[op_idx] += p.plan_parameters.act_rows
+                if 'act_card' in p["plan_parameters"].keys():
+                    feature_row_vec[op_idx] += p["plan_parameters"]["act_card"]
+                elif 'act_rows' in p["plan_parameters"].keys():
+                    feature_row_vec[op_idx] += p["plan_parameters"]["act_rows"]
                 else:
-                    feature_row_vec[op_idx] += p.plan_parameters.est_card
+                    feature_row_vec[op_idx] += p["plan_parameters"]["est_card"]
 
-
-            for c in p.children:
+            for c in p["children"]:
                 extract_features(c, featurization)
 
         extract_features(plan, featurization)
 
         # append to all feature vectors and runtime labels
         feature_vecs.append(np.concatenate((feature_num_vec, feature_row_vec)))
-        labels.append(plan.plan_runtime / 1000)
+        labels.append(plan["plan_runtime_ms"] / 1000)
     X_train, X_val, Y_train, Y_val = slice_train_val(cap_training_samples, feature_vecs, labels, plans, val_ratio,
                                                      shuffle=shuffle)
     return X_train, X_val, Y_train, Y_val
@@ -251,25 +250,25 @@ def gen_flattened_dataset(workload_runs, statistics_file, cap_training_samples, 
 
 def extract_card(p, act_card):
     if not act_card:
-        if 'est_card' in vars(p.plan_parameters):
-            card = p.plan_parameters.est_card
+        if 'est_card' in p["plan_parameters"].keys():
+            card = p["plan_parameters"]["est_card"]
         else:
-            card = p.plan_parameters.est_rows
+            card = p["plan_parameters"]["est_rows"]
     else:
-        if 'est_card' in vars(p.plan_parameters):
-            if 'act_card' in vars(p.plan_parameters):
-                card = p.plan_parameters.act_card
+        if 'est_card' in p["plan_parameters"].keys():
+            if 'act_card' in p["plan_parameters"].keys():
+                card = p["plan_parameters"]["act_card"]
             # fallback: for some plan operators, pg does not annotate act cards
             else:
-                card = p.plan_parameters.est_card
+                card = p["plan_parameters"]["est_card"]
         else:
-            card = p.plan_parameters.act_rows
+            card = p["plan_parameters"]["act_rows"]
     return card
 
 
 def gen_analytical_flattened_dataset(workload_runs, statistics_file, cap_training_samples, val_ratio=0.15,
                                      act_card=False):
-    feature_statistics = load_json(statistics_file, namespace=False)
+    feature_statistics = load_json(str(statistics_file), namespace=False)
     op_idx_dict = feature_statistics['op_name']['value_dict']
     no_ops = len(op_idx_dict)
     plans, database_statistics = read_workload_runs(workload_runs)
@@ -285,21 +284,21 @@ def gen_analytical_flattened_dataset(workload_runs, statistics_file, cap_trainin
         feature_row_vec_prod_input = np.zeros(no_ops)
 
         def extract_features(p):
-            op_name = p.plan_parameters.op_name
+            op_name = p["plan_parameters"]["op_name"]
             op_idx = op_idx_dict[op_name]
             feature_num_vec[op_idx] += 1
 
             # output
             feature_row_vec[op_idx] += extract_card(p, act_card)
 
-            child_card = [extract_card(c, act_card) for c in p.children]
+            child_card = [extract_card(c, act_card) for c in p["children"]]
             if len(child_card) >= 1:
                 feature_row_vec_left_input[op_idx] += child_card[0]
                 feature_row_vec_prod_input[op_idx] += math.prod(child_card)
             if len(child_card) >= 2:
                 feature_row_vec_right_input[op_idx] += child_card[1]
 
-            for c in p.children:
+            for c in p["children"]:
                 extract_features(c)
 
         extract_features(plan)
@@ -307,7 +306,7 @@ def gen_analytical_flattened_dataset(workload_runs, statistics_file, cap_trainin
         # append to all feature vectors and runtime labels
         feature_vecs.append(np.concatenate((feature_num_vec, feature_row_vec, feature_row_vec_left_input,
                                             feature_row_vec_right_input, feature_row_vec_prod_input)))
-        labels.append(plan.plan_runtime / 1000)
+        labels.append(plan["plan_runtime_ms"] / 1000)
     X_train, X_val, Y_train, Y_val = slice_train_val(cap_training_samples, feature_vecs, labels, plans, val_ratio)
     return X_train, X_val, Y_train, Y_val
 

@@ -145,7 +145,7 @@ class QPPNet(nn.Module):
         # self.check_for_nan()
 
         # Read out most important information from query
-        node_properties = query_plan.properties
+        node_properties = query_plan.plan
         node_type = query_plan.node_type
         label = torch.tensor(node_properties.pop("Actual Total Time")).to(self.device)
         assert node_type in self.operator_types.keys(), f"Unseen operator of type {node_type} faced in query"
