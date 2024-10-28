@@ -14,8 +14,7 @@ from classes.classes import ModelConfig
 from training.training.checkpoint import save_checkpoint
 from training.training.metrics import Metric
 from training.training.train import validate_model, train_epoch
-
-import ldb_schema.paths
+from ldb_schema.paths import LocalPaths
 
 
 def train_model(csv_stats: List,
@@ -33,7 +32,7 @@ def train_model(csv_stats: List,
 
     prof = None
     if pt_profiler:
-        log_path = f'{LocalPaths.evaluation}/{config.name.NAME}/profile_runs/'
+        log_path = f'{LocalPaths().Data}/profiling/{config.name.NAME}/profile_runs/'
         print(f'Profile with pytorch profiler to logdir {log_path}')
         prof = torch.profiler.profile(
             schedule=torch.profiler.schedule(wait=1,

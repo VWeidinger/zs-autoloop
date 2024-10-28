@@ -3,15 +3,15 @@ from pathlib import Path
 from typing import List, Optional
 
 import numpy as np
+from ldb_schema.load_schema import load_json
 from sklearn.pipeline import Pipeline
 from torch.utils.data import DataLoader
 
-from cross_db_benchmark.benchmark_tools.postgres.json_plan import operator_tree_from_json, OperatorTree
-from cross_db_benchmark.benchmark_tools.utils import load_json
 from classes.classes import DataLoaderOptions, QPPNetModelConfig, ModelConfig
 from classes.workload_runs import WorkloadRuns
 from training.dataset.dataset_creation import read_workload_runs, derive_label_normalizer
 from training.dataset.plan_dataset import PlanDataset
+from training.training.operator_tree import operator_tree_from_json, OperatorTree
 
 
 def create_qppnet_dataloader(workload_runs: WorkloadRuns,
@@ -21,7 +21,7 @@ def create_qppnet_dataloader(workload_runs: WorkloadRuns,
                              data_loader_options: DataLoaderOptions) \
         -> (Optional[Pipeline], dict, Optional[DataLoader], Optional[DataLoader], List[Optional[DataLoader]]):
 
-    feature_statistics = load_json(statistics_file, namespace=False)
+    feature_statistics = load_json(str(statistics_file), namespace=False)
     assert feature_statistics != {}, "Feature statistics file is empty!"
 
     train_loader, val_loader, test_loaders = Optional[DataLoader], Optional[DataLoader], List[Optional[DataLoader]]
@@ -33,7 +33,7 @@ def create_qppnet_dataloader(workload_runs: WorkloadRuns,
                            num_workers=model_config.num_workers,
                            pin_memory=data_loader_options.pin_memory)
 
-    column_statistics = load_json(column_statistics, namespace=False)
+    column_statistics = load_json(str(column_statistics), namespace=False)
 
     if workload_runs.train_workload_runs:
         assert workload_runs.test_workload_runs == [], ("Unseen Test workload runs are not allowed when training "
@@ -133,7 +133,6 @@ def qppnet_collator(plans, feature_statistics: dict = None, db_statistics: dict 
     errors = []
     for sample_idx, p in plans:
         query_plan: OperatorTree = operator_tree_from_json(vars(p))
-        #if query_plan.min_cardinality() != 0:
         try:
             query_plan.encode_recursively(column_statistics, feature_statistics, plan_featurization)
             sample_idxs.append(sample_idx)

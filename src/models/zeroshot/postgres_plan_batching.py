@@ -5,7 +5,7 @@ import numpy as np
 import torch
 from sklearn.preprocessing import RobustScaler
 
-from cross_db_benchmark.benchmark_tools.generate_workload import Operator
+from training.dataset.operator import Operator
 from training.featurizations import Featurization
 from training.preprocessing.feature_statistics import FeatureType
 
@@ -37,7 +37,7 @@ def plan_to_graph(node, database_id, plan_depths, plan_features, plan_to_plan_ed
     plan_depths.append(depth)
 
     # add plan features
-    plan_params = vars(node.plan_parameters)
+    plan_params = node["plan_parameters"]
     curr_plan_features = [encode(column, plan_params, feature_statistics) for column in
                           plan_featurization.PLAN_FEATURES]
     plan_features.append(curr_plan_features)
@@ -47,29 +47,30 @@ def plan_to_graph(node, database_id, plan_depths, plan_features, plan_to_plan_ed
     if output_columns is not None:
         for output_column in output_columns:
             output_column_node_id = output_column_idx.get(
-                (output_column.aggregation, tuple(output_column.columns), database_id))
+                (output_column["aggregation"], str(output_column["columns"]), database_id))
 
             # if not, create
             if output_column_node_id is None:
-                curr_output_column_features = [encode(column, vars(output_column), feature_statistics)
+                curr_output_column_features = [encode(column, output_column, feature_statistics)
                                                for column in plan_featurization.OUTPUT_COLUMN_FEATURES]
 
                 output_column_node_id = len(output_column_features)
                 output_column_features.append(curr_output_column_features)
-                output_column_idx[(output_column.aggregation, tuple(output_column.columns), database_id)] \
+                output_column_idx[(output_column["aggregation"], str(output_column["columns"]), database_id)] \
                     = output_column_node_id
 
                 # featurize product of columns if there are any
-                db_column_features = db_statistics[database_id].column_stats
-                for column in output_column.columns:
-                    column_node_id = column_idx.get((column, database_id))
+                db_column_features = db_statistics[database_id]["column_stats"]
+                assert db_column_features is not None
+                for column in output_column["columns"]:
+                    column_node_id = column_idx.get((str(column), database_id))
                     if column_node_id is None:
                         curr_column_features = [
-                            encode(feature_name, vars(db_column_features[column]), feature_statistics)
+                            encode(feature_name, db_column_features[column["col_id"]], feature_statistics)
                             for feature_name in plan_featurization.COLUMN_FEATURES]
                         column_node_id = len(column_features)
                         column_features.append(curr_column_features)
-                        column_idx[(column, database_id)] = column_node_id
+                        column_idx[(str(column), database_id)] = column_node_id
                     column_to_output_column_edges.append((column_node_id, output_column_node_id))
 
             # in any case add the corresponding edge
@@ -79,7 +80,7 @@ def plan_to_graph(node, database_id, plan_depths, plan_features, plan_to_plan_ed
     #  node)
     filter_column = plan_params.get('filter_columns')
     if filter_column is not None:
-        db_column_features = db_statistics[database_id].column_stats
+        db_column_features = db_statistics[database_id]["column_stats"]
 
         # check if node already exists in the graph
         # filter_node_id = fitler_node_idx.get((filter_column.operator, filter_column.column, database_id))
@@ -108,7 +109,7 @@ def plan_to_graph(node, database_id, plan_depths, plan_features, plan_to_plan_ed
         plan_to_plan_edges.append((plan_node_id, parent_node_id))
 
     # continue recursively
-    for c in node.children:
+    for c in node["children"]:
         plan_to_graph(c, database_id, plan_depths, plan_features, plan_to_plan_edges, db_statistics, feature_statistics,
                       filter_to_plan_edges, predicate_col_features, output_column_to_plan_edges, output_column_features,
                       column_to_output_column_edges, column_features, table_features, table_to_plan_edges,
@@ -225,8 +226,8 @@ def postgres_plan_collator(plans, feature_statistics: dict =None, db_statistics:
     sample_idxs = []
     for sample_idx, p in plans:
         sample_idxs.append(sample_idx)
-        labels.append(p.plan_runtime)
-        plan_to_graph(p, p.database_id, plan_depths, plan_features, plan_to_plan_edges, db_statistics,
+        labels.append(p["plan_runtime_ms"])
+        plan_to_graph(p, p["database_id"], plan_depths, plan_features, plan_to_plan_edges, db_statistics,
                       feature_statistics, filter_to_plan_edges, filter_features, output_column_to_plan_edges,
                       output_column_features, column_to_output_column_edges, column_features, table_features,
                       table_to_plan_edges, output_column_idx, column_idx, table_idx,

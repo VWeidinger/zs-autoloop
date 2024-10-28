@@ -2,6 +2,7 @@ import functools
 from pathlib import Path
 
 from gensim.models import KeyedVectors
+from ldb_schema.load_schema import load_json
 from torch.utils.data import DataLoader
 
 from models.query_former.dataloader import query_former_plan_collator
@@ -10,7 +11,6 @@ from models.workload_driven.dataset.plan_tree_batching import baseline_plan_coll
 from classes.classes import ModelConfig, DataLoaderOptions, TPoolModelConfig, TlstmModelConfig, \
     TestSumModelConfig, MSCNModelConfig, QueryFormerModelConfig
 from classes.workload_runs import WorkloadRuns
-from cross_db_benchmark.benchmark_tools.utils import load_json
 from training.dataset.dataset_creation import create_datasets
 
 
@@ -168,7 +168,7 @@ def get_collate_func(model_config: ModelConfig, database_statistics: dict, featu
 
 def create_baseline_dataloader(workload_runs: WorkloadRuns,
                                statistics_file: Path,
-                               column_statistics,
+                               column_statistics: Path,
                                word_embeddings,
                                model_config: ModelConfig,
                                data_loader_options: DataLoaderOptions) -> (
@@ -176,14 +176,14 @@ def create_baseline_dataloader(workload_runs: WorkloadRuns,
     train_loader, val_loader, test_loaders = None, None, None
 
     dim_bitmaps = 1000
-    feature_statistics = load_json(statistics_file, namespace=False)
+    feature_statistics = load_json(str(statistics_file), namespace=False)
     assert feature_statistics != {}, "Feature statistics file is empty!"
     dataloader_args = dict(batch_size=model_config.batch_size,
                            shuffle=data_loader_options.shuffle,
                            num_workers=model_config.num_workers,
                            pin_memory=data_loader_options.pin_memory)
 
-    column_statistics = load_json(column_statistics, namespace=False)
+    column_statistics = load_json(str(column_statistics), namespace=False)
     word_embeddings = KeyedVectors.load(str(word_embeddings), mmap='r')
     dim_word_emdb = word_embeddings.vector_size
     dim_word_hash = dim_word_emdb

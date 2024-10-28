@@ -6,7 +6,6 @@ import torch
 from collections import deque
 from torch import Tensor
 
-from cross_db_benchmark.benchmark_tools.generate_workload import LogicalOperator
 from models.query_former.utils import TreeNode, pad_attn_bias_unsqueeze, floyd_warshall_transform, pad_1d_unsqueeze, \
     pad_rel_pos_unsqueeze, pad_2d_unsqueeze
 from training.training.utils import recursive_to
@@ -103,7 +102,7 @@ def get_encoded_histograms(filter_info: List[Tuple[int, int, object]],
                            histogram_bucket_size: int = 10) -> np.ndarray:
     encoded_histograms = []
     for (column, operator, literal) in filter_info:
-        if operator in {str(LogicalOperator.AND), str(LogicalOperator.OR)}:
+        if operator in {str('AND'), str('OR')}:
             encoded_histograms.append(np.zeros(histogram_bucket_size))
         else:
             col_name = database_statistics.column_stats[column].attname

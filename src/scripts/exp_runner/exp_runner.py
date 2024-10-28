@@ -7,8 +7,8 @@ from random import randint
 from typing import List
 
 from dotenv import load_dotenv
+from ldb_schema.paths import CloudlabPaths, ClusterPaths, LocalPaths
 
-from classes.paths import LocalPaths, CloudlabPaths, ClusterPaths
 from octopus.experiment import Experiment
 from octopus.experiment_task import ExperimentTask
 from octopus.node import Node
@@ -36,12 +36,12 @@ class ExpRunner:
             self.ssh_username = os.getenv('CLOUDLAB_SSH_USERNAME')
             self.ssh_passphrase = os.getenv('CLOUDLAB_SSH_PASSPHRASE')
             self.private_key_path = os.getenv('CLOUDLAB_SSH_KEY_PATH')
-            self.root_path = CloudlabPaths().root
+            self.root_path = CloudlabPaths().Models.root
         else:
             self.ssh_username = os.getenv('CLUSTER_SSH_USERNAME')
             self.ssh_passphrase = os.getenv('CLUSTER_SSH_PASSPHRASE')
             self.private_key_path = os.getenv('CLUSTER_SSH_KEY_PATH')
-            self.root_path = ClusterPaths().root
+            self.root_path = ClusterPaths().Models.root
         self.python_version = python_version
 
         assert self.osf_project is not None, "Please set environment variable OSF_PROJECT"
@@ -81,7 +81,6 @@ class ExpRunner:
         target_nodes = [n for n in self.nodes if n.ssh_hostname in node_names]
 
         e = Experiment(
-            screens_or_jobs_per_node=screens_per_node,
             experiment_commands=commands,
             experiment_prefix=self.prefix,
             local_cmd_prefix='',
@@ -91,14 +90,13 @@ class ExpRunner:
             monitor_steps=[CheckActiveScreens()],
             check_error_steps=[CheckOutput([f'grep -B 5 Error output_screen*'])],
             pickup_steps=pickup_steps,
-            exp_folder_name=str(self.root_path),
+            exp_folder_path=str(self.root_path),
             exp_script_gen=self.exp_script_gen,
             slurm_num_cpus_per_task=20,
             slurm_num_gpus_per_job=1,
             run_exp_message="Cost Model Evaluation",
             run_exp_expected_runtime="05:00",
             use_run_exp_numa_socket="0",
-            #use_run_exp_pin=True,
             python_version=self.python_version,
             screen_or_job_id_offset=offset)
 
@@ -117,7 +115,7 @@ class ExpRunner:
                        hardware_desc='c8220',
                        ssh_hostkeys=str(LocalPaths().known_hosts),
                        use_slurm="dgx" in ssh_hostname,
-                       use_run_exp= self.root_path == ClusterPaths().root and "dgx" not in ssh_hostname,
+                       use_run_exp="dgx" not in ssh_hostname and "cloudlab" not in ssh_hostname,
                        test_connection=False) for ssh_hostname in names]
         return nodes
 

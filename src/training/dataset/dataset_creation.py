@@ -4,12 +4,11 @@ from pathlib import Path
 from typing import List, Optional
 
 import numpy as np
+from ldb_schema.load_schema import load_json
 from sklearn import preprocessing
 from sklearn.pipeline import Pipeline
 from torch.utils.data import DataLoader
 
-from cross_db_benchmark.benchmark_tools.database import ExecutionMode
-from cross_db_benchmark.benchmark_tools.utils import load_json
 from classes.classes import ZeroShotModelConfig, DataLoaderOptions, ModelConfig
 from classes.workload_runs import WorkloadRuns
 from training.dataset.plan_dataset import PlanDataset
@@ -17,7 +16,6 @@ from models.zeroshot.postgres_plan_batching import postgres_plan_collator
 
 
 def read_workload_runs(workload_run_paths: List[Path],
-                       execution_mode: ExecutionMode = ExecutionMode.RAW_OUTPUT,
                        limit_queries: bool = None,
                        limit_queries_affected_wl: bool = None):
     # reads several workload runs
@@ -26,33 +24,31 @@ def read_workload_runs(workload_run_paths: List[Path],
 
     for path_index, path in enumerate(workload_run_paths):
         try:
-            run = load_json(path)
+            run = load_json(str(path))
         except JSONDecodeError:
             raise ValueError(f"Error reading {path}")
-        database_statistics[path_index] = run.database_stats
-        database_statistics[path_index].run_kwars = run.run_kwargs
+        database_statistics[path_index] = run["database_stats"]
 
         limit_per_ds = None
         if limit_queries is not None:
             if path_index >= len(workload_run_paths) - limit_queries_affected_wl:
                 limit_per_ds = limit_queries // limit_queries_affected_wl
                 print(f"Capping workload {path} after {limit_per_ds} queries")
+        """
 
         if execution_mode == ExecutionMode.RAW_OUTPUT:
             for p_id, plan in enumerate(run.parsed_plans):
-                plan.database_id = path_index
                 plans.append(plan)
                 if limit_per_ds is not None and p_id > limit_per_ds:
                     print("Stopping now")
                     break
         else:
-            for plan in run.query_list:
-                if plan.analyze_plans:
-                    analyze_plans = plan.analyze_plans
-                    # assert len(analyze_plans) == 1, "Multiple plans found"
-                    plans.append(analyze_plans[0])
-
-    #print(f"No of Plans: {len(plans)} for {workload_run_paths}")
+        """
+        for plan in run["parsed_plans"]:
+            # Only learn from valid plans
+            plan["database_id"] = path_index
+            if plan["zero_card"] != True and plan["timeout"] == False and plan["invalid_hint"] != True:
+                plans.append(plan)
     return plans, database_statistics
 
 
@@ -67,8 +63,7 @@ def create_datasets(workload_run_paths,
 
     plans, database_statistics = read_workload_runs(workload_run_paths=workload_run_paths,
                                                     limit_queries=model_config.limit_queries,
-                                                    limit_queries_affected_wl=model_config.limit_queries_affected_wl,
-                                                    execution_mode=model_config.execution_mode)
+                                                    limit_queries_affected_wl=model_config.limit_queries_affected_wl)
 
     no_plans = len(plans)
     plan_indexes = list(range(no_plans))
@@ -94,7 +89,7 @@ def create_datasets(workload_run_paths,
         val_dataset = PlanDataset([plans[i] for i in val_indexes], val_indexes)
 
     # derive label normalization
-    runtimes = np.array([p.plan_runtime / 1000 for p in plans])
+    runtimes = np.array([p["plan_runtime_ms"] / 1000 for p in plans])
     label_norm = derive_label_normalizer(model_config.loss_class_name, runtimes)
 
     return label_norm, train_dataset, val_dataset, database_statistics
@@ -128,7 +123,7 @@ def create_zeroshot_dataloader(workload_runs: WorkloadRuns,
     label_norm = Optional[Pipeline]
     train_loader, val_loader, test_loaders = Optional[DataLoader], Optional[DataLoader], List[Optional[DataLoader]]
 
-    feature_statistics = load_json(statistics_file, namespace=False)
+    feature_statistics = load_json(str(statistics_file), namespace=False)
     assert feature_statistics != {}, "Feature statistics file is empty!"
     plan_collator = postgres_plan_collator
 
@@ -173,5 +168,10 @@ def create_zeroshot_dataloader(workload_runs: WorkloadRuns,
             dataloader_args.update(collate_fn=test_collate_fn)
             test_loader = DataLoader(test_dataset, **dataloader_args)
             test_loaders.append(test_loader)
+
+    print(f"Created datasets of size: "
+          f"train {len(train_dataset)}, "
+          f"validation: {len(val_dataset)}, t"
+          f"est: {len(test_dataset)}")
 
     return label_norm, feature_statistics, train_loader, val_loader, test_loaders

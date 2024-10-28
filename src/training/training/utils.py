@@ -7,7 +7,7 @@ import dgl
 import torch
 from dgl import DGLHeteroGraph
 
-from cross_db_benchmark.benchmark_tools.postgres.json_plan import OperatorTree
+from training.training.operator_tree import OperatorTree
 
 
 def recursive_to(iterable, device):
@@ -55,6 +55,7 @@ def find_early_stopping_metric(metrics):
     assert len(potential_metrics) == 1
     early_stopping_metric = potential_metrics[0]
     return early_stopping_metric
+
 
 def save_config(save_dict, target_dir, json_name):
     os.makedirs(target_dir, exist_ok=True)

@@ -11,13 +11,13 @@ import numpy as np
 import pandas as pd
 import torch
 import wandb
+from ldb_schema.load_schema import load_json
 from sklearn.linear_model import LinearRegression
 from wandb.apis.public import Run
 
 from classes.classes import FlatModelConfig, ModelConfig, ScaledPostgresModelConfig, \
     AnalyticalEstCardModelConfig, AnalyticalActCardModelConfig
 from classes.workload_runs import WorkloadRuns
-from cross_db_benchmark.benchmark_tools.utils import load_json
 from training.dataset.dataset_creation import read_workload_runs
 from training.training.checkpoint import save_csv
 from training.training.metrics import QError, RMSE, MAPE

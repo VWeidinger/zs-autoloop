@@ -1,14 +1,10 @@
-import os
 import time
-from copy import copy
 from pathlib import Path
 from typing import Callable, List, Optional
 
 import numpy as np
-import optuna
 import pandas as pd
 import torch
-import torch.optim as opt
 import wandb
 from torch import nn
 from torch.optim import Optimizer
@@ -20,14 +16,12 @@ from models.qppnet.qppnet_model import QPPNet
 from models.query_former.model import QueryFormer
 from models.workload_driven.model.e2e_model import E2EModel
 from models.workload_driven.model.mscn_model import MSCNModel
-from cross_db_benchmark.benchmark_tools.utils import load_json
 from classes.classes import ModelConfig
 from training.dataset.dataset_creation import create_zeroshot_dataloader
 from training.training.checkpoint import save_checkpoint, load_checkpoint, save_csv
 from training.training.metrics import MAPE, RMSE, QError, Metric
 from training.training.utils import flatten_dict, find_early_stopping_metric
 from training.batch_to_funcs import batch_to
-from models.zeroshot.specific_models.model import zero_shot_models
 from models.zeroshot.specific_models.postgres_zero_shot import PostgresZeroShotModel
 
 

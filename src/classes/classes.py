@@ -4,7 +4,6 @@ from pathlib import Path
 from typing import List, Callable, Optional
 
 import attrs as attrs
-import seaborn as sns
 from attr import field
 from dotenv import load_dotenv
 from ldb_schema.datasets import Dataset
@@ -97,28 +96,19 @@ class ModelConfig:
     column_statistics: bool = False
     word_embeddings: bool = False
 
-    def get_model_dir(self, source_path: Paths, database: Dataset, retrain: bool = False) -> Path:
-        if retrain:
-            return source_path.retraining_models / self.name.NAME / database.db_name
-        else:
-            return source_path.models / self.name.NAME / database.db_name
+    def get_model_dir(self, source_path: Paths, database: Dataset) -> Path:
+        return source_path.Data.models / self.name.NAME / database.db_name
 
-    def get_eval_dir(self, source_path: Paths, database: Dataset, retrain: bool = False) -> Path:
-        if retrain:
-            return source_path.retraining_evaluation / self.name.NAME / database.db_name
-        else:
-            return source_path.evaluation / self.name.NAME / database.db_name
+    def get_eval_dir(self, source_path: Paths, database: Dataset) -> Path:
+        return source_path.Data.evaluation / self.name.NAME / database.db_name
 
     def get_statistics(self, source_path: Paths, dataset: Dataset) -> Path:
-        if self.name in [ModelName.MSCN, ModelName.QUERY_FORMER]:
-            if dataset == Dataset('imdb'):
-                return source_path.augmented_plans_baseline / dataset.db_name / 'statistics_combined.json'
-            else:
-                return source_path.augmented_plans_baseline / dataset.db_name / 'statistics.json'
-        if isinstance(self, QPPNetModelConfig):
-            return source_path.json / dataset.db_name / 'feature_stats_training_data_scans_joins_physical.json'
-        else:
-            return source_path.parsed_plans / 'statistics_complex_workload_combined.json'
+        #if self.name in [ModelName.MSCN, ModelName.QUERY_FORMER]:
+        #    if dataset == Dataset('imdb'):
+        #        return source_path.Data. / dataset.db_name / 'statistics_combined.json'
+        #    else:
+        #        return source_path.Data.augmented_plans_baseline / dataset.db_name / 'statistics.json'
+        return source_path.Data.root / 'feature_statistics' / 'feature_statistics.json'
 
     def get_column_stats(self, database: Dataset) -> Optional[Path]:
         if self.column_statistics:
@@ -128,35 +118,36 @@ class ModelConfig:
 
     def get_word_embeddings(self, source_path: Paths, database: Dataset) -> Optional[Path]:
         if self.word_embeddings:
-            return source_path.sentences / database.db_name / 'word2vec.m'
+            return source_path.Data.sentences / database.db_name / 'word2vec.m'
         else:
             return None
 
-    def get_training_workloads(self, target_db: Dataset, wl_name: str = "workload_100k_s1_c8220") -> List[str]:
+    def get_training_workloads(self, training_datasets: List[Dataset], target_dataset: Dataset,
+                               wl_name: str = "workload_100k_s1") -> List[str]:
         if self.type == ModelType.WL_AGNOSTIC:
             training_workloads = []
-            for db in database_list:
-                if db.db_name != target_db.db_name:
+            for db in training_datasets:
+                if db.db_name != target_dataset.db_name:
                     path = self.get_data_base_dir() / Path(db.db_name) / f"{wl_name}.json"
                     training_workloads.append(str(path))
 
-            assert len(training_workloads) == 19, f"Found {len(training_workloads)}, but it should be 19"
+            # assert len(training_workloads) == 19, f"Found {len(training_workloads)}, but it should be 19"
             return training_workloads
 
         elif self.type == ModelType.WL_DRIVEN:
-            path = self.get_data_base_dir() / target_db.db_name / f"{wl_name}.json"
+            path = self.get_data_base_dir() / target_dataset.db_name / f"{wl_name}.json"
             return [str(path)]
 
     def get_test_workloads(self, target_db: Dataset) -> str:
-        return str(self.get_data_base_dir() / target_db.db_name / "workload_100k_s1_c8220.json")
+        return str(self.get_data_base_dir() / target_db.db_name / "workload_100k_s1.json")
 
     def get_data_base_dir(self) -> Path:
         if self.input_format == InputFormats.baseline_parsed:
-            return ClusterPaths().augmented_plans_baseline
+            return ClusterPaths().Data.augmented_plans_baseline
         elif self.input_format == InputFormats.parsed:
-            return ClusterPaths().parsed_plans
+            return ClusterPaths().Data.parsed_plans
         elif self.input_format == InputFormats.json:
-            return ClusterPaths().json
+            return ClusterPaths().Data.json_plans
 
 
 @attrs.define(frozen=True, slots=False)
@@ -296,7 +287,7 @@ class ZeroShotModelConfig(ModelConfig):
     collator_func: Callable = postgres_plan_collator
     device: str = "cuda:0"
     input_format: str = InputFormats.parsed
-    hyperparameter: Path = Path(f'conf/tuned_hyperparameters/tune_est_best_config.json')
+    hyperparameter: Path = Path(f'conf/zeroshot_hyperparameters/tune_est_best_config.json')
 
 
 @attrs.define(frozen=True, slots=False)

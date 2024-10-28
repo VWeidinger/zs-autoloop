@@ -3,11 +3,11 @@ from typing import Tuple
 import torch
 import torch.nn as nn
 
-from cross_db_benchmark.benchmark_tools.postgres.json_plan import OperatorTree
 from classes.classes import QPPNetModelConfig
 from classes.workload_runs import WorkloadRuns
 from training import losses
 from models.zeroshot.postgres_plan_batching import add_numerical_scalers
+from training.training.operator_tree import OperatorTree
 
 
 class NeuralUnit(nn.Module):

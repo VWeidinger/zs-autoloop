@@ -7,11 +7,11 @@ from typing import Tuple, Optional, List
 
 import numpy as np
 import torch
+from ldb_schema.load_schema import load_json
 from sklearn.preprocessing import RobustScaler
 from torch.nn.functional import pad
 from torch.utils.data import DataLoader
 
-from cross_db_benchmark.benchmark_tools.utils import load_json
 from classes.classes import DACEModelConfig, DataLoaderOptions
 from classes.workload_runs import WorkloadRuns
 from training.dataset.plan_dataset import PlanDataset
@@ -23,7 +23,7 @@ def create_dace_dataloader(statistics_file: Path,
                            workload_runs: WorkloadRuns,
                            dataloader_options: DataLoaderOptions) -> Tuple[dict, DataLoader, DataLoader, list[DataLoader]]:
 
-    feature_statistics = load_json(statistics_file, namespace=False)
+    feature_statistics = load_json(str(statistics_file), namespace=False)
     assert feature_statistics != {}, "Feature statistics file is empty!"
 
     train_loader, val_loader, test_loaders = Optional[DataLoader], Optional[DataLoader], List[Optional[DataLoader]]

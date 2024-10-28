@@ -3,7 +3,7 @@ import numpy as np
 
 from models.workload_driven.dataset.plan_tree_batching import extract_dimensions, encode_predicate, encode_one_hot, \
     tensorize_feats
-from cross_db_benchmark.benchmark_tools.generate_workload import LogicalOperator
+from training.dataset.operator import LogicalOperator
 
 
 def extract_predicate_features(n, pred_feats, column_statistics, db_statistics, dim_word_emdb, dim_word_hash,

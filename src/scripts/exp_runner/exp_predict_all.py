@@ -1,20 +1,20 @@
 from pathlib import Path
 from typing import List
 
+from ldb_schema.paths import ClusterPaths, LocalPaths
 from octopus.step import Rsync, KillAllScreens
 
-from cross_db_benchmark.datasets.datasets import Database
+from ldb_schema.datasets import Dataset
 from classes.classes import ScaledPostgresModelConfig, E2EModelConfig, MSCNModelConfig, QPPNetModelConfig, \
     ZeroShotModelConfig, DACEModelConfig, FlatModelConfig, ModelConfig, DACEModelNoCostsConfig, QPPModelNoCostsConfig, \
     QPPModelActCardsConfig, FlatModelActCardModelConfig, ZeroShotModelActCardConfig, DACEModelActCardConfig, \
     TrainingServers, QueryFormerModelConfig
-from classes.paths import LocalPaths, ClusterPaths
-from classes.workloads import EvalWorkloads
+
 from scripts.exp_runner.exp_runner import ExpRunner
 from collections import defaultdict
 
 
-def generate_commands(database: Database,
+def generate_commands(dataset: Dataset,
                       model: ModelConfig,
                       workload_paths: List[Path],
                       seeds=None):
@@ -40,16 +40,16 @@ def generate_commands(database: Database,
                        f"--mode predict "
                        f"--model_type {model.name.NAME} "
                        f"--test_workload_runs {workloads} "
-                       f"--statistics_file {model.get_statistics(ClusterPaths(), database)} "
-                       f"--model_dir {model.get_model_dir(ClusterPaths(), database)} "
-                       f"--target_dir {model.get_eval_dir(ClusterPaths(), database) / folder} "
+                       f"--statistics_file {model.get_statistics(ClusterPaths(), dataset)} "
+                       f"--model_dir {model.get_model_dir(ClusterPaths(), dataset)} "
+                       f"--target_dir {model.get_eval_dir(ClusterPaths(), dataset) / folder} "
                        f"--seed {seed} ")
 
             if model.column_statistics:
-                command += f" --column_statistics {model.get_column_stats(database)} "
+                command += f" --column_statistics {model.get_column_stats(dataset)} "
 
             if model.word_embeddings:
-                command += f" --word_embeddings {model.get_word_embeddings(source_path=ClusterPaths(), database=database)} "
+                command += f" --word_embeddings {model.get_word_embeddings(source_path=ClusterPaths(), database=dataset)} "
 
             if model.hyperparameter:
                 command += f" --hyperparameter_path {model.hyperparameter} "
@@ -59,22 +59,20 @@ def generate_commands(database: Database,
 
 
 if __name__ == '__main__':
-    setup_steps = [Rsync(src=[str(LocalPaths().code)], dest=[ClusterPaths().root], update=True, put=True),
-                   Rsync(src=[str(LocalPaths().workloads)], dest=[ClusterPaths().data], update=True, put=True),
-                   Rsync(src=[str(LocalPaths().runs)], dest=[ClusterPaths().data], update=True, put=True),
-                   ]
+    setup_steps = [Rsync(src=[str(LocalPaths().Models.src)], dest=[ClusterPaths().Models.root], update=True, put=True)]
     purge_steps = [KillAllScreens()]
-    pickup_steps = [Rsync(src=[ClusterPaths().evaluation], dest=[LocalPaths().data], put=False, update=True)]
+    pickup_steps = [Rsync(src=[ClusterPaths().Data.evaluation], dest=[LocalPaths().data], put=False, update=True)]
+
 
     model_configs = [
-        #FlatModelConfig(),
-        #ScaledPostgresModelConfig(),
+        FlatModelConfig(),
+        ScaledPostgresModelConfig(),
         MSCNModelConfig(),
-        #E2EModelConfig(),
-        #QPPNetModelConfig(),
-        #ZeroShotModelConfig(),
-        #DACEModelConfig(),
-        #QueryFormerModelConfig()
+        E2EModelConfig(),
+        QPPNetModelConfig(),
+        ZeroShotModelConfig(),
+        DACEModelConfig(),
+        QueryFormerModelConfig()
     ]
 
     no_costs_model_configs = [
@@ -98,8 +96,8 @@ if __name__ == '__main__':
                        python_version=node["python"])
     commands = []
     wls_to_dbs = [
-        (Database("imdb"), EvalWorkloads.ScanCostsPercentile.imdb),
-        (Database("baseball"), EvalWorkloads.ScanCostsPercentile.baseball),
+        (Dataset("imdb"), EvalWorkloads.AccessPathSelection.imdb),
+        (Dataset("baseball"), EvalWorkloads.AccessPathSelection.baseball),
     ]
 
     for database, target_workloads in wls_to_dbs:

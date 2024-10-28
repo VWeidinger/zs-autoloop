@@ -4,7 +4,7 @@ import dgl
 import numpy as np
 import torch
 
-from cross_db_benchmark.benchmark_tools.generate_workload import LogicalOperator
+from training.dataset.operator import LogicalOperator
 from training.training.utils import recursive_to
 
 

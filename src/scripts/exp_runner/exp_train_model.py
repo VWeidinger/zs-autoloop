@@ -1,75 +1,78 @@
-import ast
-import os
 from typing import List
 
-from octopus.step import Rsync, KillAllScreens
+from ldb_schema.datasets import Dataset
+from ldb_schema.paths import ClusterPaths, LocalPaths
+from octopus.step import Rsync, KillAllScreens, SetupVenv
 
-from cross_db_benchmark.datasets.datasets import Database
 from classes.classes import ModelConfig, ModelType, \
     DACEModelConfig, DACEModelNoCostsConfig, QPPModelNoCostsConfig, FlatModelActCardModelConfig, QPPModelActCardsConfig, \
     DACEModelActCardConfig, QPPNetModelConfig, ZeroShotModelActCardConfig, QueryFormerModelConfig, TrainingServers, \
     ScaledPostgresModelConfig, ZeroShotModelConfig, FlatModelConfig, E2EModelConfig, MSCNModelConfig
-from classes.paths import LocalPaths, ClusterPaths
+
 from scripts.exp_runner.exp_runner import ExpRunner
 
 
-def generate_commands(databases: List[Database], seeds: list[int], python_version: str,
-                      model_list: list[ModelConfig] = ModelConfig) -> List[str]:
+def generate_training_commands(datasets: List[Dataset], seeds: list[int], python_version: str,
+                               model_list: list[ModelConfig] = ModelConfig) -> List[str]:
 
     commands = []
-    for database in databases:
-        for model in model_list:
-            workload_runs = " ".join(model.get_training_workloads(database))
-            test_workload_runs = model.get_test_workloads(database)
-            statistics_path = model.get_statistics(source_path=ClusterPaths(), dataset=database)
+    for target_dataset in datasets:
+        for target_model in model_list:
+            training_runs = " ".join(target_model.get_training_workloads(training_datasets=datasets, target_dataset=target_dataset))
+            test_runs = target_model.get_test_workloads(target_dataset)
+            statistics_path = target_model.get_statistics(source_path=ClusterPaths(), dataset=target_dataset)
 
             for seed in seeds:
                 command = (f"python{python_version} main.py "
                            f"--mode train "
                            f"--wandb_project cost-eval "
-                           f"--model_type {model.name.NAME} "
-                           f"--device {model.device} "
-                           f"--model_dir {model.get_model_dir(ClusterPaths(), database)} "
-                           f"--target_dir {model.get_eval_dir(ClusterPaths(), database)} "
-                           f"--workload_runs {workload_runs} "
+                           f"--model_type {target_model.name.NAME} "
+                           f"--device {target_model.device} "
+                           f"--model_dir {target_model.get_model_dir(ClusterPaths(), target_dataset)} "
+                           f"--target_dir {target_model.get_eval_dir(ClusterPaths(), target_dataset)} "
+                           f"--workload_runs {training_runs} "
                            f"--statistics_file {statistics_path} "
                            f"--seed {seed} "
-                           f"--wandb_name {model.name.NAME}/{database.db_name}/{seed}")
+                           f"--wandb_name {target_model.name.NAME}/{target_dataset.db_name}/{seed}")
 
-                if model.type == ModelType.WL_AGNOSTIC:
-                    command += f" --test_workload_runs {test_workload_runs} "
+                if target_model.type == ModelType.WL_AGNOSTIC:
+                    command += f" --test_workload_runs {test_runs} "
 
-                if model.column_statistics:
-                    command += f" --column_statistics {model.get_column_stats(database)} "
+                if target_model.column_statistics:
+                    command += f" --column_statistics {target_model.get_column_stats(target_dataset)} "
 
-                if model.word_embeddings:
-                    command += f" --word_embeddings {model.get_word_embeddings(source_path=ClusterPaths(), database=database)} "
+                if target_model.word_embeddings:
+                    command += f" --word_embeddings {target_model.get_word_embeddings(source_path=ClusterPaths(), database=target_dataset)} "
 
-                if model.hyperparameter:
-                    command += f" --hyperparameter_path {model.hyperparameter} "
+                if target_model.hyperparameter:
+                    command += f" --hyperparameter_path {target_model.hyperparameter} "
 
                 commands.append(command)
     return commands
 
 
 if __name__ == '__main__':
-    setup_steps = [Rsync(src=[str(LocalPaths().code)], dest=[ClusterPaths().root], update=True, put=True),
-                   Rsync(src=[str(LocalPaths().workloads)], dest=[ClusterPaths().data], update=True, put=True),
-                   Rsync(src=[str(LocalPaths().runs)], dest=[ClusterPaths().data], update=True, put=True),
-                   #SetupVenv(use_requirements_txt=True,
-                   #          requirements_txt_filename=f'{ClusterPaths().code}/requirements/requirements.txt',
-                   #          force=False,
-                   #          python_cmd=f'python3.9',
-                   #          python_version='3.9')
-                   ]
+    install_venv = False
+
+    setup_steps = [Rsync(src=[str(LocalPaths().Models.src)], dest=[ClusterPaths().Models.root], update=True, put=True)]
+
+    if install_venv:
+        setup_steps.append(SetupVenv(use_requirements_txt=True,
+                                     requirements_txt_filename=f'{ClusterPaths().Models.src}/requirements.txt',
+                                     force=False,
+                                     python_cmd=f'python3.9',
+                                     python_version='3.9'))
 
     purge_steps = [KillAllScreens()]
-    pickup_steps = [Rsync(src=[ClusterPaths().runs], dest=[LocalPaths().data], put=False, update=True)]
+    pickup_steps = [Rsync(src=[ClusterPaths().Data.runs], dest=[LocalPaths().data], put=False, update=True)]
 
-    databases = [
-        Database('baseball'),
-        Database('tpc_h'),
-        Database('imdb')
+    datasets = [
+        Dataset('airline_scaled1'),
+        Dataset('credit_scaled5'),
+        Dataset('geneea_scaled23'),
+        Dataset('hepatitis_scaled2000'),
+        Dataset('movielens_scaled8'),
+        Dataset('tpc_h_scaled1')
     ]
 
     seeds = [0, 1, 2]
@@ -83,7 +86,7 @@ if __name__ == '__main__':
     # model = MSCNModelConfig()
     # model = DACEModelConfig()
     # model = QueryFormerModelConfig()
-    model = ZeroShotModelConfig()
+    model_config = ZeroShotModelConfig()
 
     # Ablation Models (without postgres Estimates)
     # model = DACEModelNoCostsConfig()
@@ -101,16 +104,16 @@ if __name__ == '__main__':
                        python_version=node["python"])
 
     eval_commands = []
-    for database in databases:
-        eval_commands += generate_commands(databases=[database],
-                                           model_list=[model],
-                                           python_version=node["python"],
-                                           seeds=seeds)
+    for dataset in datasets:
+        eval_commands += generate_training_commands(datasets=datasets,
+                                                    model_list=[model_config],
+                                                    python_version=node["python"],
+                                                    seeds=seeds)
 
     runner.run_exp(node_names=[node["hostname"]],
                    commands=eval_commands,
                    set_up_steps=setup_steps,
                    purge_steps=purge_steps,
                    pickup_steps=pickup_steps,
-                   screens_per_node=len(databases),
+                   screens_per_node=len(datasets),
                    offset=0)

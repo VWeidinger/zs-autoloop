@@ -11,10 +11,9 @@ def get_all_json_files(directory):
         json_files = [directory]
     else:
         path = os.path.join(directory, '**', '*.json')
-        # Use glob.glob with the recursive flag set to True to find all .json files in the directory and its subdirectories
         json_files = glob.glob(path, recursive=True)
         json_files = [file for file in json_files if "feature_statistics" not in file]
-    print(json_files)
+    assert len(json_files) > 0, f"No json files found in {directory}"
     return json_files
 
 if __name__ == '__main__':
@@ -26,6 +25,6 @@ if __name__ == '__main__':
     json_files = []
     for workload in args.workload:
         for database in args.database:
-            json_files += get_all_json_files(f'../data/runs/parsed_plans/{database}_scaled1/{workload}')  # ToDo: Load correct scaling name
-    print(len(json_files))
+            json_files += get_all_json_files(f'../data/runs/parsed_plans/{database}/{workload}')  # ToDo: Load correct scaling name
+    assert len(json_files) == len(args.database) * len(args.workload), "Some workload files were not found"
     gather_feature_statistics(json_files, args.target)
