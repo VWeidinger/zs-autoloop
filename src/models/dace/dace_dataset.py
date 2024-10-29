@@ -111,6 +111,7 @@ def dace_collator(batch: Tuple, feature_statistics: dict, config: DACEModelConfi
                                                                                op_name_to_one_hot=op_name_to_one_hot,
                                                                                plan_parameters=config.featurization.PLAN_FEATURES,
                                                                                feature_statistics=feature_statistics)
+
         #labels.append(run_times[0] * config.max_runtime)
         labels.append(torch.tensor(p["plan_runtime_ms"]) / 1000)
         all_runtimes.append(run_times)
@@ -264,7 +265,7 @@ def depth_first_search(plan: SimpleNamespace, seq: list, adjs: list,
     cur_node_id = len(seq)
     seq.append(plan["plan_parameters"])
     heights.append(cur_height)
-    if hasattr(plan["plan_parameters"], "act_time"):
+    if "act_time" in plan["plan_parameters"].keys():
         act_time = plan["plan_parameters"]["act_time"]
     else:
         act_time = 0.01
@@ -272,8 +273,8 @@ def depth_first_search(plan: SimpleNamespace, seq: list, adjs: list,
 
     if parent_node_id != -1:  # not root node
         adjs.append((parent_node_id, cur_node_id))
-    if hasattr(plan, "children"):
-        for child in plan.children:
+    if "children" in plan.keys():
+        for child in plan["children"]:
             depth_first_search(child, seq, adjs, cur_node_id, run_times, heights, cur_height + 1)
 
 

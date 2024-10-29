@@ -38,6 +38,7 @@ def read_workload_runs(workload_run_paths: List[Path],
 
         if input_format == InputFormats.parsed:
             for p_id, plan in enumerate(run["parsed_plans"]):
+                plan["database_id"] = path_index
                 plans.append(plan)
                 if limit_per_ds is not None and p_id > limit_per_ds:
                     print("Stopping now")

@@ -22,7 +22,7 @@ def generate_training_commands(datasets: List[Dataset], seeds: list[int], python
             test_runs = target_model.get_test_workloads(target_dataset)
             statistics_path = target_model.get_statistics(source_path=ClusterPaths(),
                                                           dataset=target_dataset,
-                                                          format=model_config.input_format)
+                                                          format=target_model.input_format)
 
             for seed in seeds:
                 command = (f"python{python_version} main.py "
@@ -92,17 +92,17 @@ if __name__ == '__main__':
     ]
 
     seeds = [0, 1, 2]
-    node = TrainingServers.NODE04
+    node = TrainingServers.NODE05
 
     # Standard Models
     # model_config = ScaledPostgresModelConfig()
-    #model_config = FlatModelConfig()
+    # model_config = FlatModelConfig()                  # --> Node 05 OK
     # model_config = E2EModelConfig()
-    # model_config = QPPNetModelConfig()
+    # model_config = QPPNetModelConfig()                # --> Node 00 OK
     # model_config = MSCNModelConfig()
-    model_config = DACEModelConfig()
-    # model_config = QueryFormerModelConfig()
-    # model_config = ZeroShotModelConfig()
+    # model_config = DACEModelConfig()                  # --> Node 03 OK
+    model_config = QueryFormerModelConfig()           # --> Node
+    # model_config = ZeroShotModelConfig()              # --> Node 04
 
     # Ablation Models (without postgres Estimates)
     # model_config = DACEModelNoCostsConfig()
@@ -119,13 +119,12 @@ if __name__ == '__main__':
                        root_path=ClusterPaths().root,
                        python_version=node["python"])
 
-    eval_commands = []
-    for dataset in datasets:
-        eval_commands += generate_training_commands(datasets=datasets,
-                                                    model_list=[model_config],
-                                                    python_version=node["python"],
-                                                    seeds=seeds,
-                                                    wandb_project=runner.wandb_project)
+    #for dataset in datasets:
+    eval_commands = generate_training_commands(datasets=datasets,
+                                                model_list=[model_config],
+                                                python_version=node["python"],
+                                                seeds=seeds,
+                                                wandb_project=runner.wandb_project)
 
     runner.run_exp(node_names=[node["hostname"]],
                    commands=eval_commands,
