@@ -1,22 +1,20 @@
-import ast
-import os
 from pathlib import Path
-from typing import List, Callable, Optional
+from typing import List, Callable, Optional, final
 
 import attrs as attrs
 from attr import field
-from dotenv import load_dotenv
 from ldb_schema.datasets import Dataset
 from ldb_schema.paths import Paths, ClusterPaths
 
 from models.query_former.dataloader import query_former_batch_to
 from models.workload_driven.dataset.mscn_batching import mscn_plan_collator
 from models.workload_driven.dataset.plan_tree_batching import plan_batch_to, baseline_plan_collator
+from models.zeroshot.postgres_plan_batching import postgres_plan_collator
 from training.batch_to_funcs import dace_batch_to, simple_batch_to, batch_to
 from training.featurizations import Featurization, DACEFeaturization, QPPNetFeaturization, \
     PostgresEstSystemCardDetail, DACEFeaturizationNoCosts, QPPNetNoCostsFeaturization, FlatModelFeaturization, \
     FlatModelActCardFeaturization, QPPNetActCardsFeaturization, PostgresTrueCardDetail, DACEActCardFeaturization
-from models.zeroshot.postgres_plan_batching import postgres_plan_collator
+
 
 class InputFormats:
     parsed = "parsed_plans"
@@ -254,8 +252,8 @@ class ZeroShotModelConfig(ModelConfig):
                                inplace=True)
     final_mlp_kwargs: dict = dict(width_factor=1,
                                   n_layers=2,
-                                  loss_class_name="QLoss",  # MSELoss
-                                  loss_class_kwargs=dict())
+                                  loss_class_name="QLoss",  # will be overwritten by .json hyperparams loader
+                                  loss_class_kwargs=dict()) # will be overwritten by .json hyperparams loader
     tree_layer_kwargs: dict = dict(width_factor=1,
                                    n_layers=2)
     node_type_kwargs: dict = dict(width_factor=1,

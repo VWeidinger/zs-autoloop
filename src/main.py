@@ -144,8 +144,8 @@ def readout_hyperparameters(hyperparameter_path: Path) -> dict:
 
     final_mlp_kwargs = dict(width_factor=hyperparams.pop('final_width_factor'),
                             n_layers=hyperparams.pop('final_layers'),
-                            loss_class_name="QLoss",
-                            loss_class_kwargs=dict())
+                            loss_class_name=hyperparams.pop('loss_class_name', 'QLoss'),
+                            loss_class_kwargs=hyperparams.pop('loss_class_kwargs', dict()), )
 
     tree_layer_kwargs = dict(width_factor=hyperparams.pop('tree_layer_width_factor'),
                              n_layers=hyperparams.pop('message_passing_layers'))
@@ -189,7 +189,7 @@ def use_model(mode: str,
               target_dir: Path,
               config: ModelConfig,
               wandb_project: str,
-              wandb_entity:str,
+              wandb_entity: str,
               pt_profiler: bool):
     # Seed for reproducibility
     print(f"Found model config {config}")
@@ -236,7 +236,7 @@ def use_model(mode: str,
     run: Optional[Run] = None
     if wandb_project:
         run = wandb.init(entity=wandb_entity,
-            project=wandb_project,
+                         project=wandb_project,
                          name=wandb_name,
                          config=attrs.asdict(config))
 
@@ -383,7 +383,7 @@ if __name__ == '__main__':
 
     args = dict(
         wandb_project=args.wandb_project,
-        wandb_entity = args.wandb_entity,
+        wandb_entity=args.wandb_entity,
         mode=args.mode,
         wl_runs=runs,
         wandb_name=args.wandb_name,

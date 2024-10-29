@@ -4,6 +4,7 @@ import torch.nn as nn
 
 from classes.classes import DACEModelConfig
 from training import losses
+from training.losses import create_loss
 
 
 class DACELora(nn.Module):
@@ -13,7 +14,7 @@ class DACELora(nn.Module):
         self.label_norm = None
         self.device = config.device
         self.config = config
-        self.loss_fxn = losses.__dict__[config.loss_class_name](self, **config.loss_class_kwargs)
+        self.loss_fxn = create_loss(config.loss_class_name, loss_kwargs = config.loss_class_kwargs)
 
         self.transformer_encoder = nn.TransformerEncoder(
             nn.TransformerEncoderLayer(

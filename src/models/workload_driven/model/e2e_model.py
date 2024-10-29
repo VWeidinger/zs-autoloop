@@ -8,6 +8,7 @@ from classes.classes import E2EModelConfig, TPoolModelConfig, TlstmModelConfig, 
 from training import losses
 from models.zeroshot.message_aggregators.pooling import PoolingType, PoolingConv
 from models.zeroshot.zero_shot_model import PassDirection
+from training.losses import create_loss
 
 
 class E2EModel(nn.Module):
@@ -54,7 +55,7 @@ class E2EModel(nn.Module):
         else:
             raise NotImplementedError
 
-        self.loss_fxn = losses.__dict__[model_config.loss_class_name](self, **model_config.loss_class_kwargs)
+        self.loss_fxn = create_loss(model_config.loss_class_name, loss_kwargs=model_config.loss_class_kwargs)
 
         self.pred_encoding = nn.Sequential(
             *[nn.BatchNorm1d(input_dims.input_dim_pred),

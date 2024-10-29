@@ -6,7 +6,7 @@ import torch.nn.functional as F
 
 from classes.classes import QueryFormerModelConfig
 from models.workload_driven.dataset.dataset_creation import InputDims
-from training import losses
+from training.losses import create_loss
 
 
 class FinalPredictionLayer(nn.Module):
@@ -159,7 +159,7 @@ class QueryFormer(nn.Module):
         self.head_size = config.head_size
         self.device = config.device
         self.label_norm = None
-        self.loss_fxn = losses.__dict__[config.loss_class_name](self, **config.loss_class_kwargs)
+        self.loss_fxn = create_loss(config.loss_class_name, loss_kwargs=config.loss_class_kwargs)
 
         # Define encoders for features
         self.feature_embedding_layer = FeatureEmbedding(embedding_size=config.embedding_size,

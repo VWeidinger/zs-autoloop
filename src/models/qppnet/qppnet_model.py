@@ -5,8 +5,8 @@ import torch.nn as nn
 
 from classes.classes import QPPNetModelConfig
 from classes.workload_runs import WorkloadRuns
-from training import losses
 from models.zeroshot.postgres_plan_batching import add_numerical_scalers
+from training.losses import create_loss
 from training.training.operator_tree import OperatorTree
 
 
@@ -111,7 +111,7 @@ class QPPNet(nn.Module):
                 for op in remove_ops:
                     self.operator_types.pop(op)
         """
-        self.loss_fxn = losses.__dict__[model_config.loss_class_name](self, **model_config.loss_class_kwargs)
+        self.loss_fxn = create_loss(model_config.loss_class_name, loss_kwargs=model_config.loss_class_kwargs)
 
         # Initialize neural units
         self.neural_units = nn.ModuleDict({

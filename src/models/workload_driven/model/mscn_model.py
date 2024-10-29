@@ -4,9 +4,9 @@ from torch.nn import ReLU
 
 from models.workload_driven.dataset.dataset_creation import MSCNInputDims
 from classes.classes import MSCNModelConfig
-from training import losses
 from models.zeroshot.message_aggregators.pooling import PoolingType, PoolingConv
 from models.zeroshot.zero_shot_model import PassDirection
+from training.losses import create_loss
 
 
 class MSCNModel(nn.Module):
@@ -36,7 +36,7 @@ class MSCNModel(nn.Module):
             'join': input_dims.input_dim_join
         }
 
-        self.loss_fxn = losses.__dict__[model_config.loss_class_name](self, **model_config.loss_class_kwargs)
+        self.loss_fxn = create_loss(model_config.loss_class_name, loss_kwargs = model_config.loss_class_kwargs)
 
         feature_encoders = dict()
         for node_t in self.pool_node_types:

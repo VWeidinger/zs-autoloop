@@ -102,11 +102,11 @@ if __name__ == '__main__':
         # Dataset('fhnk', scale=2)
     ]
 
-    seeds = [45]
+    seeds = [51]
     node = TrainingServers.NODE03
 
     quick_run = True
-    pt_profiler = True
+    pt_profiler = False
     leave_one_out_train_style = False
 
     # Standard Models

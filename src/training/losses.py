@@ -1,6 +1,30 @@
+from typing import Dict
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
+
+def create_loss(loss_name: str, loss_kwargs: Dict):
+    if loss_name == 'MSELoss':
+        loss = MSELoss(**loss_kwargs)
+    elif loss_name == 'QLoss':
+        loss = QLoss(**loss_kwargs)
+    elif loss_name == 'DaceLoss':
+        loss = DaceLoss(**loss_kwargs)
+    elif loss_name == 'QPPLoss':
+        loss = QPPLoss(**loss_kwargs)
+    else:
+        raise ValueError(f"Loss {loss_name} not supported")
+
+    timeout_masking = loss_kwargs.pop('timeout_masking', False)  # learn from timeout
+    timeout_threshold = loss_kwargs.pop('timeout_threshold', None)
+
+    if timeout_masking:
+        print(f'Using timeout masking with threshold {timeout_threshold}')
+        loss = LearnFromTimeoutLossWrapper(timeout_threshold, loss)
+
+    return loss
 
 
 class MSELoss(nn.Module):
@@ -16,7 +40,7 @@ class QLoss(nn.Module):
     Regression loss that minimizes the q-error for each prediction
     """
 
-    def __init__(self, model, weight=None, min_val=1e-3, penalty_negative=1e5, **kwargs):
+    def __init__(self, min_val=1e-3, penalty_negative=1e5, **kwargs):
         self.min_val = min_val
         self.penalty_negative = penalty_negative
         super().__init__()
@@ -52,7 +76,7 @@ class QLoss(nn.Module):
 
 
 class DaceLoss(nn.Module):
-    def __init__(self,  model, **loss_kwargs):
+    def __init__(self, model, **loss_kwargs):
         super().__init__()
         self.loss_masks = None
         self.preds = None
@@ -116,3 +140,21 @@ class QPPLoss(torch.nn.Module):
         out = torch.mean(self.total_loss)
         self.reset_accumulated_losses()
         return out
+
+
+class LearnFromTimeoutLossWrapper(nn.Module):
+    def __init__(self, timeout_threshold, loss):
+        super().__init__()
+        self.timeout_threshold = timeout_threshold
+        self.loss = loss
+
+    def forward(self, input, target):
+        assert len(input.shape)==1 or input.shape[1]==1, f'Input shape is {input.shape}'
+        if len(input.shape) == 2:
+            assert input.shape[1] == 1, f'Target shape is {input.shape}'
+            input = input.squeeze(1) # reduce nx1 vector to n vector
+
+        # mask out elements where target is None (timeout) and input is larger than timeout_threshold
+        timeout_mask = (target.isnan() | target.isinf()) & (input > self.timeout_threshold)
+
+        return self.loss(input[~timeout_mask], target[~timeout_mask])

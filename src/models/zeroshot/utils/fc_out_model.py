@@ -5,8 +5,8 @@ from torch import nn
 from torch.nn import init
 from torch.nn.parameter import Parameter
 
-from training import losses
 from models.zeroshot.utils import activations
+from training.losses import create_loss
 
 
 class DynamicLayer(nn.Module):
@@ -125,7 +125,7 @@ class FcOutModel(DynamicLayer):
             return
 
         if loss_class_name is not None:
-            self.loss_fxn = losses.__dict__[loss_class_name](self, **loss_class_kwargs)
+            self.loss_fxn = create_loss(loss_class_name, loss_kwargs = loss_class_kwargs)
 
         layer_dims = [self.input_dim] + [int(width_factor * self.input_dim)] * n_layers + [self.output_dim]
 
