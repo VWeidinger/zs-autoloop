@@ -43,6 +43,7 @@ class ExpRunner:
         # Read credentials from environment variables
         load_dotenv()
         self.wandb_project = os.getenv('WANDB_PROJECT')
+        self.wandb_entity = os.getenv('WANDB_ENTITY')
 
         if "cloudlab" in node_names[0]:
             self.ssh_username = os.getenv('CLOUDLAB_SSH_USERNAME')

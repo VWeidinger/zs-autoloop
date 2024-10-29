@@ -189,6 +189,7 @@ def use_model(mode: str,
               target_dir: Path,
               config: ModelConfig,
               wandb_project: str,
+              wandb_entity:str,
               pt_profiler: bool):
     # Seed for reproducibility
     print(f"Found model config {config}")
@@ -234,7 +235,8 @@ def use_model(mode: str,
 
     run: Optional[Run] = None
     if wandb_project:
-        run = wandb.init(project=wandb_project,
+        run = wandb.init(entity=wandb_entity,
+            project=wandb_project,
                          name=wandb_name,
                          config=attrs.asdict(config))
 
@@ -330,6 +332,7 @@ if __name__ == '__main__':
     parser.add_argument('--hyperparameter_path', default=None)
     parser.add_argument('--word_embeddings', default=None)
     parser.add_argument('--wandb_project', default=None)
+    parser.add_argument('--wandb_entity', default=None)
     parser.add_argument('--cap_training_samples', type=int, default=None)
     parser.add_argument('--wandb_name', default=None)
     parser.add_argument('--seed', type=int, default=0)
@@ -380,6 +383,7 @@ if __name__ == '__main__':
 
     args = dict(
         wandb_project=args.wandb_project,
+        wandb_entity = args.wandb_entity,
         mode=args.mode,
         wl_runs=runs,
         wandb_name=args.wandb_name,

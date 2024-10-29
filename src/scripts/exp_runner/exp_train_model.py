@@ -13,6 +13,7 @@ from scripts.exp_runner.exp_runner import ExpRunner, TrainingServers
 
 
 def generate_training_commands(datasets: List[Dataset], seeds: list[int], python_version: str, wandb_project: str,
+                               wandb_entity:str,
                                model_list: list[ModelConfig] = ModelConfig, quick_run:bool=False, pt_profiler:bool=False, leave_one_out_style:bool=True) -> List[str]:
 
     commands = []
@@ -28,6 +29,7 @@ def generate_training_commands(datasets: List[Dataset], seeds: list[int], python
                 command = (f"python{python_version} main.py "
                            f"--mode train "
                            f"--wandb_project {wandb_project} "
+                           f"--wandb_entity {wandb_entity} "
                            f"--model_type {target_model.name.NAME} "
                            f"--device {target_model.device} "
                            f"--model_dir {target_model.get_model_dir(ClusterPaths(), target_dataset)} "
@@ -100,7 +102,7 @@ if __name__ == '__main__':
         # Dataset('fhnk', scale=2)
     ]
 
-    seeds = [42]
+    seeds = [45]
     node = TrainingServers.NODE03
 
     quick_run = True
@@ -137,6 +139,7 @@ if __name__ == '__main__':
                                                 python_version=node["python"],
                                                 seeds=seeds,
                                                 wandb_project=runner.wandb_project,
+                                               wandb_entity=runner.wandb_entity,
                                                quick_run=quick_run,
                                                pt_profiler=pt_profiler,
                                                leave_one_out_style=leave_one_out_train_style
