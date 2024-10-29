@@ -18,17 +18,6 @@ from training.featurizations import Featurization, DACEFeaturization, QPPNetFeat
     FlatModelActCardFeaturization, QPPNetActCardsFeaturization, PostgresTrueCardDetail, DACEActCardFeaturization
 from models.zeroshot.postgres_plan_batching import postgres_plan_collator
 
-
-class TrainingServers:
-    load_dotenv()
-    NODE00 = ast.literal_eval(os.getenv("NODE00"))
-    NODE01 = ast.literal_eval(os.getenv("NODE01"))
-    NODE02 = ast.literal_eval(os.getenv("NODE02"))
-    NODE03 = ast.literal_eval(os.getenv("NODE03"))
-    NODE04 = ast.literal_eval(os.getenv("NODE04"))
-    NODE05 = ast.literal_eval(os.getenv("NODE05"))
-
-
 class InputFormats:
     parsed = "parsed_plans"
     baseline_parsed = 'baseline'
@@ -89,8 +78,8 @@ class ModelConfig:
     node_type_kwargs: dict = field(default=None)
     tree_layer_kwargs: dict = field(default=None)
     tree_layer_name: dict = field(default=None)
-    limit_queries: bool = None
-    limit_queries_affected_wl: bool = None
+    limit_queries: int = field(default=None)
+    limit_queries_affected_wl: int = field(default=0)
     input_format: InputFormats = field(default=None)
     hyperparameter: Path = None
     column_statistics: bool = False

@@ -8,12 +8,18 @@ import numpy as np
 import torch
 import torch.optim as opt
 import wandb
+from attrs import evolve
 from ldb_schema.load_schema import load_json
 from torch import nn
 from torch.optim.optimizer import Optimizer
 from torch.utils.data import DataLoader
 from wandb.apis.public import Run
 
+from classes.classes import ModelConfig, E2EModelConfig, ZeroShotModelConfig, MSCNModelConfig, DataLoaderOptions, \
+    TlstmModelConfig, ModelName, FlatModelConfig, ScaledPostgresModelConfig, TabularModelConfig, TPoolModelConfig, \
+    QPPNetModelConfig, DACEModelConfig, DACEModelNoCostsConfig, QPPModelNoCostsConfig, FlatModelActCardModelConfig, \
+    QPPModelActCardsConfig, ZeroShotModelActCardConfig, DACEModelActCardConfig, QueryFormerModelConfig
+from classes.workload_runs import WorkloadRuns
 from models.dace.dace_dataset import create_dace_dataloader
 from models.dace.dace_model import DACELora
 from models.qppnet.qppnet_dataloader import create_qppnet_dataloader
@@ -23,19 +29,13 @@ from models.tabular.train_tabular_baseline import train_tabular_model, predict_t
 from models.workload_driven.dataset.dataset_creation import create_baseline_dataloader
 from models.workload_driven.model.e2e_model import E2EModel
 from models.workload_driven.model.mscn_model import MSCNModel
-from classes.classes import ModelConfig, E2EModelConfig, ZeroShotModelConfig, MSCNModelConfig, DataLoaderOptions, \
-    TlstmModelConfig, ModelName, FlatModelConfig, ScaledPostgresModelConfig, TabularModelConfig, TPoolModelConfig, \
-    QPPNetModelConfig, DACEModelConfig, DACEModelNoCostsConfig, QPPModelNoCostsConfig, FlatModelActCardModelConfig, \
-    QPPModelActCardsConfig, ZeroShotModelActCardConfig, DACEModelActCardConfig, QueryFormerModelConfig
-from classes.workload_runs import WorkloadRuns
+from models.zeroshot.specific_models.postgres_zero_shot import PostgresZeroShotModel
+from predict import predict_model
+from train import train_model
 from training import featurizations
 from training.dataset.dataset_creation import create_zeroshot_dataloader
 from training.training.checkpoint import load_checkpoint
 from training.training.metrics import RMSE, MAPE, QError, Metric
-from models.zeroshot.specific_models.postgres_zero_shot import PostgresZeroShotModel
-from predict import predict_model
-from train import train_model
-from attrs import evolve
 
 
 def init_model(statistics_file: Path,
@@ -44,7 +44,6 @@ def init_model(statistics_file: Path,
                workload_runs: WorkloadRuns,
                word_embeddings: Path) \
         -> (Optional[nn.Module], DataLoader, DataLoader, List[DataLoader]):
-
     if isinstance(config, ZeroShotModelConfig):
         label_norm, feature_statistics, train_loader, val_loader, test_loaders = \
             create_zeroshot_dataloader(workload_runs=workload_runs,
@@ -189,8 +188,8 @@ def use_model(mode: str,
               model_dir: Path,
               target_dir: Path,
               config: ModelConfig,
-              wandb_project: str):
-
+              wandb_project: str,
+              pt_profiler: bool):
     # Seed for reproducibility
     print(f"Found model config {config}")
     torch.manual_seed(config.seed)
@@ -233,7 +232,6 @@ def use_model(mode: str,
                             metrics=metrics,
                             filetype='.pt')
 
-
     run: Optional[Run] = None
     if wandb_project:
         run = wandb.init(project=wandb_project,
@@ -261,7 +259,8 @@ def use_model(mode: str,
                         model=model,
                         optimizer=optimizer,
                         metrics=metrics,
-                        run=run)
+                        run=run,
+                        pt_profiler=pt_profiler)
 
         print(f'--Run {config.name.NAME} ended at {datetime.now().strftime("%d/%m/%Y %H:%M:%S")} --')
 
@@ -335,6 +334,8 @@ if __name__ == '__main__':
     parser.add_argument('--wandb_name', default=None)
     parser.add_argument('--seed', type=int, default=0)
     parser.add_argument('--num_workers', type=int, default=20)
+    parser.add_argument('--quick_run', action='store_true')
+    parser.add_argument('--pt_profiler', action='store_true')
     args = parser.parse_args()
 
     # Init model configuration by either reading out hyperparameters or using standard config
@@ -343,6 +344,9 @@ if __name__ == '__main__':
                       cap_training_samples=args.cap_training_samples,
                       seed=args.seed,
                       num_workers=args.num_workers)
+
+    if args.quick_run:
+        model_args.update(limit_queries=1000, epochs=3)
 
     # Create workload runs
     if args.mode in ["predict", "explain"]:
@@ -355,6 +359,10 @@ if __name__ == '__main__':
             test_runs = [Path(raw_path) for raw_path in args.test_workload_runs]
         else:
             test_runs = []
+
+        if args.quick_run:
+            train_runs = train_runs[:1]
+
         runs = WorkloadRuns(train_workload_runs=train_runs, test_workload_runs=test_runs)
 
     model_config = get_model_config(model_type=args.model_type, m_args=model_args)
@@ -380,6 +388,8 @@ if __name__ == '__main__':
         target_dir=Path(args.target_dir),
         config=model_config,
         word_embeddings=Path(args.word_embeddings) if args.word_embeddings else None,
-        column_statistics=Path(args.column_statistics) if args.column_statistics else None)
+        column_statistics=Path(args.column_statistics) if args.column_statistics else None,
+        pt_profiler=args.pt_profiler
+    )
 
     use_model(**args)
