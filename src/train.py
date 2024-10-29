@@ -3,18 +3,16 @@ from pathlib import Path
 from typing import List
 
 import torch
+import wandb
 from dgl.dataloading import DataLoader
 from torch import nn
 from torch.optim import Optimizer
 from wandb.apis.public import Run
 
-import wandb
 from classes.classes import ModelConfig
-
 from training.training.checkpoint import save_checkpoint
 from training.training.metrics import Metric
 from training.training.train import validate_model, train_epoch
-from ldb_schema.paths import LocalPaths
 
 
 def train_model(csv_stats: List,
@@ -29,17 +27,14 @@ def train_model(csv_stats: List,
                 metrics: List[Metric],
                 run: Run,
                 pt_profiler: bool = False):
-
     prof = None
     if pt_profiler:
-        log_path = f'{LocalPaths().Data}/profiling/{config.name.NAME}/profile_runs/'
-        print(f'Profile with pytorch profiler to logdir {log_path}')
         prof = torch.profiler.profile(
             schedule=torch.profiler.schedule(wait=1,
                                              warmup=1,
-                                             active=1,
+                                             active=3,
                                              repeat=1),
-            on_trace_ready=torch.profiler.tensorboard_trace_handler(log_path),
+            # on_trace_ready=torch.profiler.tensorboard_trace_handler(profile_output_dir),
             with_stack=True, record_shapes=True)
         prof.start()
 
@@ -106,6 +101,10 @@ def train_model(csv_stats: List,
         epoch += 1
         if stop_early:
             print(f"Early stopping kicked in due to no improvement in {config.early_stopping_patience} epochs")
-            if prof:
-                prof.stop()
             break
+
+    if prof:
+        prof.stop()
+        profile_output_dir = str(model_dir / f'{config.name.NAME}_{config.seed}')
+        print(f'Profile with pytorch profiler to logdir {profile_output_dir}')
+        prof.export_chrome_trace(profile_output_dir + '.prof')

@@ -1,3 +1,4 @@
+import ast
 from pathlib import Path
 
 import argparse
@@ -15,6 +16,20 @@ from octopus.node import Node
 from octopus.script_preparation import distribute_exp_scripts
 from octopus.step import CheckActiveScreens, CheckOutput, Step
 
+class TrainingServers:
+    load_dotenv()
+    NODE00 = ast.literal_eval(os.getenv("NODE00"))
+    NODE01 = ast.literal_eval(os.getenv("NODE01"))
+    NODE02 = ast.literal_eval(os.getenv("NODE02"))
+    NODE03 = ast.literal_eval(os.getenv("NODE03"))
+    NODE04 = ast.literal_eval(os.getenv("NODE04"))
+    NODE05 = ast.literal_eval(os.getenv("NODE05"))
+    NODE06 = ast.literal_eval(os.getenv("NODE06"))
+    NODE07 = ast.literal_eval(os.getenv("NODE07"))
+    NODE08 = ast.literal_eval(os.getenv("NODE08"))
+    NODE09 = ast.literal_eval(os.getenv("NODE09"))
+
+
 
 class ExpRunner:
     database_conn = f'user=postgres,password=bM2YGRAX*bG_QAilUid§2iD,host=localhost'
@@ -22,16 +37,13 @@ class ExpRunner:
     def __init__(self,
                  replicate: bool,
                  node_names: List[str],
-                 root_path: Path = CloudlabPaths().root,
                  python_version: str = "3.9"):
 
         # Read environments variable and arguments
         # Read credentials from environment variables
         load_dotenv()
-        self.osf_username = os.getenv('OSF_USERNAME')
-        self.osf_password = os.getenv('OSF_PASSWORD')
-        self.osf_project = os.getenv('OSF_PROJECT')
         self.wandb_project = os.getenv('WANDB_PROJECT')
+        self.wandb_entity = os.getenv('WANDB_ENTITY')
 
         if "cloudlab" in node_names[0]:
             self.ssh_username = os.getenv('CLOUDLAB_SSH_USERNAME')
@@ -45,9 +57,6 @@ class ExpRunner:
             self.root_path = ClusterPaths().Models.root
         self.python_version = python_version
 
-        assert self.osf_project is not None, "Please set environment variable OSF_PROJECT"
-        assert self.osf_password is not None, "Please set environment variable OSF_PASSWORD"
-        assert self.osf_username is not None, "Please set environment variable OSF_USERNAME"
         assert self.ssh_username is not None, "Please set environment variable SSH_USERNAME "
         assert self.ssh_passphrase is not None, "Please set environment variable SSH_PASSPHRASE"
         assert self.private_key_path is not None, "Please set environment variable PRIVATE_KEY_PATH"
@@ -98,7 +107,6 @@ class ExpRunner:
             run_exp_message="Cost Model Evaluation",
             run_exp_expected_runtime="05:00",
             use_run_exp_numa_socket="0",
-            python_version=self.python_version,
             screen_or_job_id_offset=offset)
 
         print(f'Execute Tasks: {self.tasks}')
@@ -117,6 +125,7 @@ class ExpRunner:
                        ssh_hostkeys=str(LocalPaths().known_hosts),
                        use_slurm="dgx" in ssh_hostname,
                        use_run_exp="dgx" not in ssh_hostname and "cloudlab" not in ssh_hostname,
+                       python_version=self.python_version,
                        test_connection=False) for ssh_hostname in names]
         return nodes
 

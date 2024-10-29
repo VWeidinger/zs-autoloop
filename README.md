@@ -28,3 +28,11 @@ python3 gather_feature_stats.py
 --target_folder ../data/statistics/ 
 --file_name feature_statistics
 ```
+
+## How to profiling
+
+Run the train command with the `--pt_profiler`. The profiling results will then be stored next to the model files (same filename, file ending: `.prof`)
+
+To view the profiling results, do the following:
+1. Download to your local machine (either manually or using the octopus scrip at `scripts/exp_runner/exp_pickup_profiler.py`)
+2. Open `chrome://tracing` in your Edge/Chrome browser and load the file

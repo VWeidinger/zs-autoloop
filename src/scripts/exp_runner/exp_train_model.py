@@ -2,18 +2,19 @@ from typing import List
 
 from ldb_schema.datasets import Dataset
 from ldb_schema.paths import ClusterPaths, LocalPaths
-from octopus.step import Rsync, KillAllScreens, SetupVenv
+from octopus.step import Rsync, KillAllScreens, SetupVenv, RsyncCurrentRepo
 
 from classes.classes import ModelConfig, ModelType, \
     DACEModelConfig, DACEModelNoCostsConfig, QPPModelNoCostsConfig, FlatModelActCardModelConfig, QPPModelActCardsConfig, \
-    DACEModelActCardConfig, QPPNetModelConfig, ZeroShotModelActCardConfig, QueryFormerModelConfig, TrainingServers, \
+    DACEModelActCardConfig, QPPNetModelConfig, ZeroShotModelActCardConfig, QueryFormerModelConfig,  \
     ScaledPostgresModelConfig, ZeroShotModelConfig, FlatModelConfig, E2EModelConfig, MSCNModelConfig
 
-from scripts.exp_runner.exp_runner import ExpRunner
+from scripts.exp_runner.exp_runner import ExpRunner, TrainingServers
 
 
 def generate_training_commands(datasets: List[Dataset], seeds: list[int], python_version: str, wandb_project: str,
-                               model_list: list[ModelConfig] = ModelConfig) -> List[str]:
+                               wandb_entity:str,
+                               model_list: list[ModelConfig] = ModelConfig, quick_run:bool=False, pt_profiler:bool=False, leave_one_out_style:bool=True) -> List[str]:
 
     commands = []
     for target_dataset in datasets:
@@ -28,6 +29,7 @@ def generate_training_commands(datasets: List[Dataset], seeds: list[int], python
                 command = (f"python{python_version} main.py "
                            f"--mode train "
                            f"--wandb_project {wandb_project} "
+                           f"--wandb_entity {wandb_entity} "
                            f"--model_type {target_model.name.NAME} "
                            f"--device {target_model.device} "
                            f"--model_dir {target_model.get_model_dir(ClusterPaths(), target_dataset)} "
@@ -49,21 +51,30 @@ def generate_training_commands(datasets: List[Dataset], seeds: list[int], python
                 if target_model.hyperparameter:
                     command += f" --hyperparameter_path {target_model.hyperparameter} "
 
+                if quick_run:
+                    command += " --quick_run"
+
+                if pt_profiler:
+                    command += " --pt_profiler"
+
                 commands.append(command)
+
+        if not leave_one_out_style:
+            break
+
     return commands
 
 
 if __name__ == '__main__':
     install_venv = False
 
-    setup_steps = [Rsync(src=[str(LocalPaths().Models.src)], dest=[ClusterPaths().Models.root], update=True, put=True)]
+    setup_steps = [RsyncCurrentRepo(gitignore_path='.gitignore')]
 
     if install_venv:
         setup_steps.append(SetupVenv(use_requirements_txt=True,
                                      requirements_txt_filename=f'{ClusterPaths().Models.src}/requirements.txt',
                                      force=False,
-                                     python_cmd=f'python3.9',
-                                     python_version='3.9'))
+                                     ))
 
     purge_steps = [KillAllScreens()]
     pickup_steps = [Rsync(src=[ClusterPaths().Data.runs], dest=[LocalPaths().data], put=False, update=True)]
@@ -91,8 +102,12 @@ if __name__ == '__main__':
         # Dataset('fhnk', scale=2)
     ]
 
-    seeds = [0, 1, 2]
-    node = TrainingServers.NODE05
+    seeds = [45]
+    node = TrainingServers.NODE03
+
+    quick_run = True
+    pt_profiler = True
+    leave_one_out_train_style = False
 
     # Standard Models
     # model_config = ScaledPostgresModelConfig()
@@ -101,8 +116,8 @@ if __name__ == '__main__':
     # model_config = QPPNetModelConfig()                # --> Node 00 OK
     # model_config = MSCNModelConfig()
     # model_config = DACEModelConfig()                  # --> Node 03 OK
-    model_config = QueryFormerModelConfig()           # --> Node
-    # model_config = ZeroShotModelConfig()              # --> Node 04
+    # model_config = QueryFormerModelConfig()           # --> Node
+    model_config = ZeroShotModelConfig()              # --> Node 04
 
     # Ablation Models (without postgres Estimates)
     # model_config = DACEModelNoCostsConfig()
@@ -116,7 +131,6 @@ if __name__ == '__main__':
 
     runner = ExpRunner(replicate=False,
                        node_names=[node["hostname"]],
-                       root_path=ClusterPaths().root,
                        python_version=node["python"])
 
     #for dataset in datasets:
@@ -124,7 +138,12 @@ if __name__ == '__main__':
                                                 model_list=[model_config],
                                                 python_version=node["python"],
                                                 seeds=seeds,
-                                                wandb_project=runner.wandb_project)
+                                                wandb_project=runner.wandb_project,
+                                               wandb_entity=runner.wandb_entity,
+                                               quick_run=quick_run,
+                                               pt_profiler=pt_profiler,
+                                               leave_one_out_style=leave_one_out_train_style
+                                               )
 
     runner.run_exp(node_names=[node["hostname"]],
                    commands=eval_commands,

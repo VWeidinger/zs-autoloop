@@ -16,8 +16,8 @@ from models.zeroshot.postgres_plan_batching import postgres_plan_collator
 
 
 def read_workload_runs(workload_run_paths: List[Path],
-                       limit_queries: bool = None,
-                       limit_queries_affected_wl: bool = None,
+                       limit_queries: int = None,
+                       limit_queries_affected_wl: int = None,
                        input_format: InputFormats = InputFormats.parsed):
     # reads several workload runs
     plans = []
