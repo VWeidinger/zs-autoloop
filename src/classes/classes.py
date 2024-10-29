@@ -213,7 +213,7 @@ class E2EModelConfig(ModelConfig):
     hidden_dim_pred: int = 256
     batch_to_func: Callable = plan_batch_to
     collator_func: Callable = baseline_plan_collator
-    input_format: str = InputFormats.baseline_parsed
+    input_format: str = InputFormats.parsed
     column_statistics: bool = True
     word_embeddings: bool = True
 
@@ -274,7 +274,7 @@ class ZeroShotModelConfig(ModelConfig):
     batch_to_func: Callable = batch_to
     collator_func: Callable = postgres_plan_collator
     device: str = "cuda:0"
-    input_format: str = InputFormats.parsed
+    input_format: InputFormats = InputFormats.parsed
     hyperparameter: Path = Path(f'conf/zeroshot_hyperparameters/tune_est_best_config.json')
 
 
@@ -294,7 +294,7 @@ class MSCNModelConfig(ModelConfig):
     mscn_est_layers: int = 1
     batch_to_func: Callable = batch_to
     collator_func: Callable = mscn_plan_collator
-    input_format: str = InputFormats.baseline_parsed
+    input_format: InputFormats = InputFormats.parsed
     column_statistics: bool = True
     word_embeddings: bool = True
 
@@ -303,7 +303,7 @@ class MSCNModelConfig(ModelConfig):
 class DACEModelConfig(ModelConfig):
     name: Name = ModelName.DACE
     type: ModelType = ModelType.WL_AGNOSTIC
-    node_length: int = 22  # This needs to be equals to the number of operator types plus the remaining node feats.
+    node_length: int = 10 + 3  # This needs to be equals to the number of operator types plus the remaining node feats.
     hidden_dim: int = 128
     output_dim: int = 1
     mlp_activation: str = "ReLU"
@@ -343,7 +343,7 @@ class QueryFormerModelConfig(ModelConfig):
     type: ModelType = ModelType.WL_DRIVEN
     device: str = "cuda:0"
     hidden_dim_plan: int = 256
-    input_format: str = InputFormats.baseline_parsed
+    input_format: InputFormats = InputFormats.parsed
     column_statistics: bool = True
     word_embeddings: bool = True
     embedding_size: int = 64
@@ -360,6 +360,7 @@ class QueryFormerModelConfig(ModelConfig):
     batch_to_func: Callable = query_former_batch_to
     loss_class_name: str = "QLoss"  # Originally MSELoss
     optimizer_class_name: str = "AdamW"  # Originally Adam
+
 
 
 @attrs.define(frozen=True, slots=False)
