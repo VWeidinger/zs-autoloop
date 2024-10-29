@@ -346,7 +346,7 @@ if __name__ == '__main__':
                       num_workers=args.num_workers)
 
     if args.quick_run:
-        model_args.update(limit_queries=1000, epochs=3)
+        model_args.update(limit_queries=2000, limit_queries_affected_wl=1, epochs=2)
 
     # Create workload runs
     if args.mode in ["predict", "explain"]:

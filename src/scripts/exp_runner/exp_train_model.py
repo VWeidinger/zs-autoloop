@@ -57,8 +57,8 @@ def generate_training_commands(datasets: List[Dataset], seeds: list[int], python
 
                 commands.append(command)
 
-            if not leave_one_out_style:
-                break
+        if not leave_one_out_style:
+            break
 
     return commands
 
@@ -100,7 +100,7 @@ if __name__ == '__main__':
         # Dataset('fhnk', scale=2)
     ]
 
-    seeds = [0, 1, 2]
+    seeds = [42]
     node = TrainingServers.NODE03
 
     quick_run = True
