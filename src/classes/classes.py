@@ -80,7 +80,7 @@ class ModelConfig:
     limit_queries: int = field(default=None)
     limit_queries_affected_wl: int = field(default=0)
     learn_from_timeout: bool = field(default=False)
-    timeout_threshold = field(default=30000)  # in ms
+    timeout_threshold = field(default=30)  # in ms
     input_format: InputFormats = field(default=None)
     hyperparameter: Path = None
     column_statistics: bool = False
