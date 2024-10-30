@@ -10,6 +10,7 @@ import torch.optim as opt
 import wandb
 from attrs import evolve
 from ldb_schema.load_schema import load_json
+from lightgbm import train
 from torch import nn
 from torch.optim.optimizer import Optimizer
 from torch.utils.data import DataLoader
@@ -106,6 +107,22 @@ def init_model(statistics_file: Path,
         feature_statistics = None
     else:
         raise NotImplementedError
+
+    def gather_dataloader_stats(dataloader, string:str):
+        # Count the number of entries in train_loader where timeout happened
+        overall_count = 0
+        timeout_count = 0
+        for label,plan in dataloader.dataset: # dataloader is batched
+            overall_count += 1
+            timeout_count += 1 if plan['timeout'] else 0
+
+        print(f"Timeout count: {timeout_count} of {overall_count} ({timeout_count / overall_count * 100:.2f}%) in {string}")
+
+    print('\n')
+    gather_dataloader_stats(train_loader, "train_loader")
+    for test_loader in test_loaders:
+        gather_dataloader_stats(test_loader, "test_loader")
+    print('\n')
 
     return model, train_loader, val_loader, test_loaders, feature_statistics
 

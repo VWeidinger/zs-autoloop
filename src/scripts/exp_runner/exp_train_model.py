@@ -5,7 +5,7 @@ from ldb_schema.paths import ClusterPaths, LocalPaths
 from octopus.step import Rsync, KillAllScreens, SetupVenv, RsyncCurrentRepo
 
 from classes.classes import ModelConfig, ModelType, \
-    ZSLearnFromTimeoutConfig
+    ZSLearnFromTimeoutConfig, ZeroShotModelConfig
 from scripts.exp_runner.exp_runner import ExpRunner, TrainingServers
 
 
@@ -100,10 +100,10 @@ if __name__ == '__main__':
         # Dataset('fhnk', scale=2)
     ]
 
-    seeds = [0]
+    seeds = [42]
     node = TrainingServers.NODE03
 
-    quick_run = False
+    quick_run = True
     pt_profiler = False
     leave_one_out_train_style = False
 

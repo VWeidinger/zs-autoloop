@@ -162,11 +162,9 @@ def validate_model(val_loader: DataLoader,
             save_csv(rows, target_csv_path=str(target_path) + "_test_pred.csv")
 
             if run:
-                wandb.log({f"{config.name.NAME}/{model_dir.stem}/{config.seed}/test_scores":
-                    wandb.Table(columns=["metric", "value"], data=list(epoch_stats.items()))})
-                wandb.log({f"{config.name.NAME}/{model_dir.stem}/{config.seed}/test_preds":
-                   wandb.Table(dataframe=pd.DataFrame(rows))})
-                #wandb.log(epoch_stats)
+                wandb.run.summary[f"{config.name.NAME}/{model_dir.stem}/{config.seed}/test_scores"]=epoch_stats
+                wandb.run.summary[f"{config.name.NAME}/{model_dir.stem}/{config.seed}/test_preds"]= rows
+
     return any_best_metric
 
 

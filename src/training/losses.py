@@ -161,5 +161,8 @@ class LearnFromTimeoutLossWrapper(nn.Module):
         # set target to threshold where target is None (timeout)
         target[(target.isnan() | target.isinf())] = self.timeout_threshold
 
-        # mask out elements where query timeouted and the prediction is beyond the timeout (i.e. we have no training information in this case)
-        return self.loss(input[~timeout_mask], target[~timeout_mask])
+        # set the target to the input where the query timeouted and the model predicts a value above the timeout threshold
+        target[timeout_mask] = input[timeout_mask]
+
+        # calculate loss on the adjusted targets
+        return self.loss(input, target)

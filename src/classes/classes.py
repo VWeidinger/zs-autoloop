@@ -282,7 +282,7 @@ class ZeroShotModelConfig(ModelConfig):
 class ZSLearnFromTimeoutConfig(ZeroShotModelConfig):
     name: Name = ModelName.ZS_FROM_TIMEOUT
     learn_from_timeout: bool = True
-    timeout_threshold = 30000  # in ms
+    timeout_threshold = 30  # in s
 
 
 @attrs.define(frozen=True, slots=False)
