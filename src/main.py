@@ -18,7 +18,8 @@ from wandb.apis.public import Run
 from classes.classes import ModelConfig, E2EModelConfig, ZeroShotModelConfig, MSCNModelConfig, DataLoaderOptions, \
     TlstmModelConfig, ModelName, FlatModelConfig, ScaledPostgresModelConfig, TabularModelConfig, TPoolModelConfig, \
     QPPNetModelConfig, DACEModelConfig, DACEModelNoCostsConfig, QPPModelNoCostsConfig, FlatModelActCardModelConfig, \
-    QPPModelActCardsConfig, ZeroShotModelActCardConfig, DACEModelActCardConfig, QueryFormerModelConfig
+    QPPModelActCardsConfig, ZeroShotModelActCardConfig, DACEModelActCardConfig, QueryFormerModelConfig, \
+    ZSLearnFromTimeoutConfig
 from classes.workload_runs import WorkloadRuns
 from models.dace.dace_dataset import create_dace_dataloader
 from models.dace.dace_model import DACELora
@@ -301,6 +302,9 @@ def get_model_config(model_type: str, m_args: dict) -> ModelConfig:
         ModelName.FLAT_ACT_CARDS.NAME: FlatModelActCardModelConfig,
         ModelName.QUERY_FORMER.NAME: QueryFormerModelConfig,
 
+        # learn from timeout
+        ModelName.ZS_FROM_TIMEOUT.NAME: ZSLearnFromTimeoutConfig,
+
         # Ablation models without PG costs
         ModelName.DACE_NO_COSTS.NAME: DACEModelNoCostsConfig,
         ModelName.QPP_NET_NO_COSTS.NAME: QPPModelNoCostsConfig,
@@ -312,7 +316,27 @@ def get_model_config(model_type: str, m_args: dict) -> ModelConfig:
     }
 
     if model_type in model_config_map:
-        return model_config_map[model_type](**m_args)
+        config = model_config_map[model_type](**m_args)
+        learn_from_timeout = config.learn_from_timeout
+
+        if learn_from_timeout:
+            # set the loss config
+            loss_class_kwargs = config.loss_class_kwargs
+            loss_class_kwargs['learn_from_timeout'] = learn_from_timeout
+            loss_class_kwargs.update(learn_from_timeout=True, timeout_threshold=config.timeout_threshold)
+
+            if hasattr(config, 'final_mlp_kwargs'):
+                # set the final mlp config
+                final_mlp_kwargs = config.final_mlp_kwargs
+                final_mlp_loss_kwargs = final_mlp_kwargs['loss_class_kwargs']
+                final_mlp_loss_kwargs.update(learn_from_timeout=True, timeout_threshold=config.timeout_threshold)
+                final_mlp_kwargs.update(loss_class_kwargs=final_mlp_loss_kwargs)
+                m_args.update(final_mlp_kwargs=final_mlp_kwargs)
+
+            m_args.update(loss_class_kwargs=loss_class_kwargs)
+            config = model_config_map[model_type](**m_args)
+
+        return config
 
     else:
         raise Exception(f"Model name {model_type} not supported")

@@ -36,6 +36,7 @@ class ModelName:
     E2E = Name("e2e", "E2E")
     ZEROSHOT = Name("zeroshot", "Zero-Shot")
     ZEROSHOT_ACT_CARD = Name("zeroshot_act_card", "Zero-Shot (act. card)")
+    ZS_FROM_TIMEOUT = Name('zeroshot_learn_from_timeout', 'Zero-Shot (learn from timeout)')
     QPP_NET = Name("qppnet", "QPP-Net")
     QPP_NET_NO_COSTS = Name("qppnet_no_costs", "QPP-Net\n(w/o PG costs)")
     QPP_NET_ACT_CARDS = Name("qppnet_act_cards", "QPP-Net (act. card.)")
@@ -61,16 +62,16 @@ class ModelConfig:
     optimizer_class_name: str = "AdamW"
     optimizer_kwargs: dict = dict(lr=1e-3)
     batch_size: int = 64
-    seed: int = 0
+    seed: int = field(default=0)
     epochs: int = field(default=200)
     early_stopping_patience: int = 20
-    num_workers: int = 20
+    num_workers: int = field(default=20)
     max_epoch_tuples: int = field(default=None)
-    cap_training_samples: int = None
+    cap_training_samples: int = field(default=None)
     hidden_dim_plan: int = 256
     hidden_dim_pred: int = field(default=None)
     loss_class_name: str = "QLoss"
-    loss_class_kwargs: dict = dict()
+    loss_class_kwargs: dict = field(default=dict())
     fc_out_kwargs: dict = field(default=None)
     final_mlp_kwargs: dict = field(default=None)
     node_type_kwargs: dict = field(default=None)
@@ -78,6 +79,8 @@ class ModelConfig:
     tree_layer_name: dict = field(default=None)
     limit_queries: int = field(default=None)
     limit_queries_affected_wl: int = field(default=0)
+    learn_from_timeout: bool = field(default=False)
+    timeout_threshold = field(default=30000)  # in ms
     input_format: InputFormats = field(default=None)
     hyperparameter: Path = None
     column_statistics: bool = False
@@ -274,6 +277,12 @@ class ZeroShotModelConfig(ModelConfig):
     device: str = "cuda:0"
     input_format: InputFormats = InputFormats.parsed
     hyperparameter: Path = Path(f'conf/zeroshot_hyperparameters/tune_est_best_config.json')
+
+@attrs.define(frozen=True, slots=False)
+class ZSLearnFromTimeoutConfig(ZeroShotModelConfig):
+    name: Name = ModelName.ZS_FROM_TIMEOUT
+    learn_from_timeout: bool = True
+    timeout_threshold = 30000  # in ms
 
 
 @attrs.define(frozen=True, slots=False)

@@ -43,13 +43,17 @@ def create_qppnet_dataloader(workload_runs: WorkloadRuns,
         label_norm, train_dataset, val_dataset, database_statistics \
             = create_datasets(workload_run_paths=workload_runs.train_workload_runs,
                               model_config=model_config,
-                              val_ratio=data_loader_options.val_ratio)
+                              val_ratio=data_loader_options.val_ratio,
+                              )
 
         test_dataset, val_dataset = val_dataset.split(0.5)
         print(f"Created datasets of size: "
               f"train {len(train_dataset)}, "
               f"validation: {len(val_dataset)}, "
               f"test: {len(test_dataset)}")
+
+        # remove timeout entries from test_dataset
+        test_dataset = test_dataset.remove_timeouts()
 
         train_collate_fn = functools.partial(plan_collator,
                                                  db_statistics=database_statistics,
@@ -69,7 +73,8 @@ def create_qppnet_dataloader(workload_runs: WorkloadRuns,
             _, _, test_dataset, database_statistics = \
                 create_datasets(workload_run_paths=[test_workload],
                                 model_config=model_config,
-                                val_ratio=1.0)
+                                val_ratio=1.0,
+                                is_test_dataset=True)
 
             train_collate_fn = functools.partial(plan_collator,
                                                  db_statistics=database_statistics,
@@ -86,12 +91,13 @@ def create_qppnet_dataloader(workload_runs: WorkloadRuns,
 def create_datasets(workload_run_paths,
                     model_config: ModelConfig,
                     val_ratio=0.15,
-                    shuffle_before_split=True) -> (Pipeline, PlanDataset, PlanDataset, PlanDataset, dict):
+                    shuffle_before_split=True, is_test_dataset:bool=False) -> (Pipeline, PlanDataset, PlanDataset, PlanDataset, dict):
 
     plans, database_statistics = read_workload_runs(workload_run_paths=workload_run_paths,
                                                     limit_queries=model_config.limit_queries,
                                                     limit_queries_affected_wl=model_config.limit_queries_affected_wl,
-                                                    input_format=model_config.input_format)
+                                                    input_format=model_config.input_format,
+                                                    include_timeout_queries=model_config.include_timeout_queries and not is_test_dataset,)
 
     no_plans = len(plans)
     plan_indexes = list(range(no_plans))

@@ -5,21 +5,19 @@ from ldb_schema.paths import ClusterPaths, LocalPaths
 from octopus.step import Rsync, KillAllScreens, SetupVenv, RsyncCurrentRepo
 
 from classes.classes import ModelConfig, ModelType, \
-    DACEModelConfig, DACEModelNoCostsConfig, QPPModelNoCostsConfig, FlatModelActCardModelConfig, QPPModelActCardsConfig, \
-    DACEModelActCardConfig, QPPNetModelConfig, ZeroShotModelActCardConfig, QueryFormerModelConfig,  \
-    ScaledPostgresModelConfig, ZeroShotModelConfig, FlatModelConfig, E2EModelConfig, MSCNModelConfig
-
+    ZSLearnFromTimeoutConfig
 from scripts.exp_runner.exp_runner import ExpRunner, TrainingServers
 
 
 def generate_training_commands(datasets: List[Dataset], seeds: list[int], python_version: str, wandb_project: str,
-                               wandb_entity:str,
-                               model_list: list[ModelConfig] = ModelConfig, quick_run:bool=False, pt_profiler:bool=False, leave_one_out_style:bool=True) -> List[str]:
-
+                               wandb_entity: str,
+                               model_list: list[ModelConfig] = ModelConfig, quick_run: bool = False,
+                               pt_profiler: bool = False, leave_one_out_style: bool = True) -> List[str]:
     commands = []
     for target_dataset in datasets:
         for target_model in model_list:
-            training_runs = " ".join(target_model.get_training_workloads(training_datasets=datasets, target_dataset=target_dataset))
+            training_runs = " ".join(
+                target_model.get_training_workloads(training_datasets=datasets, target_dataset=target_dataset))
             test_runs = target_model.get_test_workloads(target_dataset)
             statistics_path = target_model.get_statistics(source_path=ClusterPaths(),
                                                           dataset=target_dataset,
@@ -102,10 +100,10 @@ if __name__ == '__main__':
         # Dataset('fhnk', scale=2)
     ]
 
-    seeds = [51]
+    seeds = [0]
     node = TrainingServers.NODE03
 
-    quick_run = True
+    quick_run = False
     pt_profiler = False
     leave_one_out_train_style = False
 
@@ -117,7 +115,8 @@ if __name__ == '__main__':
     # model_config = MSCNModelConfig()
     # model_config = DACEModelConfig()                  # --> Node 03 OK
     # model_config = QueryFormerModelConfig()           # --> Node
-    model_config = ZeroShotModelConfig()              # --> Node 04
+    # model_config = ZeroShotModelConfig()              # --> Node 04
+    model_config = ZSLearnFromTimeoutConfig()
 
     # Ablation Models (without postgres Estimates)
     # model_config = DACEModelNoCostsConfig()
@@ -133,12 +132,12 @@ if __name__ == '__main__':
                        node_names=[node["hostname"]],
                        python_version=node["python"])
 
-    #for dataset in datasets:
+    # for dataset in datasets:
     eval_commands = generate_training_commands(datasets=datasets,
-                                                model_list=[model_config],
-                                                python_version=node["python"],
-                                                seeds=seeds,
-                                                wandb_project=runner.wandb_project,
+                                               model_list=[model_config],
+                                               python_version=node["python"],
+                                               seeds=seeds,
+                                               wandb_project=runner.wandb_project,
                                                wandb_entity=runner.wandb_entity,
                                                quick_run=quick_run,
                                                pt_profiler=pt_profiler,

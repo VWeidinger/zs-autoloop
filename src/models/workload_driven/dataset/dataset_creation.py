@@ -199,6 +199,9 @@ def create_baseline_dataloader(workload_runs: WorkloadRuns,
                             val_ratio=data_loader_options.val_ratio)
 
         test_dataset, val_dataset = val_dataset.split(0.5)
+
+        test_dataset = test_dataset.remove_timeouts()
+
         print(
             f"Created datasets of size: train {len(train_dataset)}, validation: {len(val_dataset)}, test: {len(test_dataset)}")
         assert_db_stats_consistence(database_statistics, database_statistics, train_dataset)
@@ -227,7 +230,7 @@ def create_baseline_dataloader(workload_runs: WorkloadRuns,
             _, _, test_dataset, database_statistics = \
                 create_datasets(workload_run_paths=[test_workload],
                                 model_config=model_config,
-                                val_ratio=1.0)
+                                val_ratio=1.0, is_test_dataset=True)
 
             assert_db_stats_consistence(database_statistics, database_statistics, test_dataset)
 

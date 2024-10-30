@@ -54,7 +54,7 @@ def create_dace_dataloader(statistics_file: Path,
             test_dataset, _ = create_dace_datasets([test_path],
                                                     model_config=model_config,
                                                     shuffle_before_split=False,
-                                                    val_ratio=0.0)
+                                                    val_ratio=0.0, is_test_dataset=True)
             test_loader = DataLoader(test_dataset, **dataloader_args)
             test_loaders.append(test_loader)
 
@@ -64,10 +64,11 @@ def create_dace_dataloader(statistics_file: Path,
 def create_dace_datasets(workload_run_paths,
                          model_config: DACEModelConfig,
                          val_ratio=0.15,
-                         shuffle_before_split=True) -> (PlanDataset, PlanDataset):
+                         shuffle_before_split=True,
+                         is_test_dataset:bool=False) -> (PlanDataset, PlanDataset):
 
     plans, statistics = read_workload_runs(workload_run_paths=workload_run_paths,
-                               input_format=model_config.input_format)
+                               input_format=model_config.input_format, include_timeout_queries=model_config.learn_from_timeout and not is_test_dataset,)
 
     no_plans = len(plans)
     plan_indexes = list(range(no_plans))

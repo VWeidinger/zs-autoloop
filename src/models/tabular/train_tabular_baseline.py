@@ -147,7 +147,8 @@ def predict_tabular_model(config: ModelConfig,
                                                 cap_training_samples=cap_training_samples,
                                                 featurization=config.featurization,
                                                 val_ratio=0,
-                                                shuffle=False)
+                                                shuffle=False,
+                                                include_timeout_queries=False)
         test_datasets.append((x_test, y_test))
 
     metrics = [RMSE(),
@@ -191,8 +192,8 @@ def predict_tabular_model(config: ModelConfig,
     return
 
 
-def gen_optimizer_cost_dataset(workload_runs, statistics_file, cap_training_samples, featurization, shuffle, val_ratio=0.15):
-    plans, database_statistics = read_workload_runs(workload_runs)
+def gen_optimizer_cost_dataset(workload_runs, statistics_file, cap_training_samples, featurization, shuffle, val_ratio=0.15, include_timeout_queries: bool = False):
+    plans, database_statistics = read_workload_runs(workload_runs, include_timeout_queries=include_timeout_queries)
     feature_vecs = []
     labels = []
     for plan in plans:
@@ -205,11 +206,11 @@ def gen_optimizer_cost_dataset(workload_runs, statistics_file, cap_training_samp
     return X_train, X_val, Y_train, Y_val
 
 
-def gen_flattened_dataset(workload_runs, statistics_file, cap_training_samples, featurization, val_ratio=0.15, shuffle=True, ):
+def gen_flattened_dataset(workload_runs, statistics_file, cap_training_samples, featurization, val_ratio=0.15, shuffle=True,include_timeout_queries: bool = False):
     feature_statistics = load_json(str(statistics_file), namespace=False)
     op_idx_dict = feature_statistics['op_name']['value_dict']
     no_ops = len(op_idx_dict)
-    plans, database_statistics = read_workload_runs(workload_runs)
+    plans, database_statistics = read_workload_runs(workload_runs, include_timeout_queries=include_timeout_queries)
     feature_vecs = []
     labels = []
     for plan in plans:
@@ -267,11 +268,11 @@ def extract_card(p, act_card):
 
 
 def gen_analytical_flattened_dataset(workload_runs, statistics_file, cap_training_samples, val_ratio=0.15,
-                                     act_card=False):
+                                     act_card=False, include_timeout_queries: bool = False):
     feature_statistics = load_json(str(statistics_file), namespace=False)
     op_idx_dict = feature_statistics['op_name']['value_dict']
     no_ops = len(op_idx_dict)
-    plans, database_statistics = read_workload_runs(workload_runs)
+    plans, database_statistics = read_workload_runs(workload_runs, include_timeout_queries=include_timeout_queries)
     feature_vecs = []
     labels = []
     for plan in plans:

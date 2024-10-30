@@ -17,10 +17,11 @@ def create_loss(loss_name: str, loss_kwargs: Dict):
     else:
         raise ValueError(f"Loss {loss_name} not supported")
 
-    timeout_masking = loss_kwargs.pop('timeout_masking', False)  # learn from timeout
+    print(f'Using loss {loss_name} with kwargs {loss_kwargs}')
+    learn_from_timeout = loss_kwargs.pop('learn_from_timeout', False)  # learn from timeout
     timeout_threshold = loss_kwargs.pop('timeout_threshold', None)
 
-    if timeout_masking:
+    if learn_from_timeout:
         print(f'Using timeout masking with threshold {timeout_threshold}')
         loss = LearnFromTimeoutLossWrapper(timeout_threshold, loss)
 
@@ -157,4 +158,8 @@ class LearnFromTimeoutLossWrapper(nn.Module):
         # mask out elements where target is None (timeout) and input is larger than timeout_threshold
         timeout_mask = (target.isnan() | target.isinf()) & (input > self.timeout_threshold)
 
+        # set target to threshold where target is None (timeout)
+        target[(target.isnan() | target.isinf())] = self.timeout_threshold
+
+        # mask out elements where query timeouted and the prediction is beyond the timeout (i.e. we have no training information in this case)
         return self.loss(input[~timeout_mask], target[~timeout_mask])

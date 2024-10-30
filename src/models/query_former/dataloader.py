@@ -8,6 +8,7 @@ from torch import Tensor
 
 from models.query_former.utils import TreeNode, pad_attn_bias_unsqueeze, floyd_warshall_transform, pad_1d_unsqueeze, \
     pad_rel_pos_unsqueeze, pad_2d_unsqueeze
+from training.dataset.operator import LogicalOperator
 from training.training.utils import recursive_to
 
 

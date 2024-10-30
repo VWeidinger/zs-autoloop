@@ -18,7 +18,8 @@ from models.zeroshot.postgres_plan_batching import postgres_plan_collator
 def read_workload_runs(workload_run_paths: List[Path],
                        limit_queries: int = None,
                        limit_queries_affected_wl: int = None,
-                       input_format: InputFormats = InputFormats.parsed):
+                       input_format: InputFormats = InputFormats.parsed,
+                       include_timeout_queries:bool=False):
     # reads several workload runs
     plans = []
     database_statistics = dict()
@@ -38,6 +39,11 @@ def read_workload_runs(workload_run_paths: List[Path],
 
         if input_format == InputFormats.parsed:
             for p_id, plan in enumerate(run["parsed_plans"]):
+
+                if not include_timeout_queries and plan["timeout"]:
+                    # Skip timeout queries
+                    continue
+
                 plan["database_id"] = path_index
                 plans.append(plan)
                 if limit_per_ds is not None and p_id > limit_per_ds:
@@ -47,7 +53,12 @@ def read_workload_runs(workload_run_paths: List[Path],
             for plan in run["query_list"]:
                 # Only learn from valid plans
                 plan["database_id"] = path_index
-                if plan["zero_card"] != True and plan["timeout"] == False and plan["invalid_hint"] != True:
+
+                if not include_timeout_queries and plan["timeout"]:
+                    # Skip timeout queries
+                    continue
+
+                if plan["zero_card"] != True and plan["invalid_hint"] != True:
                     assert "Execution Time" in plan["analyze_plans"][0].keys(), f"Execution Time not in plan {plan}"
                     plans.append(plan)
         else:
@@ -62,12 +73,13 @@ def _inv_log1p(x):
 def create_datasets(workload_run_paths,
                     model_config: ModelConfig,
                     val_ratio=0.15,
-                    shuffle_before_split=True) -> (Pipeline, PlanDataset, PlanDataset, PlanDataset, dict):
+                    shuffle_before_split=True, is_test_dataset:bool=False) -> (Pipeline, PlanDataset, PlanDataset, PlanDataset, dict):
 
     plans, database_statistics = read_workload_runs(workload_run_paths=workload_run_paths,
                                                     limit_queries=model_config.limit_queries,
                                                     limit_queries_affected_wl=model_config.limit_queries_affected_wl,
-                                                    input_format=model_config.input_format)
+                                                    input_format=model_config.input_format,
+                                                    include_timeout_queries=model_config.learn_from_timeout and not is_test_dataset)
 
     no_plans = len(plans)
     plan_indexes = list(range(no_plans))
@@ -93,7 +105,7 @@ def create_datasets(workload_run_paths,
         val_dataset = PlanDataset([plans[i] for i in val_indexes], val_indexes)
 
     # derive label normalization
-    runtimes = np.array([p["plan_runtime_ms"] / 1000 for p in plans])
+    runtimes = np.array([p["plan_runtime_ms"] / 1000 for p in plans if not p['timeout']])
     label_norm = derive_label_normalizer(model_config.loss_class_name, runtimes)
 
     return label_norm, train_dataset, val_dataset, database_statistics
@@ -161,7 +173,8 @@ def create_zeroshot_dataloader(workload_runs: WorkloadRuns,
             _, test_dataset, _, test_database_statistics = create_datasets([test_path],
                                                                            model_config=model_config,
                                                                            shuffle_before_split=False,
-                                                                           val_ratio=0.0)
+                                                                           val_ratio=0.0,
+                                                                           is_test_dataset=True)
             # test dataset
             test_collate_fn = functools.partial(plan_collator,
                                                 db_statistics=test_database_statistics,

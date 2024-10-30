@@ -18,3 +18,8 @@ class PlanDataset(Dataset):
     def split(self, ratio: float) -> Tuple:
         split_idx = int(len(self) * ratio)
         return PlanDataset(self.plans[:split_idx], self.idxs[:split_idx]), PlanDataset(self.plans[split_idx:], self.idxs[split_idx:])
+
+    def remove_timeouts(self):
+        self.plans = [plan for plan in self.plans if not plan['timeout']]
+        self.idxs = [idx for idx, plan in zip(self.idxs, self.plans) if not plan['timeout']]
+        return self

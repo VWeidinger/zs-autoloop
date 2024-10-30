@@ -13,6 +13,5 @@
   "plan_featurization_name": "PostgresEstSystemCardDetail",
   "residual": false,
   "tree_layer_name": "MscnConv",
-  "tree_layer_width_factor": 0.6,
-  "loss_class_kwargs": {"timeout_masking":true, "timeout_threshold":30}
+  "tree_layer_width_factor": 0.6
 }
