@@ -1,5 +1,8 @@
 import collections
 import json
+
+import orjson
+import multiprocessing
 import os
 from enum import Enum
 
@@ -8,13 +11,31 @@ from sklearn.preprocessing import RobustScaler
 from tqdm import tqdm
 
 
+def assemble_join_str(join_dict):
+    if 'children' in join_dict:
+        children_str = [f'({assemble_join_str(child)})' for child in join_dict['children']]
+
+        join_str = f' {join_dict["operator"]} '.join(children_str)
+        return join_str
+    else:
+        # sort by alphabet
+        table_str = [f'{join_dict["table_name1"]}.{join_dict["column_name1"]}', f'{join_dict["table_name2"]}.{join_dict["column_name2"]}']
+        return f" {join_dict['comparison_operator']} ".join(sorted(table_str))
+
+
 def gather_values_recursively(json_dict, value_dict=None):
     if value_dict is None:
         value_dict = collections.defaultdict(list)
 
     if isinstance(json_dict, dict):
         for k, v in json_dict.items():
-            if not (isinstance(v, list) or isinstance(v, tuple) or isinstance(v, dict)):
+            if k == 'join':
+                # manually construct join key
+                value_dict['join'].append(assemble_join_str(v))
+            elif k in ['hint_notices', 'sql', 'Index Cond', 'Filter','sql_string','Output','literal']:
+                # skip these values
+                pass
+            elif not (isinstance(v, list) or isinstance(v, tuple) or isinstance(v, dict)):
                 value_dict[k].append(v)
             elif (isinstance(v, list) or isinstance(v, tuple)) and len(v) > 0 and \
                     (isinstance(v[0], int) or isinstance(v[0], float) or isinstance(v[0], str)):
@@ -36,6 +57,13 @@ class FeatureType(Enum):
     def __str__(self):
         return self.value
 
+def gather_values_fn(run_path):
+    with open(run_path) as json_file:
+        runs =orjson.loads(json_file.read())
+
+    value_dict = gather_values_recursively(runs)
+    return value_dict
+
 
 def gather_feature_statistics(workload_run_paths, target):
     """
@@ -44,21 +72,14 @@ def gather_feature_statistics(workload_run_paths, target):
     extraction during the training (e.g., how to consistently map a categorical value to an index).
     """
 
-    run_stats = []
-    for source in tqdm(workload_run_paths):
-        assert os.path.exists(source), f"{source} does not exist"
-        try:
-            with open(source) as json_file:
-                run_stats.append(json.load(json_file))
-        except:
-            raise ValueError(f"Could not read {source}")
-    value_dict = gather_values_recursively(run_stats)
+    with multiprocessing.Pool() as pool:
+        value_dicts = list(tqdm(pool.imap(gather_values_fn, workload_run_paths), desc="Reading Runs", total=len(workload_run_paths)))
 
-    # Remove sql from value_dict
-    if 'sql' in value_dict:
-        del value_dict['sql']
-    if 'sql_string' in value_dict:
-        del value_dict['sql_string']
+    # combine value dicts
+    value_dict = collections.defaultdict(list)
+    for vd in value_dicts:
+        for k, v in vd.items():
+            value_dict[k].extend(v)
 
     print("Saving")
     # save unique values for categorical features and scale and center of RobustScaler for numerical ones
