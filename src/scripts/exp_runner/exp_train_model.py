@@ -25,6 +25,11 @@ def generate_training_commands(datasets: List[Dataset], seeds: list[int], python
                                                           format=target_model.input_format)
 
             for seed in seeds:
+                if ft_with_ranking:
+                    wandb_name = f"{target_model.name.NAME}_rank/{target_dataset.db_name}/{seed}"
+                else:
+                    wandb_name = f"{target_model.name.NAME}/{target_dataset.db_name}/{seed}"
+
                 command = (f"python{python_version} main.py "
                            f"--mode train "
                            f"--wandb_project {wandb_project} "
@@ -36,7 +41,7 @@ def generate_training_commands(datasets: List[Dataset], seeds: list[int], python
                            f"--workload_runs {training_runs} "
                            f"--statistics_file {statistics_path} "
                            f"--seed {seed} "
-                           f"--wandb_name {target_model.name.NAME}/{target_dataset.db_name}/{seed}")
+                           f"--wandb_name {wandb_name}")
 
                 if target_model.type == ModelType.WL_AGNOSTIC:
                     command += f" --test_workload_runs {test_runs} "
