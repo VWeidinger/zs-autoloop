@@ -21,7 +21,8 @@ def predict_model(mode: str,
                   metrics: List[Metric],
                   model: nn.Module,
                   epoch: int,
-                  run: Run):
+                  run: Run,
+                  file_suffix:str):
 
     if test_loaders is not None:
         if not (model_dir is None or config.name.NAME is None):
@@ -46,6 +47,6 @@ def predict_model(mode: str,
                                model_dir=model_dir,
                                target_path=test_path)
 
-                save_csv([test_stats], str(test_path) + "_test_stats.csv")
+                save_csv([test_stats], str(test_path) + f"_test_stats{file_suffix}.csv")
         else:
             print("Skipping saving the test stats")

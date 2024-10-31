@@ -3,7 +3,6 @@ from pathlib import Path
 from typing import Callable, List, Optional
 
 import numpy as np
-import pandas as pd
 import torch
 import wandb
 from torch import nn
@@ -12,17 +11,15 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 from wandb.apis.public import Run
 
+from classes.classes import ModelConfig
 from models.qppnet.qppnet_model import QPPNet
 from models.query_former.model import QueryFormer
 from models.workload_driven.model.e2e_model import E2EModel
 from models.workload_driven.model.mscn_model import MSCNModel
-from classes.classes import ModelConfig
-from training.dataset.dataset_creation import create_zeroshot_dataloader
-from training.training.checkpoint import save_checkpoint, load_checkpoint, save_csv
-from training.training.metrics import MAPE, RMSE, QError, Metric
-from training.training.utils import flatten_dict, find_early_stopping_metric
-from training.batch_to_funcs import batch_to
 from models.zeroshot.specific_models.postgres_zero_shot import PostgresZeroShotModel
+from training.batch_to_funcs import batch_to
+from training.training.checkpoint import save_csv
+from training.training.metrics import QError, Metric, RankAccuracy
 
 
 def train_epoch(epoch_stats: dict, train_loader: DataLoader, model: nn.Module,
@@ -93,7 +90,7 @@ def validate_model(val_loader: DataLoader,
                    max_epoch_tuples: int = None,
                    custom_batch_to: Callable = batch_to,
                    log_all_queries: bool = False,
-                   run: Optional[Run] = None):
+                   run: Optional[Run] = None,):
     model.eval()
 
     with torch.autograd.no_grad():
@@ -145,6 +142,10 @@ def validate_model(val_loader: DataLoader,
         any_best_metric = False
         if metrics is not None:
             for metric in metrics:
+                if isinstance(metric, RankAccuracy):
+                    # skip - has to be handled separately
+                    continue
+
                 best_seen = metric.evaluate(metrics_dict=epoch_stats,
                                             model=model,
                                             labels=labels,
@@ -162,8 +163,10 @@ def validate_model(val_loader: DataLoader,
             save_csv(rows, target_csv_path=str(target_path) + "_test_pred.csv")
 
             if run:
-                wandb.run.summary[f"{config.name.NAME}/{model_dir.stem}/{config.seed}/test_scores"]=epoch_stats
-                wandb.run.summary[f"{config.name.NAME}/{model_dir.stem}/{config.seed}/test_preds"]= rows
+                for key, value in epoch_stats.items():
+                    wandb.run.summary[f'test_{key}'] = value
+
+                wandb.run.summary[f"test_preds"] = rows
 
     return any_best_metric
 

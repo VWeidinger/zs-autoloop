@@ -12,7 +12,8 @@ from scripts.exp_runner.exp_runner import ExpRunner, TrainingServers
 def generate_training_commands(datasets: List[Dataset], seeds: list[int], python_version: str, wandb_project: str,
                                wandb_entity: str,
                                model_list: list[ModelConfig] = ModelConfig, quick_run: bool = False,
-                               pt_profiler: bool = False, leave_one_out_style: bool = True) -> List[str]:
+                               pt_profiler: bool = False, leave_one_out_style: bool = True,
+                               ft_with_ranking:bool=False) -> List[str]:
     commands = []
     for target_dataset in datasets:
         for target_model in model_list:
@@ -54,6 +55,9 @@ def generate_training_commands(datasets: List[Dataset], seeds: list[int], python
 
                 if pt_profiler:
                     command += " --pt_profiler"
+
+                if ft_with_ranking:
+                    command += " --ft_with_ranking"
 
                 commands.append(command)
 
@@ -100,12 +104,17 @@ if __name__ == '__main__':
         # Dataset('fhnk', scale=2)
     ]
 
-    seeds = [42]
+    seeds = [3]
     node = TrainingServers.NODE03
 
-    quick_run = True
-    pt_profiler = False
-    leave_one_out_train_style = False
+    # ===================
+    # CONFIGS
+    # ===================
+    quick_run = False # if True, it will run only a few epochs on a few workloads
+    pt_profiler = False # Profiler for PyTorch
+    leave_one_out_train_style = False # if True, it will train all models for all datasets
+    ft_with_ranking = True # fine-tune with ranking (pretrains a model and then fine-tunes it with ranking)
+    # ===================
 
     # Standard Models
     # model_config = ScaledPostgresModelConfig()
@@ -115,8 +124,8 @@ if __name__ == '__main__':
     # model_config = MSCNModelConfig()
     # model_config = DACEModelConfig()                  # --> Node 03 OK
     # model_config = QueryFormerModelConfig()           # --> Node
-    # model_config = ZeroShotModelConfig()              # --> Node 04
-    model_config = ZSLearnFromTimeoutConfig()
+    model_config = ZeroShotModelConfig()              # --> Node 04
+    # model_config = ZSLearnFromTimeoutConfig()
 
     # Ablation Models (without postgres Estimates)
     # model_config = DACEModelNoCostsConfig()
@@ -141,7 +150,8 @@ if __name__ == '__main__':
                                                wandb_entity=runner.wandb_entity,
                                                quick_run=quick_run,
                                                pt_profiler=pt_profiler,
-                                               leave_one_out_style=leave_one_out_train_style
+                                               leave_one_out_style=leave_one_out_train_style,
+                                               ft_with_ranking=ft_with_ranking
                                                )
 
     runner.run_exp(node_names=[node["hostname"]],

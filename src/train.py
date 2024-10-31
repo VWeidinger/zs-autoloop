@@ -11,8 +11,9 @@ from wandb.apis.public import Run
 
 from classes.classes import ModelConfig
 from training.training.checkpoint import save_checkpoint
-from training.training.metrics import Metric
+from training.training.metrics import Metric, RankAccuracy
 from training.training.train import validate_model, train_epoch
+from training.training.train_w_rank import RankModel, train_epoch_rank, validate_rank
 
 
 def train_model(csv_stats: List,
@@ -20,13 +21,22 @@ def train_model(csv_stats: List,
                 config: ModelConfig,
                 train_loader: DataLoader,
                 epochs_wo_improvement: int,
+                epoch_offset: int,  # this is only for reporting purposes
                 epoch: int,
                 val_loader: DataLoader,
                 model: nn.Module,
                 optimizer: Optimizer,
                 metrics: List[Metric],
+                rank_metric: Metric,
                 run: Run,
-                pt_profiler: bool = False):
+                pt_profiler: bool = False,
+                train_w_rank: bool = False):
+    if train_w_rank:
+        # wrap the model with the rank model
+        ranking_wrapper = RankModel(model)
+    else:
+        ranking_wrapper = None
+
     prof = None
     if pt_profiler:
         prof = torch.profiler.profile(
@@ -38,33 +48,56 @@ def train_model(csv_stats: List,
             with_stack=True, record_shapes=True)
         prof.start()
 
-    while epoch < config.epochs:
-        print(f"Epoch {epoch}")
+    target_epochs = config.epochs if not train_w_rank else 20
+
+    while epoch < target_epochs:
         epoch_stats = dict()
-        epoch_stats.update(epoch=epoch)
+        epoch_stats.update(epoch=epoch + epoch_offset, train_w_rank=train_w_rank)
         epoch_start_time: float = time.perf_counter()
 
-        train_epoch(epoch_stats=epoch_stats,
-                    train_loader=train_loader,
-                    model=model,
-                    optimizer=optimizer,
-                    max_epoch_tuples=config.max_epoch_tuples,
-                    custom_batch_to=config.batch_to_func,
-                    profiler=prof)
+        any_best_metric = False
+        if train_w_rank:
+            train_epoch_rank(
+                epoch_stats=epoch_stats,
+                train_loader=train_loader,
+                model=ranking_wrapper,
+                optimizer=optimizer,
+                max_epoch_tuples=config.max_epoch_tuples,
+                custom_batch_to=config.batch_to_func,
+                profiler=prof
+            )
 
-        any_best_metric = validate_model(config=config,
-                                         val_loader=val_loader,
-                                         model=model,
-                                         epoch=epoch,
-                                         epoch_stats=epoch_stats,
-                                         metrics=metrics,
-                                         max_epoch_tuples=config.max_epoch_tuples,
-                                         custom_batch_to=config.batch_to_func,
-                                         log_all_queries=False,
-                                         target_path=None,
-                                         run=None)
+            # perform rank validation
+            any_best_metric = validate_rank(
+                val_loader=val_loader,
+                model=ranking_wrapper,
+                epoch_stats=epoch_stats,
+                rank_metric=rank_metric,
+                custom_batch_to=config.batch_to_func
+            )
+        else:
+            train_epoch(epoch_stats=epoch_stats,
+                        train_loader=train_loader,
+                        model=model,
+                        optimizer=optimizer,
+                        max_epoch_tuples=config.max_epoch_tuples,
+                        custom_batch_to=config.batch_to_func,
+                        profiler=prof)
 
-        epoch_stats.update(epoch=epoch, epoch_time=time.perf_counter() - epoch_start_time)
+        any_best_metric = any_best_metric or validate_model(
+            config=config,
+            val_loader=val_loader,
+            model=model,
+            epoch=epoch,
+            epoch_stats=epoch_stats,
+            metrics=metrics,
+            max_epoch_tuples=config.max_epoch_tuples,
+            custom_batch_to=config.batch_to_func,
+            log_all_queries=False,
+            target_path=None,
+            run=None, )
+
+        epoch_stats.update(epoch_time=time.perf_counter() - epoch_start_time)
 
         if run:
             wandb.log(epoch_stats)
@@ -97,7 +130,8 @@ def train_model(csv_stats: List,
                         config=config,
                         metrics=metrics,
                         csv_stats=csv_stats,
-                        finished=stop_early)
+                        finished=stop_early,
+                        train_w_rank=train_w_rank)
         epoch += 1
         if stop_early:
             print(f"Early stopping kicked in due to no improvement in {config.early_stopping_patience} epochs")

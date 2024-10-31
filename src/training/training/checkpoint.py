@@ -45,7 +45,7 @@ def save_csv(csv_rows, target_csv_path):
 
 
 def save_checkpoint(epochs_wo_improvement, epoch, model, optimizer, target_path, config: ModelConfig, metrics,
-                    csv_stats, finished=False):
+                    csv_stats, finished=False, train_w_rank:bool=False):
     checkpoint = {
         'epochs_wo_improvement': epochs_wo_improvement,
         'epoch': epoch,
@@ -58,13 +58,18 @@ def save_checkpoint(epochs_wo_improvement, epoch, model, optimizer, target_path,
             checkpoint[m.metric_name + '_best_model'] = m.best_model
             checkpoint[m.metric_name + '_best_seen_value'] = m.best_seen_value
 
-    torch_save(checkpoint, target_path, config.name.NAME, filetype='.pt', postfix="_"+ str(config.seed))
+    if train_w_rank:
+        model_name = f'{config.name.NAME}_{config.seed}_rank'
+    else:
+        model_name = f'{config.name.NAME}_{config.seed}'
+
+    torch_save(checkpoint, target_path, model_name, filetype='.pt')
 
     if not (target_path is None or config.name.NAME is None):
-        target_csv_path = os.path.join(target_path, f'{config.name.NAME}_{config.seed}.csv')
+        target_csv_path = os.path.join(target_path, f'{model_name}.csv')
         save_csv(csv_stats, target_csv_path)
         if model.label_norm is not None:
-            label_norm_path = os.path.join(target_path, f'{config.name.NAME}_label_norm.pkl')
+            label_norm_path = os.path.join(target_path, f'{model_name}_label_norm.pkl')
             joblib.dump(model.label_norm, label_norm_path, compress=1)
     else:
         print("Skipping saving the epoch stats")
@@ -84,7 +89,8 @@ def load_checkpoint(model: nn.Module,
                     config: ModelConfig,
                     filetype: str = '.pt',
                     optimizer = None,
-                    metrics = None):
+                    metrics = None,
+                    prefer_ft_rank:bool = False):
     """
     Load all training state from a checkpoint. Does not work across devices (e.g., GPU->CPU).
     """
@@ -94,16 +100,24 @@ def load_checkpoint(model: nn.Module,
     finished = False
     csv_stats = []
 
+    model_name = f'{config.name.NAME}_{config.seed}'
+    if prefer_ft_rank:
+        rank_model_name = f'{model_name}_rank'
+        checkpoint_file = os.path.join(target_path, f'{rank_model_name}{filetype}')
+        if os.path.exists(checkpoint_file):
+            # we found a rank model checkpoint
+            model_name = rank_model_name
+
     if target_path is not None:
         try:
-            checkpoint = torch.load(os.path.join(target_path, f'{config.name.NAME}_{config.seed}{filetype}'))
+            checkpoint = torch.load(os.path.join(target_path, f'{model_name}{filetype}'))
             #checkpoint = torch.load(os.path.join(target_path, f'{model_name}{filetype}'), map_location=torch.device('cpu'))
             epochs_wo_improvement = checkpoint['epochs_wo_improvement']
             epoch = checkpoint['epoch']
             model.load_state_dict(checkpoint['model'])
 
             # read label normalizer
-            label_norm_path = os.path.join(target_path, f'{config.name.NAME}_label_norm.pkl')
+            label_norm_path = os.path.join(target_path, f'{model_name}_label_norm.pkl')
             if os.path.exists(label_norm_path):
                 model.label_norm = joblib.load(label_norm_path)
 
@@ -116,21 +130,31 @@ def load_checkpoint(model: nn.Module,
                     m.best_model = checkpoint[m.metric_name + '_best_model']
                     m.best_seen_value = checkpoint[m.metric_name + '_best_seen_value']
 
-            target_csv_path = os.path.join(target_path, f'{config.name.NAME}_{config.seed}.csv')
+            target_csv_path = os.path.join(target_path, f'{model_name}.csv')
             csv_stats = load_stats_csv(target_csv_path)
             epoch += 1
 
             print(f"Successfully loaded checkpoint from epoch {epoch} ({len(csv_stats)} csv rows) "
                   f"in {time.perf_counter() - load_start_t:.3f} secs")
 
+            if '_rank' in model_name:
+                rank_found=True
+                found=False
+            else:
+                found=True
+                rank_found=False
         # reset to defaults if something goes wrong
         except Exception as e:
             epochs_wo_improvement = 0
             epoch = 0
             finished = False
             csv_stats = []
+            found=False
+            rank_found=False
             print(f"No valid checkpoint found {e}")
     else:
         print("Filetype or model name are None")
+        found=False
+        rank_found=False
 
-    return csv_stats, epochs_wo_improvement, epoch, model, optimizer, metrics, finished
+    return csv_stats, epochs_wo_improvement, epoch, model, optimizer, metrics, finished, found, rank_found

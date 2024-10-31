@@ -10,7 +10,6 @@ import torch.optim as opt
 import wandb
 from attrs import evolve
 from ldb_schema.load_schema import load_json
-from lightgbm import train
 from torch import nn
 from torch.optim.optimizer import Optimizer
 from torch.utils.data import DataLoader
@@ -37,7 +36,7 @@ from train import train_model
 from training import featurizations
 from training.dataset.dataset_creation import create_zeroshot_dataloader
 from training.training.checkpoint import load_checkpoint
-from training.training.metrics import RMSE, MAPE, QError, Metric
+from training.training.metrics import RMSE, MAPE, QError, Metric, RankAccuracy
 
 
 def init_model(statistics_file: Path,
@@ -108,15 +107,16 @@ def init_model(statistics_file: Path,
     else:
         raise NotImplementedError
 
-    def gather_dataloader_stats(dataloader, string:str):
+    def gather_dataloader_stats(dataloader, string: str):
         # Count the number of entries in train_loader where timeout happened
         overall_count = 0
         timeout_count = 0
-        for label,plan in dataloader.dataset: # dataloader is batched
+        for label, plan in dataloader.dataset:  # dataloader is batched
             overall_count += 1
             timeout_count += 1 if plan['timeout'] else 0
 
-        print(f"Timeout count: {timeout_count} of {overall_count} ({timeout_count / overall_count * 100:.2f}%) in {string}")
+        print(
+            f"Timeout count: {timeout_count} of {overall_count} ({timeout_count / overall_count * 100:.2f}%) in {string}")
 
     print('\n')
     gather_dataloader_stats(train_loader, "train_loader")
@@ -204,6 +204,7 @@ def use_model(mode: str,
               column_statistics: Path,
               word_embeddings: Path,
               model_dir: Path,
+              ft_with_ranking: bool,
               target_dir: Path,
               config: ModelConfig,
               wandb_project: str,
@@ -234,6 +235,9 @@ def use_model(mode: str,
                                                                               workload_runs=wl_runs,
                                                                               word_embeddings=word_embeddings)
 
+    found = False
+    rank_found = False
+    finished=False
     if model:
         # Move model to device
         model = model.to(model.device)
@@ -243,13 +247,19 @@ def use_model(mode: str,
                                                                          **config.optimizer_kwargs)
 
         print(f"Load model with name {config.name.NAME} and seed {config.seed} from {model_dir}")
-        csv_stats, epochs_wo_improvement, epoch, model, optimizer, metrics, finished = \
+        csv_stats, epochs_wo_improvement, epoch, model, optimizer, metrics, finished, found, rank_found = \
             load_checkpoint(model=model,
                             target_path=model_dir,
                             config=config,
                             optimizer=optimizer,
                             metrics=metrics,
-                            filetype='.pt')
+                            filetype='.pt',
+                            prefer_ft_rank=ft_with_ranking)
+
+        if rank_found:
+            print("Found pretrained model (trained with ranking)")
+        if found:
+            print("Found pretrained model")
 
     run: Optional[Run] = None
     if wandb_project:
@@ -263,28 +273,91 @@ def use_model(mode: str,
         epochs_wo_improvement = 0
 
     if mode in ["train", "retrain"]:
-        if isinstance(model_config, TabularModelConfig):
-            train_tabular_model(workload_runs=wl_runs,
-                                config=config,
-                                statistics_file=statistics_file,
-                                model_dir=model_dir)
+        # assemble train to do list - FALSE=no ranking, TRUE=ranking
+        if ft_with_ranking:
+            if rank_found:
+                todo_list = [True]
+            else:
+                todo_list = [False, True]
         else:
-            train_model(model_dir=model_dir,
-                        train_loader=train_loader,
-                        val_loader=val_loader,
-                        config=config,
-                        csv_stats=csv_stats,
-                        epochs_wo_improvement=epochs_wo_improvement,
-                        epoch=epoch,
-                        model=model,
-                        optimizer=optimizer,
-                        metrics=metrics,
-                        run=run,
-                        pt_profiler=pt_profiler)
+            todo_list = [False]
+
+        if finished:
+            print(f"Training already finished for {config.name.NAME} with seed {config.seed}")
+            todo_list.pop(0) # remove the first element - it has already finished
+
+            # if there is still something to do: start from the beginning the next stage
+            if len(todo_list) > 0:
+                epoch = 0
+                epochs_wo_improvement = 0
+
+
+        for ranking in todo_list:
+            print(f'Train Model using ranking: {ranking}')
+
+            if ranking:
+                rank_metric = RankAccuracy(early_stopping_metric=True)
+
+                # set early stopping metric to False for other metrics
+                for metric in metrics:
+                    metric.early_stopping_metric = False
+
+                metrics.append(rank_metric)
+            else:
+                rank_metric = None
+
+            if isinstance(model_config, TabularModelConfig):
+                train_tabular_model(workload_runs=wl_runs,
+                                    config=config,
+                                    statistics_file=statistics_file,
+                                    model_dir=model_dir,
+                                    train_w_ranking=ranking)
+            else:
+                train_model(model_dir=model_dir,
+                            train_loader=train_loader,
+                            val_loader=val_loader,
+                            config=config,
+                            csv_stats=csv_stats,
+                            epochs_wo_improvement=epochs_wo_improvement,
+                            epoch=epoch,
+                            epoch_offset=0 if not ranking else config.epochs,
+                            model=model,
+                            optimizer=optimizer,
+                            metrics=metrics,
+                            run=run,
+                            pt_profiler=pt_profiler,
+                            train_w_rank=ranking,
+                            rank_metric=rank_metric)
+
+            # perform validation - after each training stage
+            if isinstance(model_config, TabularModelConfig):
+                predict_tabular_model(config=config,
+                                      workload_runs=wl_runs,
+                                      statistics_file=statistics_file,
+                                      model_dir=model_dir,
+                                      target_path=target_dir,
+                                      run=run,
+                                      file_suffix=f"{'_rank' if ranking else ''}")
+            else:
+                predict_model(mode=mode,
+                              config=config,
+                              workload_runs=wl_runs,
+                              test_loaders=test_loaders,
+                              model_dir=model_dir,
+                              epoch=epoch,
+                              model=model,
+                              metrics=metrics,
+                              run=run,
+                              file_suffix=f"{'_rank' if ranking else ''}")
+
+            # reset stats
+            epoch = 0
+            epochs_wo_improvement = 0
 
         print(f'--Run {config.name.NAME} ended at {datetime.now().strftime("%d/%m/%Y %H:%M:%S")} --')
 
-    if mode in ["train", "retrain", "predict"]:
+    elif mode in ["retrain", "predict"]:
+        print(f"Predicting model {config.name.NAME} with seed {config.seed}")
         if isinstance(model_config, TabularModelConfig):
             predict_tabular_model(config=config,
                                   workload_runs=wl_runs,
@@ -301,7 +374,8 @@ def use_model(mode: str,
                           epoch=epoch,
                           model=model,
                           metrics=metrics,
-                          run=run)
+                          run=run,
+                          file_suffix='')
 
     if wandb_project:
         run.finish()
@@ -368,6 +442,7 @@ if __name__ == '__main__':
     parser.add_argument('--statistics_file', default=None, required=True)
     parser.add_argument('--column_statistics', default=None)
     parser.add_argument('--model_dir', default=None, required=True)
+    parser.add_argument('--ft_with_ranking', action='store_true')
     parser.add_argument('--target_dir', default=None, required=True)
     parser.add_argument('--device', default='cpu')
     parser.add_argument('--hyperparameter_path', default=None)
@@ -430,6 +505,7 @@ if __name__ == '__main__':
         wandb_name=args.wandb_name,
         statistics_file=Path(args.statistics_file),
         model_dir=Path(args.model_dir),
+        ft_with_ranking=args.ft_with_ranking,
         target_dir=Path(args.target_dir),
         config=model_config,
         word_embeddings=Path(args.word_embeddings) if args.word_embeddings else None,

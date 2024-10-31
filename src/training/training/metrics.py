@@ -86,3 +86,11 @@ class QError(Metric):
         q_errors = np.nan_to_num(q_errors, nan=np.inf)
         median_q = np.percentile(q_errors, self.percentile)
         return median_q
+
+class RankAccuracy(Metric):
+    def __init__(self, **kwargs):
+        super().__init__(metric_name='rank_accuracy', maximize=True, **kwargs)
+
+    def evaluate_metric(self, ranking_correct=None, probs=None):
+        rank_accuracy = np.mean(ranking_correct)
+        return rank_accuracy
