@@ -20,23 +20,30 @@ class Metric:
         self.best_model = None
         self.early_stopping_metric = early_stopping_metric
 
-    def evaluate(self, model=None, metrics_dict=None, **kwargs):
+    def evaluate(self, model=None, metrics_dict=None, logging_suffix:str=None, update_best_seen:bool=True, **kwargs):
+
+        if logging_suffix is not None:
+            metric_name = f'{self.metric_name}_{logging_suffix}'
+        else:
+            metric_name = self.metric_name
+
         metric = self.default_value
         try:
             metric = self.evaluate_metric(**kwargs)
         except ValueError as e:
-            print(f"Observed ValueError for {self.metric_name} in calculation: {e}")
-        self.last_seen_value = metric
+            print(f"Observed ValueError for {metric_name} in calculation: {e}")
 
-        metrics_dict[self.metric_name] = metric
-        print(f"{self.metric_name:<30}: {metric:<10.4f} [best: {self.best_seen_value:.4f}]")
+        metrics_dict[metric_name] = metric
+        print(f"{metric_name:<30}: {metric:<10.4f} [best: {self.best_seen_value:.4f}]")
 
         best_seen = False
-        if (self.maximize and metric > self.best_seen_value) or (not self.maximize and metric < self.best_seen_value):
-            self.best_seen_value = metric
-            best_seen = True
-            if model is not None:
-                self.best_model = copy.deepcopy(model.state_dict())
+        if update_best_seen:
+            self.last_seen_value = metric
+            if (self.maximize and metric > self.best_seen_value) or (not self.maximize and metric < self.best_seen_value):
+                self.best_seen_value = metric
+                best_seen = True
+                if model is not None:
+                    self.best_model = copy.deepcopy(model.state_dict())
         return best_seen
 
 

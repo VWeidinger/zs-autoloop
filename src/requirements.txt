@@ -40,3 +40,4 @@ git+https://github.com/DataManagementLab/octopus.git
 git+https://github.com/DataManagementLab/ldb_schema.git
 attrs~=24.2.0
 python-dotenv~=1.0.1
+duckdb

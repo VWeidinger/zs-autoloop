@@ -18,6 +18,7 @@ from models.workload_driven.model.e2e_model import E2EModel
 from models.workload_driven.model.mscn_model import MSCNModel
 from models.zeroshot.specific_models.postgres_zero_shot import PostgresZeroShotModel
 from training.batch_to_funcs import batch_to
+from training.bound_predictions_with_history import bound_predictions_helper, PredictionBounder
 from training.training.checkpoint import save_csv
 from training.training.metrics import QError, Metric, RankAccuracy
 
@@ -90,7 +91,9 @@ def validate_model(val_loader: DataLoader,
                    max_epoch_tuples: int = None,
                    custom_batch_to: Callable = batch_to,
                    log_all_queries: bool = False,
-                   run: Optional[Run] = None,):
+                   run: Optional[Run] = None,
+                   bound_predictions: bool = False,
+                   prediction_bounder:Optional[PredictionBounder] = None) -> bool:
     model.eval()
 
     with torch.autograd.no_grad():
@@ -138,27 +141,41 @@ def validate_model(val_loader: DataLoader,
         preds = np.concatenate(preds, axis=0)
         epoch_stats.update(val_std=np.std(labels))
 
+        if bound_predictions:
+            bounded_preds = bound_predictions_helper(target_dataset=val_loader.dataset,predictions=preds, prediction_bounder=prediction_bounder)
+            bound_list = [True, False]
+        else:
+            bound_list = [False]
+
         # save best model for every metric
         any_best_metric = False
         if metrics is not None:
-            for metric in metrics:
-                if isinstance(metric, RankAccuracy):
-                    # skip - has to be handled separately
-                    continue
+            for bound in bound_list:
+                for metric in metrics:
+                    if isinstance(metric, RankAccuracy):
+                        # skip - has to be handled separately
+                        continue
 
-                best_seen = metric.evaluate(metrics_dict=epoch_stats,
-                                            model=model,
-                                            labels=labels,
-                                            preds=preds,
-                                            probs=probs)
-                if best_seen and metric.early_stopping_metric:
-                    any_best_metric = True
-                    print(f"New best model for {metric.metric_name}")
+                    best_seen = metric.evaluate(metrics_dict=epoch_stats,
+                                                model=model,
+                                                labels=labels,
+                                                preds=preds if not bound else bounded_preds,
+                                                probs=probs,
+                                                logging_suffix='bounded' if bound else None,
+                                                update_best_seen=not bound)
+
+                    if best_seen and metric.early_stopping_metric and not bound:
+                        any_best_metric = True
+                        print(f"New best model for {metric.metric_name}")
 
         if log_all_queries:
             rows = to_rows(indexes=sample_idxs,
                            labels=[float(f) for f in labels],
                            predictions=[float(f) for f in preds])
+
+            if bound_predictions:
+                for d, pred in zip(rows, bounded_preds):
+                    d['bounded_pred'] = pred
 
             save_csv(rows, target_csv_path=str(target_path) + "_test_pred.csv")
 

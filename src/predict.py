@@ -1,12 +1,13 @@
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 from dgl.dataloading import DataLoader
 from torch import nn
 from wandb.apis.public import Run
 
-from  classes.classes import ModelConfig
+from classes.classes import ModelConfig
 from classes.workload_runs import WorkloadRuns
+from training.bound_predictions_with_history import PredictionBounder
 from training.training.checkpoint import save_csv
 from training.training.metrics import Metric
 from training.training.train import validate_model
@@ -22,8 +23,9 @@ def predict_model(mode: str,
                   model: nn.Module,
                   epoch: int,
                   run: Run,
-                  file_suffix:str):
-
+                  file_suffix: str,
+                  bound_predictions: bool = False,
+                  prediction_bounder: Optional[PredictionBounder] = None):
     if test_loaders is not None:
         if not (model_dir is None or config.name.NAME is None):
             for test_path, test_loader in zip(workload_runs.target_test_csv_paths, test_loaders):
@@ -45,7 +47,10 @@ def predict_model(mode: str,
                                log_all_queries=True,
                                run=run,
                                model_dir=model_dir,
-                               target_path=test_path)
+                               target_path=test_path,
+                               bound_predictions=bound_predictions,
+                               prediction_bounder=prediction_bounder
+                               )
 
                 save_csv([test_stats], str(test_path) + f"_test_stats{file_suffix}.csv")
         else:

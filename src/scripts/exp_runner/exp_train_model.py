@@ -13,7 +13,7 @@ def generate_training_commands(datasets: List[Dataset], seeds: list[int], python
                                wandb_entity: str,
                                model_list: list[ModelConfig] = ModelConfig, quick_run: bool = False,
                                pt_profiler: bool = False, leave_one_out_style: bool = True,
-                               ft_with_ranking:bool=False) -> List[str]:
+                               ft_with_ranking:bool=False, bound_predictions:bool=False) -> List[str]:
     commands = []
     for target_dataset in datasets:
         for target_model in model_list:
@@ -25,10 +25,14 @@ def generate_training_commands(datasets: List[Dataset], seeds: list[int], python
                                                           format=target_model.input_format)
 
             for seed in seeds:
+                model_suffix = ''
+
                 if ft_with_ranking:
-                    wandb_name = f"{target_model.name.NAME}_rank/{target_dataset.db_name}/{seed}"
-                else:
-                    wandb_name = f"{target_model.name.NAME}/{target_dataset.db_name}/{seed}"
+                    model_suffix += '_ft_rank'
+                if bound_predictions:
+                    model_suffix += '_bound'
+
+                wandb_name = f"{target_model.name.NAME}{model_suffix}/{target_dataset.db_name}/{seed}"
 
                 command = (f"python{python_version} main.py "
                            f"--mode train "
@@ -63,6 +67,9 @@ def generate_training_commands(datasets: List[Dataset], seeds: list[int], python
 
                 if ft_with_ranking:
                     command += " --ft_with_ranking"
+
+                if bound_predictions:
+                    command += " --bound_predictions"
 
                 commands.append(command)
 
@@ -118,7 +125,8 @@ if __name__ == '__main__':
     quick_run = False # if True, it will run only a few epochs on a few workloads
     pt_profiler = False # Profiler for PyTorch
     leave_one_out_train_style = False # if True, it will train all models for all datasets
-    ft_with_ranking = True # fine-tune with ranking (pretrains a model and then fine-tunes it with ranking)
+    ft_with_ranking = False # fine-tune with ranking (pretrains a model and then fine-tunes it with ranking)
+    bound_predictions = False # bound predictions to the range of the training data and output them as separate metrics - at the moment not competitive
     # ===================
 
     # Standard Models
@@ -156,7 +164,8 @@ if __name__ == '__main__':
                                                quick_run=quick_run,
                                                pt_profiler=pt_profiler,
                                                leave_one_out_style=leave_one_out_train_style,
-                                               ft_with_ranking=ft_with_ranking
+                                               ft_with_ranking=ft_with_ranking,
+                                                  bound_predictions=bound_predictions
                                                )
 
     runner.run_exp(node_names=[node["hostname"]],
@@ -165,4 +174,4 @@ if __name__ == '__main__':
                    purge_steps=purge_steps,
                    pickup_steps=pickup_steps,
                    screens_per_node=len(datasets),
-                   offset=0)
+                   offset=1)

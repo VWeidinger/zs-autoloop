@@ -10,8 +10,9 @@ from torch.optim import Optimizer
 from wandb.apis.public import Run
 
 from classes.classes import ModelConfig
+from training.bound_predictions_with_history import PredictionBounder
 from training.training.checkpoint import save_checkpoint
-from training.training.metrics import Metric, RankAccuracy
+from training.training.metrics import Metric
 from training.training.train import validate_model, train_epoch
 from training.training.train_w_rank import RankModel, train_epoch_rank, validate_rank
 
@@ -30,7 +31,9 @@ def train_model(csv_stats: List,
                 rank_metric: Metric,
                 run: Run,
                 pt_profiler: bool = False,
-                train_w_rank: bool = False):
+                train_w_rank: bool = False,
+                bound_predictions: bool = False,
+                prediction_bounder:PredictionBounder = None):
     if train_w_rank:
         # wrap the model with the rank model
         ranking_wrapper = RankModel(model)
@@ -95,7 +98,9 @@ def train_model(csv_stats: List,
             custom_batch_to=config.batch_to_func,
             log_all_queries=False,
             target_path=None,
-            run=None, )
+            run=None,
+            bound_predictions=bound_predictions,
+            prediction_bounder=prediction_bounder)
 
         epoch_stats.update(epoch_time=time.perf_counter() - epoch_start_time)
 

@@ -34,6 +34,7 @@ from models.zeroshot.specific_models.postgres_zero_shot import PostgresZeroShotM
 from predict import predict_model
 from train import train_model
 from training import featurizations
+from training.bound_predictions_with_history import PredictionBounder
 from training.dataset.dataset_creation import create_zeroshot_dataloader
 from training.training.checkpoint import load_checkpoint
 from training.training.metrics import RMSE, MAPE, QError, Metric, RankAccuracy
@@ -209,7 +210,8 @@ def use_model(mode: str,
               config: ModelConfig,
               wandb_project: str,
               wandb_entity: str,
-              pt_profiler: bool):
+              pt_profiler: bool,
+              bound_predictions: bool):
     # Seed for reproducibility
     print(f"Found model config {config}")
     torch.manual_seed(config.seed)
@@ -268,9 +270,17 @@ def use_model(mode: str,
                          name=wandb_name,
                          config=attrs.asdict(config))
 
+    # prepare the prediction bounder
+    if bound_predictions:
+        prediction_bounder = PredictionBounder(history_dataset=train_loader.dataset)
+    else:
+        prediction_bounder = None
+
     # Train model
     if mode == "retrain":
         epochs_wo_improvement = 0
+
+    rerun_predict = False
 
     if mode in ["train", "retrain"]:
         # assemble train to do list - FALSE=no ranking, TRUE=ranking
@@ -290,7 +300,8 @@ def use_model(mode: str,
             if len(todo_list) > 0:
                 epoch = 0
                 epochs_wo_improvement = 0
-
+            else:
+                rerun_predict = True
 
         for ranking in todo_list:
             print(f'Train Model using ranking: {ranking}')
@@ -311,7 +322,9 @@ def use_model(mode: str,
                                     config=config,
                                     statistics_file=statistics_file,
                                     model_dir=model_dir,
-                                    train_w_ranking=ranking)
+                                    train_w_ranking=ranking,
+                                    bound_predictions=False,
+                                    prediction_bounder=prediction_bounder,)
             else:
                 train_model(model_dir=model_dir,
                             train_loader=train_loader,
@@ -327,7 +340,9 @@ def use_model(mode: str,
                             run=run,
                             pt_profiler=pt_profiler,
                             train_w_rank=ranking,
-                            rank_metric=rank_metric)
+                            rank_metric=rank_metric,
+                            bound_predictions=False,
+                            prediction_bounder=prediction_bounder)
 
             # perform validation - after each training stage
             if isinstance(model_config, TabularModelConfig):
@@ -337,7 +352,9 @@ def use_model(mode: str,
                                       model_dir=model_dir,
                                       target_path=target_dir,
                                       run=run,
-                                      file_suffix=f"{'_rank' if ranking else ''}")
+                                      file_suffix=f"{'_rank' if ranking else ''}",
+                                      bound_predictions=bound_predictions,
+                                      prediction_bounder=prediction_bounder)
             else:
                 predict_model(mode=mode,
                               config=config,
@@ -348,7 +365,9 @@ def use_model(mode: str,
                               model=model,
                               metrics=metrics,
                               run=run,
-                              file_suffix=f"{'_rank' if ranking else ''}")
+                              file_suffix=f"{'_rank' if ranking else ''}",
+                              bound_predictions=bound_predictions,
+                              prediction_bounder=prediction_bounder)
 
             # reset stats
             epoch = 0
@@ -356,7 +375,7 @@ def use_model(mode: str,
 
         print(f'--Run {config.name.NAME} ended at {datetime.now().strftime("%d/%m/%Y %H:%M:%S")} --')
 
-    elif mode in ["retrain", "predict"]:
+    if mode in ["predict"] or rerun_predict:
         print(f"Predicting model {config.name.NAME} with seed {config.seed}")
         if isinstance(model_config, TabularModelConfig):
             predict_tabular_model(config=config,
@@ -364,7 +383,10 @@ def use_model(mode: str,
                                   statistics_file=statistics_file,
                                   model_dir=model_dir,
                                   target_path=target_dir,
-                                  run=run)
+                                  run=run,
+                                  bound_predictions=bound_predictions,
+                                  prediction_bounder=prediction_bounder
+                                  )
         else:
             predict_model(mode=mode,
                           config=config,
@@ -375,7 +397,10 @@ def use_model(mode: str,
                           model=model,
                           metrics=metrics,
                           run=run,
-                          file_suffix='')
+                          file_suffix='',
+                          bound_predictions=bound_predictions,
+                          prediction_bounder=prediction_bounder
+                          )
 
     if wandb_project:
         run.finish()
@@ -455,6 +480,7 @@ if __name__ == '__main__':
     parser.add_argument('--num_workers', type=int, default=20)
     parser.add_argument('--quick_run', action='store_true')
     parser.add_argument('--pt_profiler', action='store_true')
+    parser.add_argument('--bound_predictions', action='store_true')
     args = parser.parse_args()
 
     # Init model configuration by either reading out hyperparameters or using standard config
@@ -510,7 +536,8 @@ if __name__ == '__main__':
         config=model_config,
         word_embeddings=Path(args.word_embeddings) if args.word_embeddings else None,
         column_statistics=Path(args.column_statistics) if args.column_statistics else None,
-        pt_profiler=args.pt_profiler
+        pt_profiler=args.pt_profiler,
+        bound_predictions=args.bound_predictions
     )
 
     use_model(**args)
