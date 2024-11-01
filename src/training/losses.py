@@ -183,24 +183,24 @@ def spearman(
     regularization_strength=1.0,
 ):
     # fast_soft_sort uses 1-based indexing, divide by len to compute percentage of rank
-    pred = soft_rank(
-        pred,
+    rank_pred = soft_rank(
+        torch.reshape(pred,(1,-1)), # reshape to 2d tensor - performs ranking -1 dim
         regularization=regularization,
         regularization_strength=regularization_strength,
     )
-    return corrcoef(target, pred / pred.shape[-1])
+    corr = corrcoef(target, rank_pred / rank_pred.shape[-1])
+    return corr
 
 class RankLoss(nn.Module):
-    """
-    Produces inf loss errors at the moment
-    """
-
 
     def __init__(self, **kwargs):
         super().__init__()
 
     def forward(self, input, target):
-        return spearman(target, input)
+        input = torch.reshape(input, (-1,))
+        corr =  spearman(target, input) # invert so that the optimizer minimizes the loss
+        corr = -1 * (corr + 1) # offset with 1 to make it positive, invert to minimize
+        return corr
 
 
 

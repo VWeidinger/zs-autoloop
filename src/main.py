@@ -9,7 +9,6 @@ import torch
 import torch.optim as opt
 import wandb
 from attrs import evolve
-from ldb_schema.load_schema import load_json
 from torch import nn
 from torch.optim.optimizer import Optimizer
 from torch.utils.data import DataLoader
@@ -19,7 +18,7 @@ from classes.classes import ModelConfig, E2EModelConfig, ZeroShotModelConfig, MS
     TlstmModelConfig, ModelName, FlatModelConfig, ScaledPostgresModelConfig, TabularModelConfig, TPoolModelConfig, \
     QPPNetModelConfig, DACEModelConfig, DACEModelNoCostsConfig, QPPModelNoCostsConfig, FlatModelActCardModelConfig, \
     QPPModelActCardsConfig, ZeroShotModelActCardConfig, DACEModelActCardConfig, QueryFormerModelConfig, \
-    ZSLearnFromTimeoutConfig
+    ZSLearnFromTimeoutConfig, ZSRankLossConfig
 from classes.workload_runs import WorkloadRuns
 from models.dace.dace_dataset import create_dace_dataloader
 from models.dace.dace_model import DACELora
@@ -33,11 +32,10 @@ from models.workload_driven.model.mscn_model import MSCNModel
 from models.zeroshot.specific_models.postgres_zero_shot import PostgresZeroShotModel
 from predict import predict_model
 from train import train_model
-from training import featurizations
 from training.bound_predictions_with_history import PredictionBounder
 from training.dataset.dataset_creation import create_zeroshot_dataloader
 from training.training.checkpoint import load_checkpoint
-from training.training.metrics import RMSE, MAPE, QError, Metric, RankAccuracy
+from training.training.metrics import RMSE, MAPE, QError, Metric, RankAccuracy, SpearmanRank
 
 
 def init_model(statistics_file: Path,
@@ -134,68 +132,28 @@ def init_metrics(loss_class_name: str) -> List[Metric]:
                                  MAPE(),
                                  QError(percentile=50, early_stopping_metric=True),
                                  QError(percentile=95),
-                                 QError(percentile=100)]
+                                 QError(percentile=100),
+                                 SpearmanRank()]
 
     elif loss_class_name in ['MSELoss']:
         metrics: List[Metric] = [RMSE(early_stopping_metric=True),
                                  MAPE(),
                                  QError(percentile=50),
                                  QError(percentile=95),
-                                 QError(percentile=100)]
+                                 QError(percentile=100),
+                                 SpearmanRank()]
+    elif loss_class_name in ['RankLoss']:
+        metrics: List[Metric] = [
+            RMSE(),
+            MAPE(),
+            QError(percentile=50),
+            QError(percentile=95),
+            QError(percentile=100),
+            SpearmanRank(early_stopping_metric=True),
+        ]
     else:
         raise Exception("Loss class not supported")
     return metrics
-
-
-def readout_hyperparameters(hyperparameter_path: Path) -> dict:
-    print(f"Reading hyperparameters from {hyperparameter_path}")
-    hyperparams = load_json(str(hyperparameter_path), namespace=False)
-
-    fc_out_kwargs = dict(activation_class_name='LeakyReLU',
-                         activation_class_kwargs={},
-                         norm_class_name='Identity',
-                         norm_class_kwargs={},
-                         residual=hyperparams.pop('residual'),
-                         dropout=hyperparams.pop('dropout'),
-                         activation=True,
-                         inplace=True,
-                         p_dropout=hyperparams.pop('p_dropout'))
-
-    final_mlp_kwargs = dict(width_factor=hyperparams.pop('final_width_factor'),
-                            n_layers=hyperparams.pop('final_layers'),
-                            loss_class_name=hyperparams.pop('loss_class_name', 'QLoss'),
-                            loss_class_kwargs=hyperparams.pop('loss_class_kwargs', dict()), )
-
-    tree_layer_kwargs = dict(width_factor=hyperparams.pop('tree_layer_width_factor'),
-                             n_layers=hyperparams.pop('message_passing_layers'))
-
-    node_type_kwargs = dict(width_factor=hyperparams.pop('node_type_width_factor'),
-                            n_layers=hyperparams.pop('node_layers'),
-                            one_hot_embeddings=True,
-                            max_emb_dim=hyperparams.pop('max_emb_dim'),
-                            drop_whole_embeddings=False)
-
-    final_mlp_kwargs.update(**fc_out_kwargs)
-    tree_layer_kwargs.update(**fc_out_kwargs)
-    node_type_kwargs.update(**fc_out_kwargs)
-
-    plan_featurization_name = hyperparams.pop('plan_featurization_name')
-    plan_featurization = featurizations.__dict__[plan_featurization_name]
-
-    model_args = dict(
-        optimizer_kwargs=dict(lr=hyperparams.pop('lr')),
-        fc_out_kwargs=fc_out_kwargs,
-        final_mlp_kwargs=final_mlp_kwargs,
-        tree_layer_kwargs=tree_layer_kwargs,
-        node_type_kwargs=node_type_kwargs,
-        tree_layer_name=hyperparams.pop('tree_layer_name'),
-        hidden_dim=hyperparams.pop('hidden_dim'),
-        batch_size=hyperparams.pop('batch_size'),
-        featurization=plan_featurization)
-
-    assert len(hyperparams) == 0, f"Not all hyperparams were used (not used: {hyperparams.keys()}). " \
-                                  f"Hence generation and reading does not seem to fit"
-    return model_args
 
 
 def use_model(mode: str,
@@ -239,7 +197,7 @@ def use_model(mode: str,
 
     found = False
     rank_found = False
-    finished=False
+    finished = False
     if model:
         # Move model to device
         model = model.to(model.device)
@@ -294,7 +252,7 @@ def use_model(mode: str,
 
         if finished:
             print(f"Training already finished for {config.name.NAME} with seed {config.seed}")
-            todo_list.pop(0) # remove the first element - it has already finished
+            todo_list.pop(0)  # remove the first element - it has already finished
 
             # if there is still something to do: start from the beginning the next stage
             if len(todo_list) > 0:
@@ -324,7 +282,7 @@ def use_model(mode: str,
                                     model_dir=model_dir,
                                     train_w_ranking=ranking,
                                     bound_predictions=False,
-                                    prediction_bounder=prediction_bounder,)
+                                    prediction_bounder=prediction_bounder, )
             else:
                 train_model(model_dir=model_dir,
                             train_loader=train_loader,
@@ -411,6 +369,7 @@ def get_model_config(model_type: str, m_args: dict) -> ModelConfig:
         ModelName.POSTGRES.NAME: ScaledPostgresModelConfig,
         ModelName.MSCN.NAME: MSCNModelConfig,
         ModelName.ZEROSHOT.NAME: ZeroShotModelConfig,
+        ModelName.ZS_RANK_LOSS.NAME: ZSRankLossConfig,
         ModelName.E2E.NAME: TPoolModelConfig,
         ModelName.QPP_NET.NAME: QPPNetModelConfig,
         ModelName.DACE.NAME: DACEModelConfig,
@@ -484,8 +443,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     # Init model configuration by either reading out hyperparameters or using standard config
-    model_args = {} if args.hyperparameter_path is None else readout_hyperparameters(Path(args.hyperparameter_path))
-    model_args.update(device=args.device,
+    model_args = dict(device=args.device,
                       cap_training_samples=args.cap_training_samples,
                       seed=args.seed,
                       num_workers=args.num_workers)

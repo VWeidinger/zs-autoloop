@@ -94,6 +94,14 @@ class QError(Metric):
         median_q = np.percentile(q_errors, self.percentile)
         return median_q
 
+class SpearmanRank(Metric):
+    def __init__(self, **kwargs):
+        super().__init__(metric_name='spearman_rank', maximize=True, **kwargs)
+
+    def evaluate_metric(self, labels=None, preds=None, probs=None):
+        spearman_rank = np.corrcoef(labels, preds)[0, 1]
+        return spearman_rank
+
 class RankAccuracy(Metric):
     def __init__(self, **kwargs):
         super().__init__(metric_name='rank_accuracy', maximize=True, **kwargs)

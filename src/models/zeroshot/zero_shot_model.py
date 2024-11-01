@@ -17,10 +17,12 @@ class ZeroShotModel(FcOutModel):
         super().__init__(output_dim=model_config.output_dim,
                          input_dim=model_config.hidden_dim,
                          final_out_layer=True,
+                         loss_class_name=model_config.loss_class_name,
+                         loss_class_kwargs=model_config.loss_class_kwargs,
                          **model_config.final_mlp_kwargs)
 
         self.label_norm = label_norm
-        self.test = False # ToDo?
+        self.test = False  # ToDo?
         self.skip_message_passing = False
         self.device = device
         self.hidden_dim = model_config.hidden_dim
@@ -28,7 +30,8 @@ class ZeroShotModel(FcOutModel):
         # use different models per edge type
         tree_model_types = add_tree_model_types + ['to_plan', 'intra_plan', 'intra_pred']
         self.tree_models = nn.ModuleDict({
-            node_type: message_aggregators.__dict__[model_config.tree_layer_name](hidden_dim=self.hidden_dim, **model_config.tree_layer_kwargs)
+            node_type: message_aggregators.__dict__[model_config.tree_layer_name](hidden_dim=self.hidden_dim,
+                                                                                  **model_config.tree_layer_kwargs)
             for node_type in tree_model_types
         })
 
@@ -138,6 +141,7 @@ class PassDirection:
     """
     Defines a message passing step on the encoded query graphs.
     """
+
     def __init__(self, model_name, g, e_name=None, n_dest=None, allow_empty=False):
         """
         Initializes a message passing step.

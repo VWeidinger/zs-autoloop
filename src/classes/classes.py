@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import List, Callable, Optional, final
+from typing import List, Callable, Optional
 
 import attrs as attrs
 from attr import field
@@ -37,6 +37,7 @@ class ModelName:
     ZEROSHOT = Name("zeroshot", "Zero-Shot")
     ZEROSHOT_ACT_CARD = Name("zeroshot_act_card", "Zero-Shot (act. card)")
     ZS_FROM_TIMEOUT = Name('zeroshot_learn_from_timeout', 'Zero-Shot (learn from timeout)')
+    ZS_RANK_LOSS = Name('zeroshot_rank_loss', 'Zero-Shot (Rank Loss)')
     QPP_NET = Name("qppnet", "QPP-Net")
     QPP_NET_NO_COSTS = Name("qppnet_no_costs", "QPP-Net\n(w/o PG costs)")
     QPP_NET_ACT_CARDS = Name("qppnet_act_cards", "QPP-Net (act. card.)")
@@ -56,9 +57,6 @@ class ModelConfig:
     name: Name = field(default=None)
     type: ModelType = field(default=None)
     device: str = field(default=None)
-    featurization: Featurization = field(default=None)
-    batch_to_func: staticmethod = field(default=None)
-    collator_func: staticmethod = field(default=None)
     optimizer_class_name: str = "AdamW"
     optimizer_kwargs: dict = dict(lr=1e-3)
     batch_size: int = 64
@@ -68,19 +66,12 @@ class ModelConfig:
     num_workers: int = field(default=20)
     max_epoch_tuples: int = field(default=None)
     cap_training_samples: int = field(default=None)
-    hidden_dim_plan: int = 256
-    hidden_dim_pred: int = field(default=None)
     loss_class_name: str = "QLoss"
     loss_class_kwargs: dict = field(default=dict())
-    fc_out_kwargs: dict = field(default=None)
-    final_mlp_kwargs: dict = field(default=None)
-    node_type_kwargs: dict = field(default=None)
-    tree_layer_kwargs: dict = field(default=None)
-    tree_layer_name: dict = field(default=None)
     limit_queries: int = field(default=None)
     limit_queries_affected_wl: int = field(default=0)
     learn_from_timeout: bool = field(default=False)
-    timeout_threshold = field(default=30)  # in ms
+    timeout_threshold: int = field(default=30)  # in ms
     input_format: InputFormats = field(default=None)
     hyperparameter: Path = None
     column_statistics: bool = False
@@ -209,7 +200,6 @@ class QPPModelActCardsConfig(QPPNetModelConfig):
 class E2EModelConfig(ModelConfig):
     name: Name = ModelName.E2E
     type: ModelType = ModelType.WL_DRIVEN
-    device: str = "cuda:0"
     hidden_dim_plan: int = 256
     hidden_dim_pred: int = 256
     batch_to_func: Callable = plan_batch_to
@@ -239,50 +229,51 @@ class ZeroShotModelConfig(ModelConfig):
     name: Name = ModelName.ZEROSHOT
     type: ModelType = ModelType.WL_AGNOSTIC
     featurization: Featurization = PostgresEstSystemCardDetail
-    hidden_dim_plan: int = 256
-    hidden_dim_pred: int = 256
-    skip_train: bool = False
-    p_dropout: float = 0.1
-    optimizer_kwargs: dict = dict()
-    fc_out_kwargs: dict = dict(p_dropout=0.1,
-                               activation_class_name='LeakyReLU',
+    loss_class_name:str = "QLoss"
+    loss_class_kwargs:dict = dict()
+
+    fc_out_kwargs: dict = dict(activation_class_name='LeakyReLU',
                                activation_class_kwargs={},
                                norm_class_name='Identity',
                                norm_class_kwargs={},
                                residual=False,
-                               dropout=True,
+                               dropout=False,
+                               p_dropout=0.0,
                                activation=True,
                                inplace=True)
-    final_mlp_kwargs: dict = dict(width_factor=1,
-                                  n_layers=2,
-                                  loss_class_name="QLoss",  # will be overwritten by .json hyperparams loader
-                                  loss_class_kwargs=dict()) # will be overwritten by .json hyperparams loader
-    tree_layer_kwargs: dict = dict(width_factor=1,
+    final_mlp_kwargs: dict = dict(width_factor=1.5,
+                                  n_layers=4,)
+    tree_layer_kwargs: dict = dict(width_factor=0.6,
                                    n_layers=2)
-    node_type_kwargs: dict = dict(width_factor=1,
-                                  n_layers=2,
+    node_type_kwargs: dict = dict(width_factor=1.5,
+                                  n_layers=4,
                                   one_hot_embeddings=True,
                                   max_emb_dim=32,
                                   drop_whole_embeddings=False)
-
     final_mlp_kwargs.update(**fc_out_kwargs)
     tree_layer_kwargs.update(**fc_out_kwargs)
     node_type_kwargs.update(**fc_out_kwargs)
+
     hidden_dim: int = 128
     output_dim: int = 1
-    batch_size: int = 64
+    batch_size: int = 256
     tree_layer_name: str = 'MscnConv'  # GATConv MscnConv
     batch_to_func: Callable = batch_to
     collator_func: Callable = postgres_plan_collator
-    device: str = "cuda:0"
     input_format: InputFormats = InputFormats.parsed
-    hyperparameter: Path = Path(f'conf/zeroshot_hyperparameters/tune_est_best_config.json')
+
+
+@attrs.define(frozen=True, slots=False)
+class ZSRankLossConfig(ZeroShotModelConfig):
+    name: Name = ModelName.ZS_RANK_LOSS
+    loss_class_name:str = 'RankLoss'
+
 
 @attrs.define(frozen=True, slots=False)
 class ZSLearnFromTimeoutConfig(ZeroShotModelConfig):
     name: Name = ModelName.ZS_FROM_TIMEOUT
     learn_from_timeout: bool = True
-    timeout_threshold = 30  # in s
+    timeout_threshold:int = 30  # in s
 
 
 @attrs.define(frozen=True, slots=False)
@@ -296,7 +287,6 @@ class ZeroShotModelActCardConfig(ZeroShotModelConfig):
 class MSCNModelConfig(ModelConfig):
     name: Name = ModelName.MSCN
     type: ModelType = ModelType.WL_DRIVEN
-    device: str = "cuda:0"
     mscn_enc_layers: int = 1
     mscn_est_layers: int = 1
     batch_to_func: Callable = batch_to
@@ -324,7 +314,6 @@ class DACEModelConfig(ModelConfig):
     loss_class_name: str = "DaceLoss"
     loss_class_kwargs: dict = dict()
     featurization: Featurization = DACEFeaturization
-    device: str = "cuda:0"
     input_format: InputFormats = InputFormats.parsed
     optimizer_class_name: str = "Adam"
     optimizer_kwargs: dict = dict(lr=1e-3)
@@ -348,7 +337,6 @@ class DACEModelActCardConfig(DACEModelConfig):
 class QueryFormerModelConfig(ModelConfig):
     name: Name = ModelName.QUERY_FORMER
     type: ModelType = ModelType.WL_DRIVEN
-    device: str = "cuda:0"
     hidden_dim_plan: int = 256
     input_format: InputFormats = InputFormats.parsed
     column_statistics: bool = True
@@ -369,7 +357,6 @@ class QueryFormerModelConfig(ModelConfig):
     optimizer_class_name: str = "AdamW"  # Originally Adam
 
 
-
 @attrs.define(frozen=True, slots=False)
 class DataLoaderOptions:
     val_ratio: float = 0.20
@@ -386,6 +373,7 @@ MODEL_CONFIGS = [
     QPPNetModelConfig(),
     QueryFormerModelConfig(),
     ZeroShotModelConfig(),
+    ZSRankLossConfig(),
     DACEModelConfig(),
 ]
 

@@ -5,7 +5,7 @@ from ldb_schema.paths import ClusterPaths, LocalPaths
 from octopus.step import Rsync, KillAllScreens, SetupVenv, RsyncCurrentRepo
 
 from classes.classes import ModelConfig, ModelType, \
-    ZSLearnFromTimeoutConfig, ZeroShotModelConfig
+    ZSLearnFromTimeoutConfig, ZeroShotModelConfig, ZSRankLossConfig
 from scripts.exp_runner.exp_runner import ExpRunner, TrainingServers
 
 
@@ -116,7 +116,7 @@ if __name__ == '__main__':
         # Dataset('fhnk', scale=2)
     ]
 
-    seeds = [6]
+    seeds = [1]
     node = TrainingServers.NODE03
 
     # ===================
@@ -137,8 +137,9 @@ if __name__ == '__main__':
     # model_config = MSCNModelConfig()
     # model_config = DACEModelConfig()                  # --> Node 03 OK
     # model_config = QueryFormerModelConfig()           # --> Node
-    model_config = ZeroShotModelConfig()              # --> Node 04
+    # model_config = ZeroShotModelConfig()              # --> Node 04
     # model_config = ZSLearnFromTimeoutConfig()
+    model_config = ZSRankLossConfig()
 
     # Ablation Models (without postgres Estimates)
     # model_config = DACEModelNoCostsConfig()
@@ -174,4 +175,4 @@ if __name__ == '__main__':
                    purge_steps=purge_steps,
                    pickup_steps=pickup_steps,
                    screens_per_node=len(datasets),
-                   offset=1)
+                   offset=0)
