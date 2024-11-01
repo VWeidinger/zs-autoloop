@@ -114,9 +114,6 @@ def init_model(statistics_file: Path,
             overall_count += 1
             timeout_count += 1 if plan['timeout'] else 0
 
-            if plan['timeout']:
-                print(f'{overall_count}: {plan["plan_runtime_ms"]}')
-
         print(
             f"Timeout count: {timeout_count} of {overall_count} ({timeout_count / overall_count * 100:.2f}%) in {string}")
 

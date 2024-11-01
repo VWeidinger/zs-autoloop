@@ -359,7 +359,7 @@ class QueryFormerModelConfig(ModelConfig):
 @attrs.define(frozen=True, slots=False)
 class DataLoaderOptions:
     val_ratio: float = 0.20
-    shuffle: bool = False
+    shuffle: bool = True
     pin_memory: bool = False
     dim_bitmaps: int = 1000  # ToDo move to another class?
 
