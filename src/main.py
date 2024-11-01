@@ -114,11 +114,15 @@ def init_model(statistics_file: Path,
             overall_count += 1
             timeout_count += 1 if plan['timeout'] else 0
 
+            if plan['timeout']:
+                print(f'{overall_count}: {plan["plan_runtime_ms"]}')
+
         print(
             f"Timeout count: {timeout_count} of {overall_count} ({timeout_count / overall_count * 100:.2f}%) in {string}")
 
     print('\n')
     gather_dataloader_stats(train_loader, "train_loader")
+    gather_dataloader_stats(val_loader, "val_loader")
     for test_loader in test_loaders:
         gather_dataloader_stats(test_loader, "test_loader")
     print('\n')
@@ -261,10 +265,10 @@ def use_model(mode: str,
             else:
                 rerun_predict = True
 
-        for ranking in todo_list:
-            print(f'Train Model using ranking: {ranking}')
+        for train_w_rank_model in todo_list:
+            print(f'Train Model using ranking: {train_w_rank_model}')
 
-            if ranking:
+            if train_w_rank_model:
                 rank_metric = RankAccuracy(early_stopping_metric=True)
 
                 # set early stopping metric to False for other metrics
@@ -280,7 +284,7 @@ def use_model(mode: str,
                                     config=config,
                                     statistics_file=statistics_file,
                                     model_dir=model_dir,
-                                    train_w_ranking=ranking,
+                                    train_w_rank_model=train_w_rank_model,
                                     bound_predictions=False,
                                     prediction_bounder=prediction_bounder, )
             else:
@@ -291,13 +295,13 @@ def use_model(mode: str,
                             csv_stats=csv_stats,
                             epochs_wo_improvement=epochs_wo_improvement,
                             epoch=epoch,
-                            epoch_offset=0 if not ranking else config.epochs,
+                            epoch_offset=0 if not train_w_rank_model else config.epochs,
                             model=model,
                             optimizer=optimizer,
                             metrics=metrics,
                             run=run,
                             pt_profiler=pt_profiler,
-                            train_w_rank=ranking,
+                            train_w_rank_model=train_w_rank_model,
                             rank_metric=rank_metric,
                             bound_predictions=False,
                             prediction_bounder=prediction_bounder)
@@ -310,7 +314,7 @@ def use_model(mode: str,
                                       model_dir=model_dir,
                                       target_path=target_dir,
                                       run=run,
-                                      file_suffix=f"{'_rank' if ranking else ''}",
+                                      file_suffix=f"{'_rankmodel' if train_w_rank_model else ''}",
                                       bound_predictions=bound_predictions,
                                       prediction_bounder=prediction_bounder)
             else:
@@ -323,7 +327,7 @@ def use_model(mode: str,
                               model=model,
                               metrics=metrics,
                               run=run,
-                              file_suffix=f"{'_rank' if ranking else ''}",
+                              file_suffix=f"{'_rankmodel' if train_w_rank_model else ''}",
                               bound_predictions=bound_predictions,
                               prediction_bounder=prediction_bounder)
 
@@ -392,24 +396,6 @@ def get_model_config(model_type: str, m_args: dict) -> ModelConfig:
 
     if model_type in model_config_map:
         config = model_config_map[model_type](**m_args)
-        learn_from_timeout = config.learn_from_timeout
-
-        if learn_from_timeout:
-            # set the loss config
-            loss_class_kwargs = config.loss_class_kwargs
-            loss_class_kwargs['learn_from_timeout'] = learn_from_timeout
-            loss_class_kwargs.update(learn_from_timeout=True, timeout_threshold=config.timeout_threshold)
-
-            if hasattr(config, 'final_mlp_kwargs'):
-                # set the final mlp config
-                final_mlp_kwargs = config.final_mlp_kwargs
-                final_mlp_loss_kwargs = final_mlp_kwargs['loss_class_kwargs']
-                final_mlp_loss_kwargs.update(learn_from_timeout=True, timeout_threshold=config.timeout_threshold)
-                final_mlp_kwargs.update(loss_class_kwargs=final_mlp_loss_kwargs)
-                m_args.update(final_mlp_kwargs=final_mlp_kwargs)
-
-            m_args.update(loss_class_kwargs=loss_class_kwargs)
-            config = model_config_map[model_type](**m_args)
 
         return config
 
@@ -449,7 +435,7 @@ if __name__ == '__main__':
                       num_workers=args.num_workers)
 
     if args.quick_run:
-        model_args.update(limit_queries=2000, limit_queries_affected_wl=1, epochs=2)
+        model_args.update(limit_queries=2000, limit_queries_affected_wl=1, epochs=2, batch_size=64)
 
     # Create workload runs
     if args.mode in ["predict", "explain"]:

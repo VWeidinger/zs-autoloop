@@ -5,6 +5,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from fast_soft_sort.pytorch_ops import soft_rank
 
+
 def create_loss(loss_name: str, loss_kwargs: Dict):
     if loss_name == 'MSELoss':
         loss = MSELoss(**loss_kwargs)
@@ -158,7 +159,7 @@ class LearnFromTimeoutLossWrapper(nn.Module):
             input = input.squeeze(1) # reduce nx1 vector to n vector
 
         # mask out elements where target is None (timeout) and input is larger than timeout_threshold
-        timeout_mask = (target.isnan() | target.isinf()) & (input > self.timeout_threshold)
+        timeout_mask = (target.isnan() | target.isinf()) & (input >= self.timeout_threshold)
 
         # set target to threshold where target is None (timeout)
         target[(target.isnan() | target.isinf())] = self.timeout_threshold

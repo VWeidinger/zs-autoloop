@@ -33,9 +33,9 @@ def batch_to(batch, device, label_norm):
         label = label_norm.transform(np.asarray(label).reshape(-1, 1))
         label = label.reshape(-1)
 
-    label = torch.as_tensor(label, device=device, dtype=torch.float)
+    label_tensor = torch.as_tensor(label, device=device, dtype=torch.float)
     recursive_to(features, device)
-    recursive_to(label, device)
+    recursive_to(label_tensor, device)
     # recursive_to(graph, device)
     graph = graph.to(device, non_blocking=True)
-    return (graph, features), label, sample_idxs
+    return (graph, features), label_tensor, sample_idxs

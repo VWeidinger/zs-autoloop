@@ -45,7 +45,7 @@ def save_csv(csv_rows, target_csv_path):
 
 
 def save_checkpoint(epochs_wo_improvement, epoch, model, optimizer, target_path, config: ModelConfig, metrics,
-                    csv_stats, finished=False, train_w_rank:bool=False):
+                    csv_stats, finished=False, rank_model: bool = False):
     checkpoint = {
         'epochs_wo_improvement': epochs_wo_improvement,
         'epoch': epoch,
@@ -58,8 +58,8 @@ def save_checkpoint(epochs_wo_improvement, epoch, model, optimizer, target_path,
             checkpoint[m.metric_name + '_best_model'] = m.best_model
             checkpoint[m.metric_name + '_best_seen_value'] = m.best_seen_value
 
-    if train_w_rank:
-        model_name = f'{config.name.NAME}_{config.seed}_rank'
+    if rank_model:
+        model_name = f'{config.name.NAME}_{config.seed}_rankmodel'
     else:
         model_name = f'{config.name.NAME}_{config.seed}'
 
@@ -102,7 +102,7 @@ def load_checkpoint(model: nn.Module,
 
     model_name = f'{config.name.NAME}_{config.seed}'
     if prefer_ft_rank:
-        rank_model_name = f'{model_name}_rank'
+        rank_model_name = f'{model_name}_rankmodel'
         checkpoint_file = os.path.join(target_path, f'{rank_model_name}{filetype}')
         if os.path.exists(checkpoint_file):
             # we found a rank model checkpoint
@@ -137,7 +137,7 @@ def load_checkpoint(model: nn.Module,
             print(f"Successfully loaded checkpoint from epoch {epoch} ({len(csv_stats)} csv rows) "
                   f"in {time.perf_counter() - load_start_t:.3f} secs")
 
-            if '_rank' in model_name:
+            if '_rankmodel' in model_name:
                 rank_found=True
                 found=False
             else:

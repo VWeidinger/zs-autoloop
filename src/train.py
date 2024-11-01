@@ -31,10 +31,10 @@ def train_model(csv_stats: List,
                 rank_metric: Metric,
                 run: Run,
                 pt_profiler: bool = False,
-                train_w_rank: bool = False,
+                train_w_rank_model: bool = False,
                 bound_predictions: bool = False,
                 prediction_bounder:PredictionBounder = None):
-    if train_w_rank:
+    if train_w_rank_model:
         # wrap the model with the rank model
         ranking_wrapper = RankModel(model)
     else:
@@ -51,15 +51,15 @@ def train_model(csv_stats: List,
             with_stack=True, record_shapes=True)
         prof.start()
 
-    target_epochs = config.epochs if not train_w_rank else 20
+    target_epochs = config.epochs if not train_w_rank_model else 20
 
     while epoch < target_epochs:
         epoch_stats = dict()
-        epoch_stats.update(epoch=epoch + epoch_offset, train_w_rank=train_w_rank)
+        epoch_stats.update(epoch=epoch + epoch_offset, train_w_rank=train_w_rank_model)
         epoch_start_time: float = time.perf_counter()
 
         any_best_metric = False
-        if train_w_rank:
+        if train_w_rank_model:
             train_epoch_rank(
                 epoch_stats=epoch_stats,
                 train_loader=train_loader,
@@ -136,7 +136,7 @@ def train_model(csv_stats: List,
                         metrics=metrics,
                         csv_stats=csv_stats,
                         finished=stop_early,
-                        train_w_rank=train_w_rank)
+                        rank_model=train_w_rank_model)
         epoch += 1
         if stop_early:
             print(f"Early stopping kicked in due to no improvement in {config.early_stopping_patience} epochs")

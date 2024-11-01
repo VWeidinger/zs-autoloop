@@ -70,8 +70,7 @@ class ModelConfig:
     loss_class_kwargs: dict = field(default=dict())
     limit_queries: int = field(default=None)
     limit_queries_affected_wl: int = field(default=0)
-    learn_from_timeout: bool = field(default=False)
-    timeout_threshold: int = field(default=30)  # in ms
+    include_timeout_queries: bool = False
     input_format: InputFormats = field(default=None)
     hyperparameter: Path = None
     column_statistics: bool = False
@@ -272,8 +271,8 @@ class ZSRankLossConfig(ZeroShotModelConfig):
 @attrs.define(frozen=True, slots=False)
 class ZSLearnFromTimeoutConfig(ZeroShotModelConfig):
     name: Name = ModelName.ZS_FROM_TIMEOUT
-    learn_from_timeout: bool = True
-    timeout_threshold:int = 30  # in s
+    include_timeout_queries: bool = True
+    loss_class_kwargs: dict = {'learn_from_timeout': True, 'timeout_threshold': 30}
 
 
 @attrs.define(frozen=True, slots=False)
@@ -360,7 +359,7 @@ class QueryFormerModelConfig(ModelConfig):
 @attrs.define(frozen=True, slots=False)
 class DataLoaderOptions:
     val_ratio: float = 0.20
-    shuffle: bool = True
+    shuffle: bool = False
     pin_memory: bool = False
     dim_bitmaps: int = 1000  # ToDo move to another class?
 

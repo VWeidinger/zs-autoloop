@@ -11,8 +11,8 @@ from torch.utils.data import DataLoader
 
 from classes.classes import ZeroShotModelConfig, DataLoaderOptions, ModelConfig, InputFormats
 from classes.workload_runs import WorkloadRuns
-from training.dataset.plan_dataset import PlanDataset
 from models.zeroshot.postgres_plan_batching import postgres_plan_collator
+from training.dataset.plan_dataset import PlanDataset
 
 
 def read_workload_runs(workload_run_paths: List[Path],
@@ -79,7 +79,7 @@ def create_datasets(workload_run_paths,
                                                     limit_queries=model_config.limit_queries,
                                                     limit_queries_affected_wl=model_config.limit_queries_affected_wl,
                                                     input_format=model_config.input_format,
-                                                    include_timeout_queries=model_config.learn_from_timeout and not is_test_dataset)
+                                                    include_timeout_queries=model_config.include_timeout_queries and not is_test_dataset)
 
     no_plans = len(plans)
     plan_indexes = list(range(no_plans))
