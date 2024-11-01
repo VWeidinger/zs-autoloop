@@ -3,7 +3,7 @@ from typing import Dict
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
+from fast_soft_sort.pytorch_ops import soft_rank
 
 def create_loss(loss_name: str, loss_kwargs: Dict):
     if loss_name == 'MSELoss':
@@ -14,6 +14,8 @@ def create_loss(loss_name: str, loss_kwargs: Dict):
         loss = DaceLoss(**loss_kwargs)
     elif loss_name == 'QPPLoss':
         loss = QPPLoss(**loss_kwargs)
+    elif loss_name == 'RankLoss':
+        loss = RankLoss(**loss_kwargs)
     else:
         raise ValueError(f"Loss {loss_name} not supported")
 
@@ -166,3 +168,39 @@ class LearnFromTimeoutLossWrapper(nn.Module):
 
         # calculate loss on the adjusted targets
         return self.loss(input, target)
+
+def corrcoef(target, pred):
+    pred_n = pred - pred.mean()
+    target_n = target - target.mean()
+    pred_n = pred_n / pred_n.norm()
+    target_n = target_n / target_n.norm()
+    return (pred_n * target_n).sum()
+
+def spearman(
+    target,
+    pred,
+    regularization="l2",
+    regularization_strength=1.0,
+):
+    # fast_soft_sort uses 1-based indexing, divide by len to compute percentage of rank
+    pred = soft_rank(
+        pred,
+        regularization=regularization,
+        regularization_strength=regularization_strength,
+    )
+    return corrcoef(target, pred / pred.shape[-1])
+
+class RankLoss(nn.Module):
+    """
+    Produces inf loss errors at the moment
+    """
+
+
+    def __init__(self, **kwargs):
+        super().__init__()
+
+    def forward(self, input, target):
+        return spearman(target, input)
+
+
+

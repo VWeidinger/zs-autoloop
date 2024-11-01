@@ -32,7 +32,7 @@ def gather_values_recursively(json_dict, value_dict=None):
             if k == 'join':
                 # manually construct join key
                 value_dict['join'].append(assemble_join_str(v))
-            elif k in ['hint_notices', 'sql', 'Index Cond', 'Filter','sql_string','Output','literal']:
+            elif k in ['hint_notices', 'sql', 'Index Cond', 'Filter','sql_string','Output']:
                 # skip these values
                 pass
             elif not (isinstance(v, list) or isinstance(v, tuple) or isinstance(v, dict)):

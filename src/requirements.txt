@@ -41,3 +41,5 @@ git+https://github.com/DataManagementLab/ldb_schema.git
 attrs~=24.2.0
 python-dotenv~=1.0.1
 duckdb
+orjson
+git+https://github.com/google-research/fast-soft-sort.git

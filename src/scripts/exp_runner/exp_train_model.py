@@ -116,7 +116,7 @@ if __name__ == '__main__':
         # Dataset('fhnk', scale=2)
     ]
 
-    seeds = [3]
+    seeds = [6]
     node = TrainingServers.NODE03
 
     # ===================
