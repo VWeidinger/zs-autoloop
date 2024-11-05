@@ -1,4 +1,5 @@
 import collections
+from typing import List, Tuple
 
 import dgl
 import numpy as np
@@ -176,8 +177,8 @@ def parse_predicates(db_column_features, feature_statistics, filter_column, filt
                          logical_preds, parent_filter_node_id=filter_node_id, depth=depth + 1)
 
 
-def postgres_plan_collator(plans, feature_statistics: dict =None, db_statistics: dict =None,
-                           plan_featurization: Featurization =None):
+def postgres_plan_collator(plans: List[Tuple], feature_statistics: dict[dict] = None, db_statistics: dict = None,
+                           plan_featurization: Featurization = None, test_mode: bool = False):
     """
     Combines physical plans into a large graph that can be fed into ML models.
     :return:
@@ -219,6 +220,11 @@ def postgres_plan_collator(plans, feature_statistics: dict =None, db_statistics:
     column_idx = dict()
     table_idx = dict()
 
+    # In case of test mode, we need sql_statements and hints to match corresponding queries that belong
+    # to the same plan
+    sql_statements = []
+    hints = []
+
     # prepare robust encoder for the numerical fields
     add_numerical_scalers(feature_statistics)
 
@@ -227,6 +233,12 @@ def postgres_plan_collator(plans, feature_statistics: dict =None, db_statistics:
     for sample_idx, p in plans:
         sample_idxs.append(sample_idx)
         labels.append(p["plan_runtime_ms"])
+
+        if test_mode:
+            sql_statements.append(p["sql"])
+            hints.append(p["hint"])
+
+        # Parse the plan as graph
         plan_to_graph(p, p["database_id"], plan_depths, plan_features, plan_to_plan_edges, db_statistics,
                       feature_statistics, filter_to_plan_edges, filter_features, output_column_to_plan_edges,
                       output_column_features, column_to_output_column_edges, column_features, table_features,
@@ -306,7 +318,10 @@ def postgres_plan_collator(plans, feature_statistics: dict =None, db_statistics:
     # rather deal with runtimes in secs
     labels = postprocess_labels(labels)
 
-    return graph, features, labels, sample_idxs
+    if test_mode:
+        return graph, features, labels, sample_idxs, sql_statements, hints
+    else:
+        return graph, features, labels, sample_idxs, [], []
 
 
 def postprocess_labels(labels):

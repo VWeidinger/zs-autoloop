@@ -26,7 +26,7 @@ def simple_batch_to(batch, device, label_norm):
 
 
 def batch_to(batch, device, label_norm):
-    graph, features, label, sample_idxs = batch
+    graph, features, label, sample_idxs, sqls, hints = batch
 
     # normalize the labels for training
     if label_norm is not None:
@@ -38,4 +38,4 @@ def batch_to(batch, device, label_norm):
     recursive_to(label_tensor, device)
     # recursive_to(graph, device)
     graph = graph.to(device, non_blocking=True)
-    return (graph, features), label_tensor, sample_idxs
+    return (graph, features), label_tensor, sample_idxs, sqls, hints

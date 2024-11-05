@@ -159,7 +159,8 @@ def create_zeroshot_dataloader(workload_runs: WorkloadRuns,
         train_collate_fn = functools.partial(plan_collator,
                                              db_statistics=database_statistics,
                                              feature_statistics=feature_statistics,
-                                             plan_featurization=model_config.featurization)
+                                             plan_featurization=model_config.featurization,
+                                             test_mode=False)
 
         dataloader_args.update(collate_fn=train_collate_fn)
         train_loader: DataLoader = DataLoader(train_dataset, **dataloader_args)
@@ -179,7 +180,8 @@ def create_zeroshot_dataloader(workload_runs: WorkloadRuns,
             test_collate_fn = functools.partial(plan_collator,
                                                 db_statistics=test_database_statistics,
                                                 feature_statistics=feature_statistics,
-                                                plan_featurization=model_config.featurization)
+                                                plan_featurization=model_config.featurization,
+                                                test_mode=True)
 
             # previously shuffle=False but this resulted in bugs
             dataloader_args.update(collate_fn=test_collate_fn)

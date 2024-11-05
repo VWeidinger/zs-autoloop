@@ -46,5 +46,5 @@ class WorkloadRuns:
 
             if model_config.type == ModelType.WL_AGNOSTIC:
                 assert len(self.train_workload_runs) >= 1, "Model need to be trained more than 1 database"
-                assert len(self.test_workload_runs) == 1, "Only one test workload run is supported for workload agnostic models"
+                #assert len(self.test_workload_runs) == 1, "Only one test workload run is supported for workload agnostic models"
         return

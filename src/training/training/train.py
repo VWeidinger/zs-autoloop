@@ -35,7 +35,7 @@ def train_epoch(epoch_stats: dict, train_loader: DataLoader, model: nn.Module,
     for batch_idx, batch in enumerate(tqdm(train_loader)):
         if max_epoch_tuples is not None and batch_idx * train_loader.batch_size > max_epoch_tuples:
             break
-        input_model, label, sample_idxs = custom_batch_to(batch, model.device, model.label_norm)
+        input_model, label, sample_idxs, _, _ = custom_batch_to(batch, model.device, model.label_norm)
 
         # Reset gradients first
         if isinstance(model, QPPNet):
@@ -102,6 +102,8 @@ def validate_model(val_loader: DataLoader,
         preds = []
         probs = []
         sample_idxs = []
+        all_sql = []
+        all_hints = []
 
         # evaluate test set using model
         test_start_t = time.perf_counter()
@@ -112,7 +114,7 @@ def validate_model(val_loader: DataLoader,
 
             val_num_tuples += val_loader.batch_size
 
-            input_model, label, sample_idxs_batch = custom_batch_to(batch, model.device, model.label_norm)
+            input_model, label, sample_idxs_batch, sql, hints = custom_batch_to(batch, model.device, model.label_norm)
             sample_idxs += sample_idxs_batch
             output = model(input_model)
 
@@ -130,6 +132,10 @@ def validate_model(val_loader: DataLoader,
             preds.append(curr_pred.reshape(-1))
             labels.append(curr_label.reshape(-1))
 
+            # Collect hints and sql statements
+            all_hints.extend(hints)
+            all_sql.extend(sql)
+
         if epoch_stats is not None:
             epoch_stats.update(val_time=time.perf_counter() - test_start_t)
             epoch_stats.update(val_num_tuples=val_num_tuples)
@@ -139,6 +145,7 @@ def validate_model(val_loader: DataLoader,
 
         labels = np.concatenate(labels, axis=0)
         preds = np.concatenate(preds, axis=0)
+
         epoch_stats.update(val_std=np.std(labels))
 
         if bound_predictions:
@@ -171,7 +178,9 @@ def validate_model(val_loader: DataLoader,
         if log_all_queries:
             rows = to_rows(indexes=sample_idxs,
                            labels=[float(f) for f in labels],
-                           predictions=[float(f) for f in preds])
+                           predictions=[float(f) for f in preds],
+                           sqls=all_sql,
+                           hints=all_hints)
 
             if bound_predictions:
                 for d, pred in zip(rows, bounded_preds):
@@ -185,14 +194,17 @@ def validate_model(val_loader: DataLoader,
 
                 wandb.run.summary[f"test_preds"] = rows
 
+            # Add rows to epoch_stats to use them in other evaluation tasks later
+            epoch_stats.update(test_preds=rows)
+
     return any_best_metric
 
 
-def to_rows(indexes, labels, predictions):
+def to_rows(indexes, labels, predictions, sqls, hints):
     """ Write down test-set predictions to file and to wandb"""
     rows = []
-    for (index, label, prediction) in zip(indexes, labels, predictions):
-        entry = dict(query_index=index, label=label, prediction=prediction)
+    for (index, label, prediction, sql, hint) in zip(indexes, labels, predictions, sqls, hints):
+        entry = dict(query_index=index, label=label, prediction=prediction, sql=sql, hint=hint)
         entry.update(qerror=QError().evaluate_metric(label, prediction))
         rows.append(entry)
     return rows

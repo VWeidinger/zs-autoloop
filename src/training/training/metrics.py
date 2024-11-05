@@ -1,6 +1,7 @@
 import copy
 
 import numpy as np
+import scipy
 from sklearn.metrics import mean_squared_error
 
 
@@ -99,8 +100,9 @@ class SpearmanRank(Metric):
         super().__init__(metric_name='spearman_rank', maximize=True, **kwargs)
 
     def evaluate_metric(self, labels=None, preds=None, probs=None):
-        spearman_rank = np.corrcoef(labels, preds)[0, 1]
-        return spearman_rank
+        value = scipy.stats.spearmanr(labels, preds).statistic
+        return value
+
 
 class RankAccuracy(Metric):
     def __init__(self, **kwargs):
@@ -109,3 +111,55 @@ class RankAccuracy(Metric):
     def evaluate_metric(self, ranking_correct=None, probs=None):
         rank_accuracy = np.mean(ranking_correct)
         return rank_accuracy
+
+
+class SelectedRuntime(Metric):
+    """ Given a list of queries, this metric reports the real runtime of the plan that is chosen according to the
+    model predictions"""
+    def __init__(self, display_name: str = "Selected Runtime (s)", **kwargs):
+        super().__init__(metric_name='runtime', **kwargs)
+
+    def evaluate_metric(self, labels=None, preds=None, probs=None):
+        index_of_minimal_prediction = preds.idxmin()
+        runtime_of_minimal_prediction = labels[index_of_minimal_prediction]
+        return runtime_of_minimal_prediction
+
+
+class SurpassedPlans(Metric):
+    """ Given a list of plans this metric reports of how optimal the chosen plan is by calculating the fraction of
+    worse plans that are surpassed"""
+    def __init__(self, **kwargs):
+        super().__init__(metric_name='missed_plans_fraction', **kwargs)
+
+    def evaluate_metric(self, labels=None, preds=None, probs=None):
+        index_of_minimal_prediction = preds.idxmin()
+        runtime_of_minimal_prediction = labels[index_of_minimal_prediction]
+        masks = labels < runtime_of_minimal_prediction
+        missed_plans_fraction = 1 - masks.sum() / len(labels)
+        return missed_plans_fraction * 100
+
+
+class MaxUnderestimation(Metric):
+    """ This metric calculates the maximal factor of underestimation of the model predictions for
+    a given set of queries"""
+    def __init__(self, **kwargs):
+        super().__init__(metric_name='max_underestimation', **kwargs)
+
+    def evaluate_metric(self, labels=None, preds=None, probs=None):
+        max_underestimation = 1 / min(preds / labels)
+        # Cap lower value to 1
+        max_underestimation = max(1, max_underestimation)
+        return max_underestimation
+
+
+class MaxOverestimation(Metric):
+    """ This metric calculates the maximal factor of overestmation of the model predictions for
+    a given set of queries"""
+    def __init__(self, **kwargs):
+        super().__init__(metric_name='max_overestimation',**kwargs)
+
+    def evaluate_metric(self, labels=None, preds=None, probs=None):
+        max_overestimation = max(preds / labels)
+        # Cap lower value to 1
+        max_overestimation = max(1, max_overestimation)
+        return max_overestimation
