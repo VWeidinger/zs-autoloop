@@ -12,12 +12,13 @@ from classes.workload_runs import WorkloadRuns
 from training.bound_predictions_with_history import PredictionBounder
 from training.training.checkpoint import save_csv
 from training.training.metrics import Metric, SpearmanRank, SelectedRuntime, SurpassedPlans, QError, MaxOverestimation, \
-    MaxUnderestimation
+    MaxUnderestimation, PickRate, BalancedAccuracy
 from training.training.train import validate_model
 from training.training.utils import find_early_stopping_metric
 
 
 def evaluate_join_order(test_stats: dict):
+    """ This method evaluates a given workload of queries, how well the join order was predicted."""
     predictions = test_stats["test_preds"]
     prediction_dataframe = pd.DataFrame(predictions)
     prediction_dataframe["hint"] = prediction_dataframe["hint"].fillna("")
@@ -53,6 +54,59 @@ def evaluate_join_order(test_stats: dict):
     print(f"Average QError over plan alternatives: {np.mean(aggregated_results['q_error'])}")
     print(f"Average Max Overestimation: {np.mean(aggregated_results['max_overestimation'])}")
     print(f"Average Max Underestimation: {np.mean(aggregated_results['max_underestimation'])}")
+    return
+
+
+def evaluate_physical_plan_selection(test_stats: dict):
+    """ This method evaluates a given workload of queries, how well physical operators were selected.
+    ToDo: Test on real dataset"""
+
+    predictions = test_stats["test_preds"]
+    prediction_dataframe = pd.DataFrame(predictions)
+    prediction_dataframe["hint"] = prediction_dataframe["hint"].fillna("")
+
+    metrics = {"selected_runtime": SelectedRuntime(),
+               "pick_rate": PickRate()}
+    aggregated_results = {key: [] for key in metrics}
+
+    # Group dataframe by SQL and iterate over each group
+    for sql, group_df in prediction_dataframe.groupby("sql"):
+        preds = group_df["prediction"]
+        labels = group_df["label"]
+
+        assert len(group_df) == 3, "Physical operator selection requires three different query plans per SQL statement"
+
+        for key, metric in metrics.items():
+            aggregated_results[key].append(metric.evaluate_metric(preds=preds, labels=labels))
+
+    print("Physical operator evaluation results:")
+    print(f"Total Selected runtime: {np.sum(aggregated_results['selected_runtime'])}")
+    print(f"Average Pick Rate: {np.mean(aggregated_results['pick_rate'])}")
+    return
+
+
+def evaluate_access_path_selection(test_stats: dict):
+    """ This method evaluates a given workload of queries, how well access paths were selected.
+    ToDo: Test on real dataset"""
+    predictions = test_stats["test_preds"]
+    prediction_dataframe = pd.DataFrame(predictions)
+    prediction_dataframe["hint"] = prediction_dataframe["hint"].fillna("")
+
+    metrics = {"selected_runtime": SelectedRuntime()}  # ToDO: Implement Balanced accuracy, which is more complex
+    aggregated_results = {key: [] for key in metrics}
+
+    # Group dataframe by SQL and iterate over each group
+    for sql, group_df in prediction_dataframe.groupby("sql"):
+        preds = group_df["prediction"]
+        labels = group_df["label"]
+
+        assert len(group_df) == 2, "Access path selection requires exactly "
+
+        for key, metric in metrics.items():
+            aggregated_results[key].append(metric.evaluate_metric(preds=preds, labels=labels))
+
+    print("Access path evaluation results:")
+    print(f"Total Selected runtime: {np.sum(aggregated_results['selected_runtime'])}")
     return
 
 
@@ -97,5 +151,9 @@ def predict_model(mode: str,
 
                 if "join_order" in str(test_path):
                     evaluate_join_order(test_stats=test_stats)
+                if "physical_operator" in str(test_path):
+                    evaluate_physical_plan_selection(test_stats=test_stats)
+                if "access_path_selection" in str(test_path):
+                    evaluate_access_path_selection(test_stats=test_stats)
         else:
             print("Skipping saving the test stats")
