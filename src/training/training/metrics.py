@@ -2,6 +2,7 @@ import copy
 
 import numpy as np
 import scipy
+import sklearn
 from sklearn.metrics import mean_squared_error
 
 
@@ -163,3 +164,21 @@ class MaxOverestimation(Metric):
         # Cap lower value to 1
         max_overestimation = max(1, max_overestimation)
         return max_overestimation
+
+
+class PickRate(Metric):
+    def __init__(self, **kwargs):
+        super().__init__(metric_name='pick_rate',**kwargs)
+
+    def evaluate_metric(self, labels=None, preds=None, probs=None):
+        labels = list(labels)
+        preds = list(preds)
+        return labels.index(min(labels)) == preds.index(min(preds))
+
+
+class BalancedAccuracy(Metric):
+    def __init__(self, **kwargs):
+        super().__init__(metric_name='balanced_accuracy', maximize=True, **kwargs)
+
+    def evaluate_metric(self, labels=None, preds=None, probs=None):
+        return sklearn.metrics.balanced_accuracy_score(labels, preds)
