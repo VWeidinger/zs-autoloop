@@ -17,7 +17,7 @@ if __name__ == '__main__':
 
     purge_steps = [KillAllScreens()]
 
-    node = TrainingServers.NODE09
+    node = TrainingServers.NODE03
 
     runner = ExpRunner(replicate=False,
                        node_names=[node["hostname"]],
@@ -32,7 +32,13 @@ if __name__ == '__main__':
     target_folder = f'{ClusterPaths().Data.root}/feature_statistics'
 
     eval_commands = [
-        f'python3 gather_feature_stats.py --database {" ".join([d.data_folder for d in datasets])} --workload workload_100k_s1.json --file_name {file_name} --target_folder {target_folder} --runs_dir {ClusterPaths().Data.runs}',
+        f'python3 gather_feature_stats.py '
+        f'--database {" ".join([d.data_folder for d in datasets])} '
+        f'--workload workload_200k_s1.json workload_200k_s1_full_hints.json join_order.json'
+        f'--file_name {file_name} '
+        f'--target_folder {target_folder} '
+        f'--runs_dir {ClusterPaths().Data.runs} '
+        f'--file_name feature_statistics',
     ]
 
     runner.run_exp(node_names=[node["hostname"]],

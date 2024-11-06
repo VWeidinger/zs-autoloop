@@ -103,7 +103,7 @@ class ModelConfig:
             return None
 
     def get_training_workloads(self, training_datasets: List[Dataset], target_dataset: Dataset,
-                               wl_name: str = "workload_100k_s1") -> List[str]:
+                               wl_name: str = "workload_200k_s1") -> List[str]:
         if self.type == ModelType.WL_AGNOSTIC:
             training_workloads = []
             for db in training_datasets:
@@ -119,7 +119,7 @@ class ModelConfig:
             return [str(path)]
 
     def get_test_workloads(self, target_db: Dataset) -> str:
-        return str(self.get_data_base_dir() / f"{target_db.db_name}_scaled{target_db.scale}" / "workload_100k_s1.json")
+        return str(self.get_data_base_dir() / f"{target_db.db_name}_scaled{target_db.scale}" / "workload_200k_s1.json")
 
     def get_data_base_dir(self) -> Path:
         if self.input_format == InputFormats.baseline_parsed:

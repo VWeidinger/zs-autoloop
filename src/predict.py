@@ -37,6 +37,8 @@ def evaluate_join_order(test_stats: dict):
         preds = group_df["prediction"]
         labels = group_df["label"]
 
+        # print(f"Found {len(group_df)} predictions for SQL query in {sql}")
+
         if len(group_df) == 1 or pd.isna(SpearmanRank().evaluate_metric(preds=preds, labels=labels)):
             print(f'Join order evaluation: Skipping SQL query in {sql} as Spearman correlation is invalid/NaN')
             continue
