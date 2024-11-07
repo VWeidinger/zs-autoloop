@@ -114,14 +114,15 @@ def init_model(statistics_file: Path,
             overall_count += 1
             timeout_count += 1 if plan['timeout'] else 0
 
-        print(
-            f"Timeout count: {timeout_count} of {overall_count} ({timeout_count / overall_count * 100:.2f}%) in {string}")
+        print(f"Timeout count: {timeout_count} of {overall_count} "
+              f"({timeout_count / overall_count * 100:.2f}%) in {string}\n")
 
-    print('\n')
-    gather_dataloader_stats(train_loader, "train_loader")
-    gather_dataloader_stats(val_loader, "val_loader")
-    for test_loader in test_loaders:
-        gather_dataloader_stats(test_loader, "test_loader")
+    if train_loader:
+        gather_dataloader_stats(train_loader, "train_loader")
+        gather_dataloader_stats(val_loader, "val_loader")
+    if test_loaders:
+        for test_loader in test_loaders:
+            gather_dataloader_stats(test_loader, "test_loader")
     print('\n')
 
     return model, train_loader, val_loader, test_loaders, feature_statistics
@@ -281,9 +282,8 @@ def use_model(mode: str,
                                     config=config,
                                     statistics_file=statistics_file,
                                     model_dir=model_dir,
-                                    train_w_rank_model=train_w_rank_model,
                                     bound_predictions=False,
-                                    prediction_bounder=prediction_bounder, )
+                                    prediction_bounder=prediction_bounder)
             else:
                 train_model(model_dir=model_dir,
                             train_loader=train_loader,
@@ -311,7 +311,6 @@ def use_model(mode: str,
                                       model_dir=model_dir,
                                       target_path=target_dir,
                                       run=run,
-                                      file_suffix=f"{'_rankmodel' if train_w_rank_model else ''}",
                                       bound_predictions=bound_predictions,
                                       prediction_bounder=prediction_bounder)
             else:

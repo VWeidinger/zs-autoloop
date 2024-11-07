@@ -260,6 +260,7 @@ class ZeroShotModelConfig(ModelConfig):
     batch_to_func: Callable = batch_to
     collator_func: Callable = postgres_plan_collator
     input_format: InputFormats = InputFormats.parsed
+    device: str = "cuda:0" # ToDo: Device selection should be handled by octopus - but how?
 
 
 @attrs.define(frozen=True, slots=False)
@@ -316,6 +317,7 @@ class DACEModelConfig(ModelConfig):
     input_format: InputFormats = InputFormats.parsed
     optimizer_class_name: str = "Adam"
     optimizer_kwargs: dict = dict(lr=1e-3)
+    device: str = "cuda:0" # ToDo: Device selection should be handled by octopus - but how?
 
 
 @attrs.define(frozen=True, slots=False)

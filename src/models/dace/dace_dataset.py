@@ -68,7 +68,7 @@ def create_dace_datasets(workload_run_paths,
                          is_test_dataset:bool=False) -> (PlanDataset, PlanDataset):
 
     plans, statistics = read_workload_runs(workload_run_paths=workload_run_paths,
-                               input_format=model_config.input_format, include_timeout_queries=model_config.learn_from_timeout and not is_test_dataset,)
+                               input_format=model_config.input_format, include_timeout_queries=model_config.include_timeout_queries and not is_test_dataset,)
 
     no_plans = len(plans)
     plan_indexes = list(range(no_plans))
@@ -104,9 +104,12 @@ def dace_collator(batch: Tuple, feature_statistics: dict, config: DACEModelConfi
     op_name_to_one_hot = get_op_name_to_one_hot(feature_statistics)
 
     labels, sample_idxs, seq_encodings, attention_masks, loss_masks, all_runtimes = [], [], [], [], [], []
+    all_sqls, all_hints = [], []
 
     for sample_idx, p in batch:
         sample_idxs.append(sample_idx)
+        all_sqls.append(p["sql"])
+        all_hints.append(p["hint"])
         seq_encoding, attention_mask, loss_mask, run_times = get_plan_encoding(query_plan=p,
                                                                                model_config=config,
                                                                                op_name_to_one_hot=op_name_to_one_hot,
@@ -126,7 +129,7 @@ def dace_collator(batch: Tuple, feature_statistics: dict, config: DACEModelConfi
     attention_masks = torch.stack(attention_masks)
     loss_masks = torch.stack(loss_masks)
 
-    return seq_encodings, attention_masks, loss_masks, all_runtimes, labels, sample_idxs
+    return seq_encodings, attention_masks, loss_masks, all_runtimes, labels, sample_idxs, all_hints, all_sqls
 
 
 def get_op_name_to_one_hot(feature_statistics: dict) -> dict:

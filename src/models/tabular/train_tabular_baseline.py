@@ -3,7 +3,7 @@ import math
 import os
 import time
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List, Tuple
 
 import joblib
 import lightgbm as lgb
@@ -18,6 +18,7 @@ from wandb.apis.public import Run
 from classes.classes import FlatModelConfig, ModelConfig, ScaledPostgresModelConfig, \
     AnalyticalEstCardModelConfig, AnalyticalActCardModelConfig
 from classes.workload_runs import WorkloadRuns
+from training.bound_predictions_with_history import PredictionBounder
 from training.dataset.dataset_creation import read_workload_runs
 from training.training.checkpoint import save_csv
 from training.training.metrics import QError, RMSE, MAPE
@@ -30,7 +31,13 @@ def train_tabular_model(workload_runs: WorkloadRuns,
                         model_dir: Path,
                         cap_training_samples: int = None,
                         early_stopping_rounds: int = 20,
-                        num_boost_round: int = 1000):
+                        num_boost_round: int = 1000,
+                        bound_predictions: bool = False,
+                        prediction_bounder: Optional[PredictionBounder] = None):
+
+    if bound_predictions or prediction_bounder:
+        raise NotImplementedError("prediction bounding needs to be implemented for flat models")
+
     # seed for reproducibility
     torch.manual_seed(config.seed)
     np.random.seed(config.seed)
@@ -55,14 +62,12 @@ def train_tabular_model(workload_runs: WorkloadRuns,
                                                             statistics_file=statistics_file,
                                                             cap_training_samples=cap_training_samples,
                                                             val_ratio=0.20,
-                                                            featurization=config.featurization,
                                                             shuffle=True)
         raise NotImplementedError("This needs to be solved for workload driven model due to the correct split")
     elif config.type == 'wl_agnostic':
         x_train, x_test, y_train, y_test = gen_dataset_func(workload_runs=workload_runs.train_workload_runs,
                                                             statistics_file=statistics_file,
                                                             cap_training_samples=cap_training_samples,
-                                                            featurization=config.featurization,
                                                             val_ratio=0.20,
                                                             shuffle=True)
     else:
@@ -110,7 +115,13 @@ def predict_tabular_model(config: ModelConfig,
                           model_dir: Path,
                           target_path: Path,
                           cap_training_samples: bool = None,
-                          run: Optional[Run] = None):
+                          run: Optional[Run] = None,
+                          bound_predictions: bool = False,
+                          prediction_bounder: Optional[PredictionBounder] = None):
+
+    if bound_predictions or prediction_bounder:
+        raise NotImplementedError("prediction bounding needs to be implemented for flat models")
+
     # seed for reproducibility
     torch.manual_seed(config.seed)
     np.random.seed(config.seed)
@@ -145,7 +156,6 @@ def predict_tabular_model(config: ModelConfig,
         x_test, _, y_test, _ = gen_dataset_func(workload_runs=[test_wl],
                                                 statistics_file=statistics_file,
                                                 cap_training_samples=cap_training_samples,
-                                                featurization=config.featurization,
                                                 val_ratio=0,
                                                 shuffle=False,
                                                 include_timeout_queries=False)
@@ -192,13 +202,18 @@ def predict_tabular_model(config: ModelConfig,
     return
 
 
-def gen_optimizer_cost_dataset(workload_runs, statistics_file, cap_training_samples, featurization, shuffle, val_ratio=0.15, include_timeout_queries: bool = False):
+def gen_optimizer_cost_dataset(workload_runs: List[Path],
+                               cap_training_samples: Optional[bool],
+                               statistics_file: Path,
+                               shuffle: bool,
+                               val_ratio: float = 0.15,
+                               include_timeout_queries: bool = False) -> Tuple[np.ndarray]:
     plans, database_statistics = read_workload_runs(workload_runs, include_timeout_queries=include_timeout_queries)
     feature_vecs = []
     labels = []
     for plan in plans:
         # append to all feature vectors and runtime labels
-        feature_vecs.append([plan["plan_parameters"]["est_cost"]])
+        feature_vecs.append([plan["plan_parameters"]["pg_cost"]])
         labels.append(plan["plan_runtime_ms"] / 1000)
 
     X_train, X_val, Y_train, Y_val = slice_train_val(cap_training_samples, feature_vecs, labels, plans, val_ratio,

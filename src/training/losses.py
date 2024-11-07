@@ -80,12 +80,11 @@ class QLoss(nn.Module):
 
 
 class DaceLoss(nn.Module):
-    def __init__(self, model, **loss_kwargs):
+    def __init__(self, **loss_kwargs):
         super().__init__()
         self.loss_masks = None
         self.preds = None
         self.real_run_times = None
-        self.to(model.device)
 
     def forward(self, input, target):
         input = self.preds
