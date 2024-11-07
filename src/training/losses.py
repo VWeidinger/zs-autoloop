@@ -99,10 +99,10 @@ class DaceLoss(nn.Module):
 
 
 class QPPLoss(torch.nn.Module):
-    def __init__(self, model, **loss_kwargs):
+    def __init__(self, operator_types: dict, device: str, **loss_kwargs):
         super().__init__()
-        self.operator_types = model.operator_types
-        self.device = model.device
+        self.operator_types = operator_types
+        self.device = device
         self.zeros = torch.zeros(1)
         self.curr_losses = {operator: 0 for operator, _ in self.operator_types.items()}
         self.accumulated_loss = {operator: [] for operator, _ in self.operator_types.items()}

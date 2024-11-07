@@ -131,13 +131,16 @@ def create_datasets(workload_run_paths,
 
 def qppnet_collator(plans, feature_statistics: dict = None, db_statistics: dict = None, column_statistics: dict = None, plan_featurization=None):
     labels = []
-    labels = []
     query_plans = []
+    sqls = []
+    hints = []
 
     # iterate over plans and create lists of edges and features per node
     sample_idxs = []
     errors = []
     for sample_idx, p in plans:
+        sqls.append(p["sql"])
+        hints.append(p["hint"])
         analyze_plan = p["analyze_plans"][0]
         query_plan: OperatorTree = operator_tree_from_json(analyze_plan)
         try:
@@ -150,4 +153,4 @@ def qppnet_collator(plans, feature_statistics: dict = None, db_statistics: dict 
 
     if errors:
         print(errors)
-    return query_plans, labels, sample_idxs
+    return query_plans, labels, sample_idxs, sqls, hints

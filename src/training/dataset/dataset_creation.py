@@ -50,6 +50,9 @@ def read_workload_runs(workload_run_paths: List[Path],
                     print("Stopping now")
                     break
         elif input_format == InputFormats.json:
+            if "query_list" not in run:
+                raise ValueError(f"This model requires json format, are you sure {path} is in json format?")
+
             for plan in run["query_list"]:
                 # Only learn from valid plans
                 plan["database_id"] = path_index

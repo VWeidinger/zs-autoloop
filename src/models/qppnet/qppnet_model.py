@@ -97,21 +97,11 @@ class QPPNet(nn.Module):
         self.feature_statistics = feature_statistics
         self.operator_types = model_config.featurization.QPP_NET_OPERATOR_TYPES
 
-        # If the dataset does not contain any indexes, remove index nodes from the operator types to prevent errors
-        # and to make the model faster. This is the case for TPC_H
-        """
-        if (workload_runs.train_workload_runs and "tpc_h" in str(workload_runs.train_workload_runs[0])
-                or workload_runs.test_workload_runs and "tpc_h" in str(workload_runs.test_workload_runs[0])):
+        loss_kwargs = model_config.loss_class_kwargs
+        loss_kwargs["operator_types"] = self.operator_types
+        loss_kwargs["device"] = self.device
 
-                remove_ops = []
-                for operator_type in self.operator_types:
-                    if "Index" in operator_type:
-                        remove_ops.append(operator_type)
-
-                for op in remove_ops:
-                    self.operator_types.pop(op)
-        """
-        self.loss_fxn = create_loss(model_config.loss_class_name, loss_kwargs=model_config.loss_class_kwargs)
+        self.loss_fxn = create_loss(model_config.loss_class_name, loss_kwargs=loss_kwargs)
 
         # Initialize neural units
         self.neural_units = nn.ModuleDict({
@@ -173,7 +163,7 @@ class QPPNet(nn.Module):
         # Compute and collect loss for current node type
         self.loss_fxn.update_operator_loss(node_type=node_type, predicted_operator_time=predicted_operator_time, label=label)
 
-        return pred_vector, predicted_operator_time / 1000
+        return pred_vector, predicted_operator_time #/ 1000
 
     def zero_grad(self, set_to_none: bool = True) -> None:
         """Clear previous gradients of the neural units"""

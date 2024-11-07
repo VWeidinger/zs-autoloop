@@ -20,6 +20,9 @@ from classes.classes import FlatModelConfig, ModelConfig, ScaledPostgresModelCon
 from classes.workload_runs import WorkloadRuns
 from training.bound_predictions_with_history import PredictionBounder
 from training.dataset.dataset_creation import read_workload_runs
+from training.evaluate_query_optimization import evaluate_join_order, evaluate_physical_plan_selection, \
+    evaluate_access_path_selection
+from training.featurizations import Featurization
 from training.training.checkpoint import save_csv
 from training.training.metrics import QError, RMSE, MAPE
 from training.training.train import to_rows
@@ -34,7 +37,6 @@ def train_tabular_model(workload_runs: WorkloadRuns,
                         num_boost_round: int = 1000,
                         bound_predictions: bool = False,
                         prediction_bounder: Optional[PredictionBounder] = None):
-
     if bound_predictions or prediction_bounder:
         raise NotImplementedError("prediction bounding needs to be implemented for flat models")
 
@@ -49,7 +51,7 @@ def train_tabular_model(workload_runs: WorkloadRuns,
     if isinstance(config, FlatModelConfig):
         gen_dataset_func = gen_flattened_dataset
     elif isinstance(config, ScaledPostgresModelConfig):
-        gen_dataset_func = gen_optimizer_cost_dataset
+        gen_dataset_func = gen_postgres_cost_dataset
     elif isinstance(config, AnalyticalEstCardModelConfig):
         gen_dataset_func = functools.partial(gen_analytical_flattened_dataset, act_card=False)
     elif isinstance(config, AnalyticalActCardModelConfig):
@@ -58,18 +60,25 @@ def train_tabular_model(workload_runs: WorkloadRuns,
         raise RuntimeError("Not supported")
 
     if config.type == 'wl_driven':
-        x_train, x_test, y_train, y_test = gen_dataset_func(workload_runs=workload_runs.train_workload_runs,
-                                                            statistics_file=statistics_file,
-                                                            cap_training_samples=cap_training_samples,
-                                                            val_ratio=0.20,
-                                                            shuffle=True)
+        x_train, x_test, y_train, y_test, _, _ = gen_dataset_func(workload_runs=workload_runs.train_workload_runs,
+                                                                  statistics_file=statistics_file,
+                                                                  cap_training_samples=cap_training_samples,
+                                                                  val_ratio=0.20,
+                                                                  shuffle=True)
         raise NotImplementedError("This needs to be solved for workload driven model due to the correct split")
     elif config.type == 'wl_agnostic':
-        x_train, x_test, y_train, y_test = gen_dataset_func(workload_runs=workload_runs.train_workload_runs,
-                                                            statistics_file=statistics_file,
-                                                            cap_training_samples=cap_training_samples,
-                                                            val_ratio=0.20,
-                                                            shuffle=True)
+
+        if hasattr(config, 'featurization'):
+            featurization = config.featurization
+        else:
+            featurization = None
+        x_train, x_test, y_train, y_test, sqls, hints = gen_dataset_func(
+            workload_runs=workload_runs.train_workload_runs,
+            statistics_file=statistics_file,
+            cap_training_samples=cap_training_samples,
+            featurization=featurization,
+            val_ratio=0.20,
+            shuffle=True)
     else:
         raise RuntimeError("Not supported")
 
@@ -118,7 +127,6 @@ def predict_tabular_model(config: ModelConfig,
                           run: Optional[Run] = None,
                           bound_predictions: bool = False,
                           prediction_bounder: Optional[PredictionBounder] = None):
-
     if bound_predictions or prediction_bounder:
         raise NotImplementedError("prediction bounding needs to be implemented for flat models")
 
@@ -146,20 +154,26 @@ def predict_tabular_model(config: ModelConfig,
         print(f"Loading model from {model_dir}_{config.seed}.pkl")
         m = joblib.load(filename=f'{model_dir}_{config.seed}.pkl')
         pred_func = m.predict
-        gen_dataset_func = gen_optimizer_cost_dataset
+        gen_dataset_func = gen_postgres_cost_dataset
 
     else:
         raise NotImplementedError('Not supported tabular model')
 
+    if hasattr(config, 'featurization'):
+        featurization = config.featurization
+    else:
+        featurization = None
+
     test_datasets = []
     for test_wl in workload_runs.test_workload_runs:
-        x_test, _, y_test, _ = gen_dataset_func(workload_runs=[test_wl],
-                                                statistics_file=statistics_file,
-                                                cap_training_samples=cap_training_samples,
-                                                val_ratio=0,
-                                                shuffle=False,
-                                                include_timeout_queries=False)
-        test_datasets.append((x_test, y_test))
+        x_test, _, y_test, _, test_sqls, test_hints = gen_dataset_func(workload_runs=[test_wl],
+                                                                       statistics_file=statistics_file,
+                                                                       cap_training_samples=cap_training_samples,
+                                                                       featurization=featurization,
+                                                                       val_ratio=0,
+                                                                       shuffle=False,
+                                                                       include_timeout_queries=False)
+        test_datasets.append((x_test, y_test, test_sqls, test_hints))
 
     metrics = [RMSE(),
                MAPE(),
@@ -167,7 +181,7 @@ def predict_tabular_model(config: ModelConfig,
                QError(percentile=95),
                QError(percentile=100)]
 
-    for (x_test, y_test), test_path in zip(test_datasets, workload_runs.target_test_csv_paths):
+    for (x_test, y_test, sqls, hints), test_path in zip(test_datasets, workload_runs.target_test_csv_paths):
         print(f"Starting validation for {test_path}")
         test_stats = dict()
         start_t = time.perf_counter()
@@ -188,47 +202,77 @@ def predict_tabular_model(config: ModelConfig,
         # Logging all queries
         rows = to_rows(indexes=[int(i) for i in range(0, len(y_test))],
                        labels=[float(f) for f in y_test],
-                       predictions=[float(f) for f in pred_runtimes])
-
+                       predictions=[float(f) for f in pred_runtimes],
+                       sqls=sqls,
+                       hints=hints)
         save_csv(rows, target_csv_path=str(test_path) + "_test_pred.csv")
 
+        # Update test stats and use this for query optimization evaluation
+        test_stats.update(test_preds=rows)
+        if "join_order" in str(test_path):
+            evaluate_join_order(test_stats=test_stats)
+        if "physical_operator" in str(test_path):
+            evaluate_physical_plan_selection(test_stats=test_stats)
+        if "access_path_selection" in str(test_path):
+            evaluate_access_path_selection(test_stats=test_stats)
+
+        # Additionally log results to wandb: ToDO: Streamline results / Aggregate
         if run:
             test_stats.pop('test_labels')
             test_stats.pop('test_preds')
             wandb.log({f"{config.name.NAME}/{model_dir.stem}/{config.seed}/test_scores":
-                wandb.Table(columns=["metric", "value"], data=list(test_stats.items()))})
+                           wandb.Table(columns=["metric", "value"], data=list(test_stats.items()))})
             wandb.log({f"{config.name.NAME}/{model_dir.stem}/{config.seed}/test_preds":
                            wandb.Table(dataframe=pd.DataFrame(rows))})
     return
 
 
-def gen_optimizer_cost_dataset(workload_runs: List[Path],
-                               cap_training_samples: Optional[bool],
-                               statistics_file: Path,
-                               shuffle: bool,
-                               val_ratio: float = 0.15,
-                               include_timeout_queries: bool = False) -> Tuple[np.ndarray]:
+def gen_postgres_cost_dataset(workload_runs: List[Path],
+                              cap_training_samples: Optional[bool],
+                              statistics_file: Path,
+                              featurization: Optional,
+                              shuffle: bool,
+                              val_ratio: float = 0.15,
+                              include_timeout_queries: bool = False) -> Tuple[np.ndarray]:
     plans, database_statistics = read_workload_runs(workload_runs, include_timeout_queries=include_timeout_queries)
     feature_vecs = []
     labels = []
+    sqls, hints = [], []  # Required to later evaluate against join order
+
     for plan in plans:
         # append to all feature vectors and runtime labels
         feature_vecs.append([plan["plan_parameters"]["pg_cost"]])
         labels.append(plan["plan_runtime_ms"] / 1000)
+        sqls.append(plan["sql"])
+        hints.append(plan["hint"])
 
-    X_train, X_val, Y_train, Y_val = slice_train_val(cap_training_samples, feature_vecs, labels, plans, val_ratio,
+    X_train, X_val, Y_train, Y_val = slice_train_val(cap_training_samples,
+                                                     feature_vecs,
+                                                     labels,
+                                                     plans,
+                                                     val_ratio,
                                                      shuffle)
-    return X_train, X_val, Y_train, Y_val
+    return X_train, X_val, Y_train, Y_val, sqls, hints
 
 
-def gen_flattened_dataset(workload_runs, statistics_file, cap_training_samples, featurization, val_ratio=0.15, shuffle=True,include_timeout_queries: bool = False):
+def gen_flattened_dataset(workload_runs: List[Path],
+                          statistics_file: Path,
+                          cap_training_samples: Optional[bool],
+                          featurization: Featurization,
+                          val_ratio: float = 0.15,
+                          shuffle: bool = True,
+                          include_timeout_queries: bool = False):
+
     feature_statistics = load_json(str(statistics_file), namespace=False)
     op_idx_dict = feature_statistics['op_name']['value_dict']
     no_ops = len(op_idx_dict)
     plans, database_statistics = read_workload_runs(workload_runs, include_timeout_queries=include_timeout_queries)
     feature_vecs = []
     labels = []
+    sqls, hints = [], []  # Required to later evaluate against query optimziation
     for plan in plans:
+        sqls.append(plan["sql"])
+        hints.append(plan["hint"])
         # number an operator occurs
         feature_num_vec = np.zeros(no_ops)
         # number of rows per op (estimated by postgres)
@@ -261,7 +305,7 @@ def gen_flattened_dataset(workload_runs, statistics_file, cap_training_samples, 
         labels.append(plan["plan_runtime_ms"] / 1000)
     X_train, X_val, Y_train, Y_val = slice_train_val(cap_training_samples, feature_vecs, labels, plans, val_ratio,
                                                      shuffle=shuffle)
-    return X_train, X_val, Y_train, Y_val
+    return X_train, X_val, Y_train, Y_val, sqls, hints
 
 
 def extract_card(p, act_card):

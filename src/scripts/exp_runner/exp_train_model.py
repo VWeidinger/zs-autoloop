@@ -6,7 +6,8 @@ from ldb_schema.paths import ClusterPaths, LocalPaths
 from octopus.step import Rsync, KillAllScreens, SetupVenv, RsyncCurrentRepo
 
 from classes.classes import ModelConfig, ModelType, \
-    ZSLearnFromTimeoutConfig, ZeroShotModelConfig, ZSRankLossConfig
+    ZSLearnFromTimeoutConfig, ZeroShotModelConfig, ZSRankLossConfig, ScaledPostgresModelConfig, DACEModelConfig, \
+    FlatModelConfig, QPPNetModelConfig
 from scripts.exp_runner.exp_runner import ExpRunner, TrainingServers
 
 
@@ -126,25 +127,25 @@ if __name__ == '__main__':
     # ===================
     # CONFIGS
     # ===================
-    quick_run = True # if True, it will run only a few epochs on a few workloads
+    quick_run = False # if True, it will run only a few epochs on a few workloads
     pt_profiler = False # Profiler for PyTorch
     leave_one_out_train_style = False  # if True, it will train all models for all datasets
-    ft_with_ranking = False # fine-tune with ranking (pretrains a model and then fine-tunes it with ranking)
-    bound_predictions = False # bound predictions to the range of the training data and output them as separate metrics - at the moment not competitive
-    eval_join_order = True # evaluate join order
+    ft_with_ranking = False  # fine-tune with ranking (pretrains a model and then fine-tunes it with ranking)
+    bound_predictions = False  # bound predictions to the range of the training data and output them as separate metrics - at the moment not competitive
+    eval_join_order = True  # evaluate join order using JOB-Light runs with exhaustive join orders
     # ===================
 
     # Standard Models
-    # model_config = ScaledPostgresModelConfig()
-    # model_config = FlatModelConfig()                  # --> Node 05 OK
-    # model_config = E2EModelConfig()
-    # model_config = QPPNetModelConfig()                # --> Node 00 OK
-    # model_config = MSCNModelConfig()
-    # model_config = DACEModelConfig()                  # --> Node 03 OK
-    # model_config = QueryFormerModelConfig()           # --> Node
-    model_config = ZeroShotModelConfig()              # --> Node 04
-    # model_config = ZSLearnFromTimeoutConfig()
-    # model_config = ZSRankLossConfig()
+    # model_config = ScaledPostgresModelConfig()        # --> Working
+    # model_config = FlatModelConfig()                  # --> Working
+    # model_config = E2EModelConfig()                   # --> ToDo: Adapt to new codebase and generate sentences
+    model_config = QPPNetModelConfig()                  # --> Working?
+    # model_config = MSCNModelConfig()                  # --> ToDo: Adapt to new codebase and generate sentences
+    # model_config = DACEModelConfig()                  # --> Working
+    # model_config = QueryFormerModelConfig()           # --> ToDo: Generate Sentences
+    # model_config = ZeroShotModelConfig()              # --> Working
+    # model_config = ZSLearnFromTimeoutConfig()         # --> Working
+    # model_config = ZSRankLossConfig()                 # --> Working
 
     # Ablation Models (without postgres Estimates)
     # model_config = DACEModelNoCostsConfig()

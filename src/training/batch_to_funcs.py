@@ -15,14 +15,14 @@ def dace_batch_to(batch, device, label_norm):
 
 
 def simple_batch_to(batch, device, label_norm):
-    query_plans, labels, sample_idxs = batch
+    query_plans, labels, sample_idxs, sqls, hints = batch
     if label_norm is not None:
         labels = label_norm.transform(np.asarray(labels).reshape(-1, 1))
         labels = labels.reshape(-1)
     labels = torch.as_tensor(labels, device=device, dtype=torch.float)
     recursive_to(query_plans, device)
     recursive_to(labels, device)
-    return query_plans, labels, sample_idxs
+    return query_plans, labels, sample_idxs, sqls, hints
 
 
 def batch_to(batch, device, label_norm):
