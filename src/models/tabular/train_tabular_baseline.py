@@ -16,7 +16,7 @@ from sklearn.linear_model import LinearRegression
 from wandb.apis.public import Run
 
 from classes.classes import FlatModelConfig, ModelConfig, ScaledPostgresModelConfig, \
-    AnalyticalEstCardModelConfig, AnalyticalActCardModelConfig
+    AnalyticalEstCardModelConfig, AnalyticalActCardModelConfig, DataLoaderOptions
 from classes.workload_runs import WorkloadRuns
 from training.bound_predictions_with_history import PredictionBounder
 from training.dataset.dataset_creation import read_workload_runs
@@ -36,7 +36,9 @@ def train_tabular_model(workload_runs: WorkloadRuns,
                         early_stopping_rounds: int = 20,
                         num_boost_round: int = 1000,
                         bound_predictions: bool = False,
-                        prediction_bounder: Optional[PredictionBounder] = None):
+                        prediction_bounder: Optional[PredictionBounder] = None,
+                        dataloader_options: DataLoaderOptions = None,
+                        ):
     if bound_predictions or prediction_bounder:
         raise NotImplementedError("prediction bounding needs to be implemented for flat models")
 
@@ -64,7 +66,9 @@ def train_tabular_model(workload_runs: WorkloadRuns,
                                                                   statistics_file=statistics_file,
                                                                   cap_training_samples=cap_training_samples,
                                                                   val_ratio=0.20,
-                                                                  shuffle=True)
+                                                                  shuffle=True,
+                                                                  stratify_dataset=dataloader_options.stratify_dataset,
+                                                                  stratify_per_wl_file=dataloader_options.stratify_per_wl_file)
         raise NotImplementedError("This needs to be solved for workload driven model due to the correct split")
     elif config.type == 'wl_agnostic':
 
@@ -126,7 +130,8 @@ def predict_tabular_model(config: ModelConfig,
                           cap_training_samples: bool = None,
                           run: Optional[Run] = None,
                           bound_predictions: bool = False,
-                          prediction_bounder: Optional[PredictionBounder] = None):
+                          prediction_bounder: Optional[PredictionBounder] = None,
+                          dataloader_options: DataLoaderOptions = None, ):
     if bound_predictions or prediction_bounder:
         raise NotImplementedError("prediction bounding needs to be implemented for flat models")
 
@@ -172,7 +177,9 @@ def predict_tabular_model(config: ModelConfig,
                                                                        featurization=featurization,
                                                                        val_ratio=0,
                                                                        shuffle=False,
-                                                                       include_timeout_queries=False)
+                                                                       include_timeout_queries=False,
+                                                                       stratify_dataset=dataloader_options.stratify_dataset,
+                                                                       stratify_per_wl_file=dataloader_options.stratify_per_wl_file)
         test_datasets.append((x_test, y_test, test_sqls, test_hints))
 
     metrics = [RMSE(),
@@ -233,8 +240,13 @@ def gen_postgres_cost_dataset(workload_runs: List[Path],
                               featurization: Optional,
                               shuffle: bool,
                               val_ratio: float = 0.15,
-                              include_timeout_queries: bool = False) -> Tuple[np.ndarray]:
-    plans, database_statistics = read_workload_runs(workload_runs, include_timeout_queries=include_timeout_queries)
+                              include_timeout_queries: bool = False,
+                              stratify_dataset: bool = False,
+                              stratify_per_wl_file: bool = False
+                              ) -> Tuple[np.ndarray]:
+    plans, database_statistics = read_workload_runs(workload_runs, include_timeout_queries=include_timeout_queries,
+                                                    stratify_dataset=stratify_dataset,
+                                                    stratify_per_wl_file=stratify_per_wl_file)
     feature_vecs = []
     labels = []
     sqls, hints = [], []  # Required to later evaluate against join order
@@ -261,15 +273,18 @@ def gen_flattened_dataset(workload_runs: List[Path],
                           featurization: Featurization,
                           val_ratio: float = 0.15,
                           shuffle: bool = True,
-                          include_timeout_queries: bool = False):
-
+                          include_timeout_queries: bool = False,
+                          stratify_dataset: bool = False,
+                          stratify_per_wl_file: bool = False, ):
     feature_statistics = load_json(str(statistics_file), namespace=False)
     op_idx_dict = feature_statistics['op_name']['value_dict']
     no_ops = len(op_idx_dict)
-    plans, database_statistics = read_workload_runs(workload_runs, include_timeout_queries=include_timeout_queries)
+    plans, database_statistics = read_workload_runs(workload_runs, include_timeout_queries=include_timeout_queries,
+                                                    stratify_dataset=stratify_dataset,
+                                                    stratify_per_wl_file=stratify_per_wl_file)
     feature_vecs = []
     labels = []
-    sqls, hints = [], []  # Required to later evaluate against query optimziation
+    sqls, hints = [], []  # Required to later evaluate against query optimization
     for plan in plans:
         sqls.append(plan["sql"])
         hints.append(plan["hint"])
@@ -327,11 +342,14 @@ def extract_card(p, act_card):
 
 
 def gen_analytical_flattened_dataset(workload_runs, statistics_file, cap_training_samples, val_ratio=0.15,
-                                     act_card=False, include_timeout_queries: bool = False):
+                                     act_card=False, include_timeout_queries: bool = False,
+                                     stratify_dataset: bool = False, stratify_per_wl_file: bool = False):
     feature_statistics = load_json(str(statistics_file), namespace=False)
     op_idx_dict = feature_statistics['op_name']['value_dict']
     no_ops = len(op_idx_dict)
-    plans, database_statistics = read_workload_runs(workload_runs, include_timeout_queries=include_timeout_queries)
+    plans, database_statistics = read_workload_runs(workload_runs, include_timeout_queries=include_timeout_queries,
+                                                    stratify_dataset=stratify_dataset,
+                                                    stratify_per_wl_file=stratify_per_wl_file)
     feature_vecs = []
     labels = []
     for plan in plans:

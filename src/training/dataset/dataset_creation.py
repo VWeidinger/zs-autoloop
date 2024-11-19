@@ -13,18 +13,26 @@ from classes.classes import ZeroShotModelConfig, DataLoaderOptions, ModelConfig,
 from classes.workload_runs import WorkloadRuns
 from models.zeroshot.postgres_plan_batching import postgres_plan_collator
 from training.dataset.plan_dataset import PlanDataset
+from training.dataset.statification import stratify_plans
 
 
 def read_workload_runs(workload_run_paths: List[Path],
                        limit_queries: int = None,
                        limit_queries_affected_wl: int = None,
                        input_format: InputFormats = InputFormats.parsed,
-                       include_timeout_queries:bool=False):
+                       include_timeout_queries: bool = False,
+                       stratify_per_wl_file: bool = False,
+                       stratify_dataset: bool = False):
+
     # reads several workload runs
     plans = []
     database_statistics = dict()
 
+    timeout_thresholds = []
+
     for path_index, path in enumerate(workload_run_paths):
+        per_file_plans = []
+
         try:
             run = load_json(str(path))
         except JSONDecodeError:
@@ -45,7 +53,7 @@ def read_workload_runs(workload_run_paths: List[Path],
                     continue
 
                 plan["database_id"] = path_index
-                plans.append(plan)
+                per_file_plans.append(plan)
                 if limit_per_ds is not None and p_id > limit_per_ds:
                     print("Stopping now")
                     break
@@ -63,9 +71,37 @@ def read_workload_runs(workload_run_paths: List[Path],
 
                 if plan["zero_card"] != True and plan["invalid_hint"] != True:
                     assert "Execution Time" in plan["analyze_plans"][0].keys(), f"Execution Time not in plan {plan}"
-                    plans.append(plan)
+                    per_file_plans.append(plan)
         else:
             raise ValueError(f"Input format {input_format} not supported")
+
+        # extract the timeout thresholds used during query execution
+        per_file_timeout_thresholds = [p['timeout_threshold'] for p in per_file_plans]  # in ms
+        assert len(
+            set(per_file_timeout_thresholds)) == 1, f"Multiple timeout thresholds in {path}: {set(per_file_timeout_thresholds)}"
+        timeout_thresholds.append(per_file_timeout_thresholds[0])
+
+        print(f'Stratify per wl file: {stratify_per_wl_file}')
+        if stratify_per_wl_file:
+            per_file_plans = stratify_plans(
+                plans=per_file_plans, max_runtime_ms=per_file_timeout_thresholds[0], output_identifier_hint=str(path),
+                print_distr_stats=True, shuffle_before=True
+            )
+
+        plans.extend(per_file_plans)
+
+    if stratify_dataset:
+        # ideally there is just a single timeout threshold
+        if len(set(timeout_thresholds)) > 1:
+            print(
+                f"Multiple timeout thresholds in dataset: {set(timeout_thresholds)}. Continuing stratification with max threshold.")
+        max_runtime = max(timeout_thresholds)
+
+        plans = stratify_plans(
+            plans=plans, max_runtime_ms=max_runtime, output_identifier_hint="overall", print_distr_stats=True,
+            shuffle_before=True
+        )
+
     return plans, database_statistics
 
 
@@ -76,13 +112,16 @@ def _inv_log1p(x):
 def create_datasets(workload_run_paths,
                     model_config: ModelConfig,
                     val_ratio=0.15,
-                    shuffle_before_split=True, is_test_dataset:bool=False) -> (Pipeline, PlanDataset, PlanDataset, PlanDataset, dict):
-
+                    shuffle_before_split=True, is_test_dataset: bool = False,
+                    stratify_dataset: bool = False, stratify_per_wl_file: bool = False) -> (
+        Pipeline, PlanDataset, PlanDataset, PlanDataset, dict):
     plans, database_statistics = read_workload_runs(workload_run_paths=workload_run_paths,
                                                     limit_queries=model_config.limit_queries,
                                                     limit_queries_affected_wl=model_config.limit_queries_affected_wl,
                                                     input_format=model_config.input_format,
-                                                    include_timeout_queries=model_config.include_timeout_queries and not is_test_dataset)
+                                                    include_timeout_queries=model_config.include_timeout_queries and not is_test_dataset,
+                                                    stratify_dataset=stratify_dataset,
+                                                    stratify_per_wl_file=stratify_per_wl_file)
 
     no_plans = len(plans)
     plan_indexes = list(range(no_plans))
@@ -157,7 +196,9 @@ def create_zeroshot_dataloader(workload_runs: WorkloadRuns,
         label_norm, train_dataset, val_dataset, database_statistics \
             = create_datasets(workload_run_paths=workload_runs.train_workload_runs,
                               model_config=model_config,
-                              val_ratio=data_loader_options.val_ratio)
+                              val_ratio=data_loader_options.val_ratio,
+                              stratify_dataset=data_loader_options.stratify_dataset,
+                              stratify_per_wl_file=data_loader_options.stratify_per_wl_file)
 
         train_collate_fn = functools.partial(plan_collator,
                                              db_statistics=database_statistics,
@@ -178,7 +219,9 @@ def create_zeroshot_dataloader(workload_runs: WorkloadRuns,
                                                                            model_config=model_config,
                                                                            shuffle_before_split=False,
                                                                            val_ratio=0.0,
-                                                                           is_test_dataset=True)
+                                                                           is_test_dataset=True,
+                                                                           stratify_dataset=data_loader_options.stratify_dataset,
+                                                                           stratify_per_wl_file=data_loader_options.stratify_per_wl_file)
             # test dataset
             test_collate_fn = functools.partial(plan_collator,
                                                 db_statistics=test_database_statistics,

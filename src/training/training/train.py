@@ -175,6 +175,10 @@ def validate_model(val_loader: DataLoader,
                         any_best_metric = True
                         print(f"New best model for {metric.metric_name}")
 
+        if run:
+            for key, value in epoch_stats.items():
+                wandb.run.summary[f'test_{key}'] = value
+
         if log_all_queries:
             rows = to_rows(indexes=sample_idxs,
                            labels=[float(f) for f in labels],
@@ -189,9 +193,6 @@ def validate_model(val_loader: DataLoader,
             save_csv(rows, target_csv_path=str(target_path) + "_test_pred.csv")
 
             if run:
-                for key, value in epoch_stats.items():
-                    wandb.run.summary[f'test_{key}'] = value
-
                 wandb.run.summary[f"test_preds"] = rows
 
             # Add rows to epoch_stats to use them in other evaluation tasks later

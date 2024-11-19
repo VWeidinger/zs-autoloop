@@ -364,6 +364,8 @@ class DataLoaderOptions:
     shuffle: bool = True
     pin_memory: bool = False
     dim_bitmaps: int = 1000  # ToDo move to another class?
+    stratify_dataset: bool = False
+    stratify_per_wl_file: bool = False
 
 
 MODEL_CONFIGS = [

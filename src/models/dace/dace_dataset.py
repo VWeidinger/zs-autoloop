@@ -1,6 +1,4 @@
 import functools
-import json
-import os
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Tuple, Optional, List
@@ -40,7 +38,9 @@ def create_dace_dataloader(statistics_file: Path,
     if workload_runs.train_workload_runs:
         train_dataset, val_dataset = create_dace_datasets(workload_run_paths=workload_runs.train_workload_runs,
                                                           model_config=model_config,
-                                                          val_ratio=dataloader_options.val_ratio)
+                                                          val_ratio=dataloader_options.val_ratio,
+                                                          stratify_dataset=dataloader_options.stratify_dataset,
+                                                          stratify_per_wl_file=dataloader_options.stratify_per_wl_file)
         train_loader: DataLoader = DataLoader(train_dataset, **dataloader_args)
         val_loader: DataLoader = DataLoader(val_dataset, **dataloader_args)
 
@@ -65,10 +65,14 @@ def create_dace_datasets(workload_run_paths,
                          model_config: DACEModelConfig,
                          val_ratio=0.15,
                          shuffle_before_split=True,
-                         is_test_dataset:bool=False) -> (PlanDataset, PlanDataset):
+                         is_test_dataset: bool = False,
+                         stratify_dataset: bool = False,
+                         stratify_per_wl_file: bool = False) -> (PlanDataset, PlanDataset):
 
     plans, statistics = read_workload_runs(workload_run_paths=workload_run_paths,
-                               input_format=model_config.input_format, include_timeout_queries=model_config.include_timeout_queries and not is_test_dataset,)
+                                           input_format=model_config.input_format,
+                                           include_timeout_queries=model_config.include_timeout_queries and not is_test_dataset,
+                                           stratify_dataset=stratify_dataset, stratify_per_wl_file=stratify_per_wl_file)
 
     no_plans = len(plans)
     plan_indexes = list(range(no_plans))

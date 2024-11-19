@@ -20,7 +20,6 @@ def create_qppnet_dataloader(workload_runs: WorkloadRuns,
                              column_statistics: Path,
                              data_loader_options: DataLoaderOptions) \
         -> (Optional[Pipeline], dict, Optional[DataLoader], Optional[DataLoader], List[Optional[DataLoader]]):
-
     feature_statistics = load_json(str(statistics_file), namespace=False)
     assert feature_statistics != {}, "Feature statistics file is empty!"
 
@@ -44,6 +43,8 @@ def create_qppnet_dataloader(workload_runs: WorkloadRuns,
             = create_datasets(workload_run_paths=workload_runs.train_workload_runs,
                               model_config=model_config,
                               val_ratio=data_loader_options.val_ratio,
+                              stratify_dataset=data_loader_options.stratify_dataset,
+                              stratify_per_wl_file=data_loader_options.stratify_per_wl_file
                               )
 
         test_dataset, val_dataset = val_dataset.split(0.5)
@@ -56,10 +57,10 @@ def create_qppnet_dataloader(workload_runs: WorkloadRuns,
         test_dataset = test_dataset.remove_timeouts()
 
         train_collate_fn = functools.partial(plan_collator,
-                                                 db_statistics=database_statistics,
-                                                 feature_statistics=feature_statistics,
-                                                 column_statistics=column_statistics,
-                                                 plan_featurization=model_config.featurization)
+                                             db_statistics=database_statistics,
+                                             feature_statistics=feature_statistics,
+                                             column_statistics=column_statistics,
+                                             plan_featurization=model_config.featurization)
 
         dataloader_args.update(collate_fn=train_collate_fn)
         train_loader = DataLoader(train_dataset, **dataloader_args)
@@ -74,7 +75,9 @@ def create_qppnet_dataloader(workload_runs: WorkloadRuns,
                 create_datasets(workload_run_paths=[test_workload],
                                 model_config=model_config,
                                 val_ratio=1.0,
-                                is_test_dataset=True)
+                                is_test_dataset=True,
+                                stratify_dataset=data_loader_options.stratify_dataset,
+                                stratify_per_wl_file=data_loader_options.stratify_per_wl_file)
 
             train_collate_fn = functools.partial(plan_collator,
                                                  db_statistics=database_statistics,
@@ -91,13 +94,16 @@ def create_qppnet_dataloader(workload_runs: WorkloadRuns,
 def create_datasets(workload_run_paths,
                     model_config: ModelConfig,
                     val_ratio=0.15,
-                    shuffle_before_split=True, is_test_dataset:bool=False) -> (Pipeline, PlanDataset, PlanDataset, PlanDataset, dict):
-
+                    shuffle_before_split=True, is_test_dataset: bool = False,
+                    stratify_dataset: bool = False, stratify_per_wl_file: bool = False) -> (
+        Pipeline, PlanDataset, PlanDataset, PlanDataset, dict):
     plans, database_statistics = read_workload_runs(workload_run_paths=workload_run_paths,
                                                     limit_queries=model_config.limit_queries,
                                                     limit_queries_affected_wl=model_config.limit_queries_affected_wl,
                                                     input_format=model_config.input_format,
-                                                    include_timeout_queries=model_config.include_timeout_queries and not is_test_dataset,)
+                                                    include_timeout_queries=model_config.include_timeout_queries and not is_test_dataset,
+                                                    stratify_dataset=stratify_dataset,
+                                                    stratify_per_wl_file=stratify_per_wl_file)
 
     no_plans = len(plans)
     plan_indexes = list(range(no_plans))
@@ -123,13 +129,15 @@ def create_datasets(workload_run_paths,
         val_dataset = PlanDataset([plans[i] for i in val_indexes], val_indexes)
 
     # derive label normalization
-    runtimes = np.array([p["analyze_plans"][0]["Execution Time"] / 1000 for p in plans]) # ToDo: Average over different plans, where else we do this?
+    runtimes = np.array([p["analyze_plans"][0]["Execution Time"] / 1000 for p in
+                         plans])  # ToDo: Average over different plans, where else we do this?
     label_norm = derive_label_normalizer(model_config.loss_class_name, runtimes)
 
     return label_norm, train_dataset, val_dataset, database_statistics
 
 
-def qppnet_collator(plans, feature_statistics: dict = None, db_statistics: dict = None, column_statistics: dict = None, plan_featurization=None):
+def qppnet_collator(plans, feature_statistics: dict = None, db_statistics: dict = None, column_statistics: dict = None,
+                    plan_featurization=None):
     labels = []
     query_plans = []
     sqls = []

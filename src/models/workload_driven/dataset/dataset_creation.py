@@ -5,12 +5,12 @@ from gensim.models import KeyedVectors
 from ldb_schema.load_schema import load_json
 from torch.utils.data import DataLoader
 
-from models.query_former.dataloader import query_former_plan_collator
-from models.workload_driven.dataset.mscn_batching import mscn_plan_collator
-from models.workload_driven.dataset.plan_tree_batching import baseline_plan_collator, extract_dimensions
 from classes.classes import ModelConfig, DataLoaderOptions, TPoolModelConfig, TlstmModelConfig, \
     TestSumModelConfig, MSCNModelConfig, QueryFormerModelConfig
 from classes.workload_runs import WorkloadRuns
+from models.query_former.dataloader import query_former_plan_collator
+from models.workload_driven.dataset.mscn_batching import mscn_plan_collator
+from models.workload_driven.dataset.plan_tree_batching import baseline_plan_collator, extract_dimensions
 from training.dataset.dataset_creation import create_datasets
 
 
@@ -196,7 +196,10 @@ def create_baseline_dataloader(workload_runs: WorkloadRuns,
         label_norm, train_dataset, val_dataset, database_statistics = \
             create_datasets(workload_run_paths=workload_runs.train_workload_runs,
                             model_config=model_config,
-                            val_ratio=data_loader_options.val_ratio)
+                            val_ratio=data_loader_options.val_ratio,
+                            stratify_dataset=data_loader_options.stratify_dataset,
+                            stratify_per_wl_file=data_loader_options.stratify_per_wl_file,
+                            )
 
         test_dataset, val_dataset = val_dataset.split(0.5)
 
@@ -230,7 +233,9 @@ def create_baseline_dataloader(workload_runs: WorkloadRuns,
             _, _, test_dataset, database_statistics = \
                 create_datasets(workload_run_paths=[test_workload],
                                 model_config=model_config,
-                                val_ratio=1.0, is_test_dataset=True)
+                                val_ratio=1.0, is_test_dataset=True,
+                                stratify_dataset=data_loader_options.stratify_dataset,
+                                stratify_per_wl_file=data_loader_options.stratify_per_wl_file)
 
             assert_db_stats_consistence(database_statistics, database_statistics, test_dataset)
 

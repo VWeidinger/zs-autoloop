@@ -6,8 +6,7 @@ from ldb_schema.paths import ClusterPaths, LocalPaths
 from octopus.step import Rsync, KillAllScreens, SetupVenv, RsyncCurrentRepo
 
 from classes.classes import ModelConfig, ModelType, \
-    ZSLearnFromTimeoutConfig, ZeroShotModelConfig, ZSRankLossConfig, ScaledPostgresModelConfig, DACEModelConfig, \
-    FlatModelConfig, QPPNetModelConfig
+    ZeroShotModelConfig
 from scripts.exp_runner.exp_runner import ExpRunner, TrainingServers
 
 
@@ -122,7 +121,7 @@ if __name__ == '__main__':
     ]
 
     seeds = [1]
-    node = TrainingServers.NODE03
+    node = TrainingServers.NODE04
 
     # ===================
     # CONFIGS
@@ -132,18 +131,18 @@ if __name__ == '__main__':
     leave_one_out_train_style = False  # if True, it will train all models for all datasets
     ft_with_ranking = False  # fine-tune with ranking (pretrains a model and then fine-tunes it with ranking)
     bound_predictions = False  # bound predictions to the range of the training data and output them as separate metrics - at the moment not competitive
-    eval_join_order = True  # evaluate join order using JOB-Light runs with exhaustive join orders
+    eval_join_order = False  # evaluate join order using JOB-Light runs with exhaustive join orders
     # ===================
 
     # Standard Models
     # model_config = ScaledPostgresModelConfig()        # --> Working
     # model_config = FlatModelConfig()                  # --> Working
     # model_config = E2EModelConfig()                   # --> ToDo: Adapt to new codebase and generate sentences
-    model_config = QPPNetModelConfig()                  # --> Working?
+    # model_config = QPPNetModelConfig()                  # --> Working?
     # model_config = MSCNModelConfig()                  # --> ToDo: Adapt to new codebase and generate sentences
     # model_config = DACEModelConfig()                  # --> Working
     # model_config = QueryFormerModelConfig()           # --> ToDo: Generate Sentences
-    # model_config = ZeroShotModelConfig()              # --> Working
+    model_config = ZeroShotModelConfig()  # --> Working
     # model_config = ZSLearnFromTimeoutConfig()         # --> Working
     # model_config = ZSRankLossConfig()                 # --> Working
 
