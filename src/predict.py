@@ -39,14 +39,14 @@ def predict_model(mode: str,
                     early_stop_m = find_early_stopping_metric(metrics)
                     model.load_state_dict(early_stop_m.best_model)
 
-                validate_model(config=config,
+                _, predictions_dict = validate_model(config=config,
                                val_loader=test_loader,
                                model=model,
                                epoch=epoch,
                                epoch_stats=test_stats,
                                metrics=metrics,
                                custom_batch_to=config.batch_to_func,
-                               log_all_queries=False,
+                                                     log_all_queries=True,
                                run=run,
                                model_dir=model_dir,
                                target_path=test_path,
@@ -56,10 +56,10 @@ def predict_model(mode: str,
                 save_csv([test_stats], str(test_path) + f"_test_stats{file_suffix}.csv")
 
                 if "join_order" in str(test_path):
-                    evaluate_join_order(test_stats=test_stats)
+                    evaluate_join_order(predictions=predictions_dict)
                 if "physical_operator" in str(test_path):
-                    evaluate_physical_plan_selection(test_stats=test_stats)
+                    evaluate_physical_plan_selection(predictions=predictions_dict)
                 if "access_path_selection" in str(test_path):
-                    evaluate_access_path_selection(test_stats=test_stats)
+                    evaluate_access_path_selection(predictions=predictions_dict)
         else:
             print("Skipping saving the test stats")

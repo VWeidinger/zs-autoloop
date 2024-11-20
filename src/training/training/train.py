@@ -104,6 +104,9 @@ def validate_model(val_loader: DataLoader,
         sample_idxs = []
         all_sql = []
         all_hints = []
+        all_selectivity = []
+        all_scan_op = []
+        all_join_op = []
 
         # evaluate test set using model
         test_start_t = time.perf_counter()
@@ -114,7 +117,12 @@ def validate_model(val_loader: DataLoader,
 
             val_num_tuples += val_loader.batch_size
 
-            input_model, label, sample_idxs_batch, sql, hints = custom_batch_to(batch, model.device, model.label_norm)
+            # Access path selection eval: selectivity + scan_op
+            # Physicl op selection eval: join_op
+            input_model, label, sample_idxs_batch, sql, hints, selectivity, scan_op, join_op = custom_batch_to(batch,
+                                                                                                               model.device,
+                                                                                                               model.label_norm)
+
             sample_idxs += sample_idxs_batch
             output = model(input_model)
 
@@ -135,6 +143,11 @@ def validate_model(val_loader: DataLoader,
             # Collect hints and sql statements
             all_hints.extend(hints)
             all_sql.extend(sql)
+
+            # Collect selectivity, scan_op, join_op
+            all_selectivity.extend(selectivity)
+            all_scan_op.extend(scan_op)
+            all_join_op.extend(join_op)
 
         if epoch_stats is not None:
             epoch_stats.update(val_time=time.perf_counter() - test_start_t)
@@ -179,33 +192,38 @@ def validate_model(val_loader: DataLoader,
             for key, value in epoch_stats.items():
                 wandb.run.summary[f'test_{key}'] = value
 
+        predictions = to_rows(indexes=sample_idxs,
+                              labels=[float(f) for f in labels],
+                              predictions=[float(f) for f in preds],
+                              sqls=all_sql,
+                              hints=all_hints,
+                              selectivitys=all_selectivity,
+                              scan_ops=all_scan_op,
+                              join_ops=all_join_op)
         if log_all_queries:
-            rows = to_rows(indexes=sample_idxs,
-                           labels=[float(f) for f in labels],
-                           predictions=[float(f) for f in preds],
-                           sqls=all_sql,
-                           hints=all_hints)
-
             if bound_predictions:
-                for d, pred in zip(rows, bounded_preds):
+                for d, pred in zip(predictions, bounded_preds):
                     d['bounded_pred'] = pred
 
-            save_csv(rows, target_csv_path=str(target_path) + "_test_pred.csv")
+            save_csv(predictions, target_csv_path=str(target_path) + "_test_pred.csv")
 
-            if run:
-                wandb.run.summary[f"test_preds"] = rows
+            # if run: # too large for wandb
+            #     wandb.run.summary[f"test_preds"] = predictions
 
             # Add rows to epoch_stats to use them in other evaluation tasks later
-            epoch_stats.update(test_preds=rows)
+            epoch_stats.update(test_preds=predictions)
 
-    return any_best_metric
+    return any_best_metric, predictions
 
 
-def to_rows(indexes, labels, predictions, sqls, hints):
+def to_rows(indexes, labels, predictions, sqls, hints, selectivitys, scan_ops, join_ops):
     """ Write down test-set predictions to file and to wandb"""
     rows = []
-    for (index, label, prediction, sql, hint) in zip(indexes, labels, predictions, sqls, hints):
-        entry = dict(query_index=index, label=label, prediction=prediction, sql=sql, hint=hint)
+    for (index, label, prediction, sql, hint, selectivity, scan_op, join_op) in zip(indexes, labels, predictions, sqls,
+                                                                                    hints, selectivitys, scan_ops,
+                                                                                    join_ops):
+        entry = dict(query_index=index, label=label, prediction=prediction, sql=sql, hint=hint, selectivity=selectivity,
+                     scan_op=scan_op, join_op=join_op)
         entry.update(qerror=QError().evaluate_metric(label, prediction))
         rows.append(entry)
     return rows

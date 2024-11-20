@@ -118,8 +118,11 @@ class ModelConfig:
             path = self.get_data_base_dir() / f"{target_dataset.db_name}_scaled{target_dataset.scale}" / f"{wl_name}.json"
             return [str(path)]
 
+    def assemble_wl_path(self, target_db: Dataset, wl_name):
+        return str(self.get_data_base_dir() / f"{target_db.db_name}_scaled{target_db.scale}" / f"{wl_name}.json")
+
     def get_test_workloads(self, target_db: Dataset) -> str:
-        return str(self.get_data_base_dir() / f"{target_db.db_name}_scaled{target_db.scale}" / "workload_200k_s1.json")
+        return self.assemble_wl_path(target_db, "workload_200k_s1")
 
     def get_data_base_dir(self) -> Path:
         if self.input_format == InputFormats.baseline_parsed:

@@ -43,3 +43,4 @@ python-dotenv~=1.0.1
 duckdb
 orjson
 git+https://github.com/google-research/fast-soft-sort.git
+plotly

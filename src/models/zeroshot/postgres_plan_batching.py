@@ -225,6 +225,11 @@ def postgres_plan_collator(plans: List[Tuple], feature_statistics: dict[dict] = 
     sql_statements = []
     hints = []
 
+    # other test information
+    selectivity_list = []
+    scan_op_list = []
+    join_op_list = []
+
     # prepare robust encoder for the numerical fields
     add_numerical_scalers(feature_statistics)
 
@@ -244,6 +249,57 @@ def postgres_plan_collator(plans: List[Tuple], feature_statistics: dict[dict] = 
                       output_column_features, column_to_output_column_edges, column_features, table_features,
                       table_to_plan_edges, output_column_idx, column_idx, table_idx,
                       plan_featurization, predicate_depths, intra_predicate_edges, logical_preds)
+
+        # extract additional info
+        if p['num_tables'] == 1:
+            # compute selectivity
+            def get_leaf_node(p):
+                if len(p['children']) == 0:
+                    return p
+                else:
+                    return get_leaf_node(p['children'][0])
+
+            leaf_node = get_leaf_node(p)
+            scan_op = leaf_node['plan_parameters']['op_name']
+            out_card = leaf_node['plan_parameters']['act_card']
+
+            # compute base table size
+            base_table_name = leaf_node['plan_parameters']['table_name']
+            base_table_id = leaf_node['plan_parameters']['table_id']
+
+            assert p['database_id'] in db_statistics
+            assert 'table_stats' in db_statistics[p['database_id']]
+            # assert base_table_name in db_statistics[p['database_id']]['table_stats'], f'{base_table_name} not in {db_statistics[p["database_id"]]["table_stats"].keys()}'
+            assert 'reltuples' in db_statistics[p['database_id']]['table_stats'][
+                base_table_id], f'table_size not in {db_statistics[p["database_id"]]["table_stats"][base_table_id].keys()}'
+
+            base_table_size = db_statistics[p['database_id']]['table_stats'][base_table_id]['reltuples']
+
+            # compute selectivity
+            selectivity_list.append(out_card / base_table_size)
+            scan_op_list.append(scan_op)
+            join_op_list.append(None)
+
+        elif p['num_tables'] == 2:
+            # compute join info
+            selectivity_list.append(None)
+            scan_op_list.append(None)
+
+            def get_top_join_node(p):
+                if len(p['children']) == 2:
+                    return p
+                elif len(p['children']) == 1:
+                    return get_top_join_node(p['children'][0])
+                else:
+                    raise ValueError('Invalid plan structure')
+
+            join_node = get_top_join_node(p)
+            join_op_list.append(join_node['plan_parameters']['op_name'])
+
+        else:
+            selectivity_list.append(None)
+            scan_op_list.append(None)
+            join_op_list.append(None)
 
     assert len(labels) == len(plans)
     assert len(plan_depths) == len(plan_features)
@@ -319,9 +375,9 @@ def postgres_plan_collator(plans: List[Tuple], feature_statistics: dict[dict] = 
     labels = postprocess_labels(labels)
 
     if test_mode:
-        return graph, features, labels, sample_idxs, sql_statements, hints
+        return graph, features, labels, sample_idxs, sql_statements, hints, selectivity_list, scan_op_list, join_op_list
     else:
-        return graph, features, labels, sample_idxs, [], []
+        return graph, features, labels, sample_idxs, [], [], [], [], []
 
 
 def postprocess_labels(labels):

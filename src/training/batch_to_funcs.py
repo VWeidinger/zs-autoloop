@@ -5,28 +5,29 @@ from training.training.utils import recursive_to
 
 
 def dace_batch_to(batch, device, label_norm):
-    seq_encodings, attention_masks, loss_masks, run_times, labels, sample_idxs, sqls, hints = batch
+    seq_encodings, attention_masks, loss_masks, run_times, labels, sample_idxs, sqls, hints, selectivity, scan_op, join_op = batch
     recursive_to(seq_encodings, device)
     recursive_to(attention_masks, device)
     recursive_to(run_times, device)
     recursive_to(loss_masks, device)
     recursive_to(labels, device)
-    return (seq_encodings, attention_masks, loss_masks, run_times), labels, sample_idxs, sqls, hints
+    return (seq_encodings, attention_masks, loss_masks,
+            run_times), labels, sample_idxs, sqls, hints, selectivity, scan_op, join_op
 
 
 def simple_batch_to(batch, device, label_norm):
-    query_plans, labels, sample_idxs, sqls, hints = batch
+    query_plans, labels, sample_idxs, sqls, hints, selectivity, scan_op, join_op = batch
     if label_norm is not None:
         labels = label_norm.transform(np.asarray(labels).reshape(-1, 1))
         labels = labels.reshape(-1)
     labels = torch.as_tensor(labels, device=device, dtype=torch.float)
     recursive_to(query_plans, device)
     recursive_to(labels, device)
-    return query_plans, labels, sample_idxs, sqls, hints
+    return query_plans, labels, sample_idxs, sqls, hints, selectivity, scan_op, join_op
 
 
 def batch_to(batch, device, label_norm):
-    graph, features, label, sample_idxs, sqls, hints = batch
+    graph, features, label, sample_idxs, sqls, hints, selectivity, scan_op, join_op = batch
 
     # normalize the labels for training
     if label_norm is not None:
@@ -38,4 +39,4 @@ def batch_to(batch, device, label_norm):
     recursive_to(label_tensor, device)
     # recursive_to(graph, device)
     graph = graph.to(device, non_blocking=True)
-    return (graph, features), label_tensor, sample_idxs, sqls, hints
+    return (graph, features), label_tensor, sample_idxs, sqls, hints, selectivity, scan_op, join_op

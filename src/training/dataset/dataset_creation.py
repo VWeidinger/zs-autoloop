@@ -30,6 +30,8 @@ def read_workload_runs(workload_run_paths: List[Path],
 
     timeout_thresholds = []
 
+    stratify_file_blacklist = ['join_order', 'physical_operator', 'access_path_selection']
+
     for path_index, path in enumerate(workload_run_paths):
         per_file_plans = []
 
@@ -82,7 +84,11 @@ def read_workload_runs(workload_run_paths: List[Path],
         timeout_thresholds.append(per_file_timeout_thresholds[0])
 
         print(f'Stratify per wl file: {stratify_per_wl_file}')
-        if stratify_per_wl_file:
+
+        if any([blacklist in str(path) for blacklist in stratify_file_blacklist]):
+            # Do not stratify if the file is in the blacklist
+            pass
+        elif stratify_per_wl_file:
             per_file_plans = stratify_plans(
                 plans=per_file_plans, max_runtime_ms=per_file_timeout_thresholds[0], output_identifier_hint=str(path),
                 print_distr_stats=True, shuffle_before=True
@@ -90,7 +96,11 @@ def read_workload_runs(workload_run_paths: List[Path],
 
         plans.extend(per_file_plans)
 
-    if stratify_dataset:
+    if len(workload_run_paths) == 1 and any(
+            [blacklist in str(workload_run_paths[0]) for blacklist in stratify_file_blacklist]):
+        # Do not stratify if only a single file is present and it is in the blacklist
+        pass
+    elif stratify_dataset:
         # ideally there is just a single timeout threshold
         if len(set(timeout_thresholds)) > 1:
             print(

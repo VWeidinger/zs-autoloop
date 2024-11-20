@@ -1,4 +1,3 @@
-from pathlib import Path
 from typing import List
 
 from ldb_schema.datasets import Dataset
@@ -13,17 +12,30 @@ from scripts.exp_runner.exp_runner import ExpRunner, TrainingServers
 def generate_training_commands(datasets: List[Dataset], seeds: list[int], python_version: str, wandb_project: str,
                                wandb_entity: str,
                                model_list: list[ModelConfig] = ModelConfig, quick_run: bool = False,
-                               pt_profiler: bool = False, leave_one_out_style: bool = True,
+                               pt_profiler: bool = False, leave_one_out_style: bool = True, test_against: str = None,
                                ft_with_ranking: bool = False, bound_predictions: bool = False,
-                               eval_join_order: bool = False) -> List[str]:
+                               eval_join_order: bool = False, eval_access_path: bool = False,
+                               eval_physical_operator: bool = False) -> List[str]:
+    if test_against:
+        print(f'Testing the models against {test_against}')
+
     commands = []
     for target_dataset in datasets:
+        if test_against is not None and target_dataset.db_name != test_against:
+            continue
+
         for target_model in model_list:
             training_runs = " ".join(
                 target_model.get_training_workloads(training_datasets=datasets, target_dataset=target_dataset))
-            test_runs = target_model.get_test_workloads(target_dataset)
-            if eval_join_order:
-                test_runs += " " + str(Path(ClusterPaths().Data.parsed_plans / "imdb_scaled1" / "join_order.json"))
+            # test_runs = target_model.get_test_workloads(target_dataset)
+            test_runs = ''
+            if eval_join_order:  # and target_dataset.db_name in ['imdb']:
+                test_runs += " " + target_model.assemble_wl_path(Dataset('imdb'), 'join_order')
+            if eval_access_path:  # and target_dataset.db_name in ['imdb', 'tpc_h', 'baseball']:
+                test_runs += " " + target_model.assemble_wl_path(Dataset('imdb'), "access_path_selection")
+            if eval_physical_operator:  # and target_dataset.db_name in ['imdb', 'tpc_h', 'baseball']:
+                test_runs += " " + target_model.assemble_wl_path(Dataset('imdb'), "physical_operator")
+
             statistics_path = target_model.get_statistics(source_path=ClusterPaths(),
                                                           dataset=target_dataset,
                                                           format=target_model.input_format)
@@ -77,9 +89,6 @@ def generate_training_commands(datasets: List[Dataset], seeds: list[int], python
 
                 commands.append(command)
 
-        if not leave_one_out_style:
-            break
-
     return commands
 
 
@@ -99,39 +108,41 @@ if __name__ == '__main__':
 
     datasets = [
         # Dataset('airline', max_no_joins=5),
-        # Dataset('imdb'),
+        Dataset('imdb'),
         Dataset('ssb', max_no_joins=3),
-        Dataset('tpc_h', max_no_joins=5),
-        Dataset('walmart', max_no_joins=2),
+        # Dataset('tpc_h', max_no_joins=5),
+        # Dataset('walmart', max_no_joins=2),
         # Dataset('financial', scale=4),
         # Dataset('basketball', scale=200),
         # Dataset('accidents', scale=1, contain_unicode=True),
         # Dataset('movielens', scale=8),
         # Dataset('baseball', scale=10),
-        Dataset('hepatitis', scale=2000),
+        # Dataset('hepatitis', scale=2000),
         # Dataset('tournament', scale=50),
-        Dataset('credit', scale=5),
+        # Dataset('credit', scale=5),
         # Dataset('employee', scale=3),
         # Dataset('consumer', scale=6),
-        Dataset('geneea', scale=23, contain_unicode=True),
-        Dataset('genome', scale=6),
+        # Dataset('geneea', scale=23, contain_unicode=True),
+        # Dataset('genome', scale=6),
         # Dataset('carcinogenesis', scale=674),
-        Dataset('seznam', scale=2),
+        # Dataset('seznam', scale=2),
         # Dataset('fhnk', scale=2)
     ]
 
     seeds = [1]
-    node = TrainingServers.NODE04
+    node = TrainingServers.NODE03
 
     # ===================
     # CONFIGS
     # ===================
-    quick_run = False # if True, it will run only a few epochs on a few workloads
-    pt_profiler = False # Profiler for PyTorch
-    leave_one_out_train_style = False  # if True, it will train all models for all datasets
+    quick_run = False  # if True, it will run only a few epochs on a few workloads
+    pt_profiler = False  # Profiler for PyTorch
+    test_against = 'ssb'  # if not set, will test against all in an leave one out style
     ft_with_ranking = False  # fine-tune with ranking (pretrains a model and then fine-tunes it with ranking)
     bound_predictions = False  # bound predictions to the range of the training data and output them as separate metrics - at the moment not competitive
-    eval_join_order = False  # evaluate join order using JOB-Light runs with exhaustive join orders
+    eval_join_order = True  # evaluate join order using JOB-Light runs with exhaustive join orders
+    eval_access_path = True  # evaluate access path selection (Idx Scan vs. SeqScan)
+    eval_physical_operator = True  # evaluate physical operator selection
     # ===================
 
     # Standard Models
@@ -169,10 +180,12 @@ if __name__ == '__main__':
                                                wandb_entity=runner.wandb_entity,
                                                quick_run=quick_run,
                                                pt_profiler=pt_profiler,
-                                               leave_one_out_style=leave_one_out_train_style,
+                                               test_against=test_against,
                                                ft_with_ranking=ft_with_ranking,
                                                bound_predictions=bound_predictions,
-                                               eval_join_order=eval_join_order)
+                                               eval_join_order=eval_join_order,
+                                               eval_access_path=eval_access_path,
+                                               eval_physical_operator=eval_physical_operator)
 
     runner.run_exp(node_names=[node["hostname"]],
                    commands=eval_commands,
