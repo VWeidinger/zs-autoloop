@@ -1,7 +1,10 @@
+from collections import defaultdict
+
 import numpy as np
 import pandas as pd
 import wandb
 from matplotlib import pyplot as plt
+from sklearn.metrics import balanced_accuracy_score
 
 from training.training.metrics import SpearmanRank, SelectedRuntime, SurpassedPlans, QError, MaxOverestimation, \
     MaxUnderestimation, PickRate
@@ -151,22 +154,35 @@ def evaluate_access_path_selection(predictions: dict):
     prediction_dataframe['table_name'] = table_names
     prediction_dataframe['col_name'] = col_names
 
+    optimal_scan_op_list_dict = defaultdict(list)  # sel -> list
+    predicted_scan_op_list_dict = defaultdict(list)
+
     for (table_name, col_name), group_df in prediction_dataframe.groupby(['table_name', 'col_name']):
         sel_runtimes_idx_dict = dict()
         sel_runtimes_seq_dict = dict()
 
         # iterate over group_df
+        idx_labels_dict = {}
+        idx_preds_dict = {}
+        seq_labels_dict = {}
+        seq_preds_dict = {}
         for idx, row in group_df.iterrows():
             if 'IndexScan' in row['hint']:
                 if 'Index Scan' != row['scan_op']:
                     continue
                 sel_runtimes_idx_dict[float(row['selectivity'])] = {'label': float(row['label']),
                                                                     'prediction': float(row['prediction'])}
+                idx_labels_dict[row['sql']] = float(row['label'])
+                idx_preds_dict[row['sql']] = float(row['prediction'])
             elif 'SeqScan' in row['hint']:
                 if 'Seq Scan' != row['scan_op']:
                     continue
                 sel_runtimes_seq_dict[float(row['selectivity'])] = {'label': float(row['label']),
                                                                     'prediction': float(row['prediction'])}
+                seq_labels_dict[row['sql']] = float(row['label'])
+                seq_preds_dict[row['sql']] = float(row['prediction'])
+            else:
+                raise Exception(f"Unknown scan op in hint: {row['hint']}")
 
         sel_winners = dict()
         for sel in sel_runtimes_seq_dict.keys():
@@ -174,8 +190,15 @@ def evaluate_access_path_selection(predictions: dict):
             if sel not in sel_runtimes_idx_dict or sel_runtimes_seq_dict[sel]['prediction'] < \
                     sel_runtimes_idx_dict[sel]['prediction']:
                 sel_winners[sel] = sel_runtimes_seq_dict[sel]['label']
+                predicted_scan_op_list_dict[sel].append('SeqScan')
             else:
                 sel_winners[sel] = sel_runtimes_idx_dict[sel]['label']
+                predicted_scan_op_list_dict[sel].append('IndexScan')
+
+            if sel_runtimes_seq_dict[sel]['label'] < sel_runtimes_idx_dict[sel]['label']:
+                optimal_scan_op_list_dict[sel].append('SeqScan')
+            else:
+                optimal_scan_op_list_dict[sel].append('IndexScan')
 
         x_sel = sorted(list(sel_winners.keys()), key=lambda x: float(x))
         y_seq = [sel_runtimes_seq_dict[sel]['label'] for sel in x_sel]
@@ -198,5 +221,56 @@ def evaluate_access_path_selection(predictions: dict):
 
         # log to wandb
         wandb.log({f'access_path_eval/{table_name}.{col_name}': wandb.Image(plt)})
+
+        # selection list
+        pred_selection = []
+        for sql in seq_labels_dict.keys():
+            if sql not in idx_preds_dict:
+                idx_preds_dict[sql] = np.inf
+            pred_selection.append(idx_preds_dict[sql] < seq_preds_dict[sql])
+
+        label_selection = []
+        for sql in seq_labels_dict.keys():
+            if sql not in idx_labels_dict:
+                idx_labels_dict[sql] = np.inf
+            label_selection.append(idx_labels_dict[sql] < seq_labels_dict[sql])
+
+        # calculate accuracy
+        accuracy = np.mean([p == l for p, l in zip(pred_selection, label_selection)])
+        balanced_accuracy = balanced_accuracy_score(label_selection, pred_selection)
+
+        print(f'{table_name}.{col_name} - Accuracy: {accuracy:.2f} - Balanced Accuracy: {balanced_accuracy:.2f}')
+        wandb.run.summary[f'accesspath_eval/acc/{table_name}.{col_name}'] = accuracy
+        wandb.run.summary[f'accesspath_eval/bal_acc/{table_name}.{col_name}'] = balanced_accuracy
+
+    # bucketize dict
+    bucketized_predicted_scan_op_list_dict = defaultdict(list)
+    bucketized_optimal_scan_op_list_dict = defaultdict(list)
+    for sel in predicted_scan_op_list_dict.keys():
+        bucketized_sel = round(sel, 1)
+        bucketized_predicted_scan_op_list_dict[bucketized_sel].extend(predicted_scan_op_list_dict[sel])
+        bucketized_optimal_scan_op_list_dict[bucketized_sel].extend(optimal_scan_op_list_dict[sel])
+
+    # create ratio of seqeuential scans with increasing selectivity
+    x_sel_list = sorted([float(s) for s in bucketized_predicted_scan_op_list_dict.keys()])
+    y_seq_ratio_pred = []
+    y_seq_ratio_labels = []
+
+    for sel in x_sel_list:
+        y_seq_ratio_pred.append(
+            np.mean([1 if op == 'SeqScan' else 0 for op in bucketized_predicted_scan_op_list_dict[sel]]))
+        y_seq_ratio_labels.append(
+            np.mean([1 if op == 'SeqScan' else 0 for op in bucketized_optimal_scan_op_list_dict[sel]]))
+
+    plt.close()
+    plt.plot(x_sel_list, y_seq_ratio_labels, label='Optimal')
+    plt.plot(x_sel_list, y_seq_ratio_pred, label='Predicted')
+    plt.xlabel('Selectivity')
+    plt.ylabel('Ratio SeqScan')
+    plt.legend()
+    plt.title('SeqScan Ratio')
+
+    wandb.log({f'access_path_eval/seq_scan_ratio': wandb.Image(plt)})
+
 
     return
