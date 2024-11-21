@@ -7,7 +7,7 @@ from matplotlib import pyplot as plt
 from sklearn.metrics import balanced_accuracy_score
 
 from training.training.metrics import SpearmanRank, SelectedRuntime, SurpassedPlans, QError, MaxOverestimation, \
-    MaxUnderestimation, PickRate
+    MaxUnderestimation, PickRate, OptimalRuntime
 
 
 def evaluate_join_order(predictions):
@@ -80,21 +80,39 @@ def evaluate_join_order(predictions):
     return
 
 
-def evaluate_physical_plan_selection(predictions: dict):
-    """ This method evaluates a given workload of queries, how well physical operators were selected.
-    ToDo: Test on real dataset"""
+def evaluate_physical_plan_selection(predictions: dict, with_idxs: bool = False):
+    """ This method evaluates a given workload of queries, how well physical operators were selected."""
+
+    log_prefix = f'physop_eval'
+    if with_idxs:
+        log_prefix += '_with_idxs'
 
     prediction_dataframe = pd.DataFrame(predictions)
     prediction_dataframe["hint"] = prediction_dataframe["hint"].fillna("")
 
     metrics = {"selected_runtime": SelectedRuntime(),
-               "pick_rate": PickRate()}
+               "pick_rate": PickRate(),
+               'optimal_runtime': OptimalRuntime()}
     aggregated_results = {key: [] for key in metrics}
+
+    optimal_join_op_ctr = {
+        'Hash Join': 0,
+        'Merge Join': 0,
+        'Index Nested Loop': 0,
+        'Nested Loop': 0,
+
+    }
+    selected_join_op_ctr = {
+        'Hash Join': 0,
+        'Merge Join': 0,
+        'Index Nested Loop': 0,
+        'Nested Loop': 0,
+    }
 
     # Group dataframe by SQL and iterate over each group
     for sql, group_df in prediction_dataframe.groupby("sql"):
-        preds = group_df["prediction"]
-        labels = group_df["label"]
+        preds = group_df["prediction"].astype(float)
+        labels = group_df["label"].astype(float)
 
         if len(group_df) != 3:
             print(
@@ -105,15 +123,55 @@ def evaluate_physical_plan_selection(predictions: dict):
         for key, metric in metrics.items():
             aggregated_results[key].append(metric.evaluate_metric(preds=preds, labels=labels))
 
+        # optimal plan
+        optimal_row_id = labels.idxmin()
+        optimal_join_op = group_df.loc[optimal_row_id, 'join_op']
+        optimal_join_op_ctr[optimal_join_op] += 1
+
+        # selected plan
+        selected_row_id = preds.idxmin()
+        selected_join_op = group_df.loc[selected_row_id, 'join_op']
+        selected_join_op_ctr[selected_join_op] += 1
+
     total_selected_runtime = np.sum(aggregated_results['selected_runtime'])
+    total_optimal_runtime = np.sum(aggregated_results['optimal_runtime'])
     avg_pick_rate = np.mean(aggregated_results['pick_rate'])
 
     print("Physical operator evaluation results:")
     print(f"Total Selected runtime: {total_selected_runtime}")
+    print(f"Total Optimal runtime: {total_optimal_runtime}")
     print(f"Average Pick Rate: {avg_pick_rate}")
 
-    wandb.run.summary[f'physop_eval/total_selected_runtime'] = total_selected_runtime
-    wandb.run.summary[f'physop_eval/avg_pick_rate'] = avg_pick_rate
+    wandb.run.summary[f'{log_prefix}/total_selected_runtime'] = total_selected_runtime
+    wandb.run.summary[f'{log_prefix}/total_optimal_runtime'] = total_optimal_runtime
+    wandb.run.summary[f'{log_prefix}/avg_pick_rate'] = avg_pick_rate
+
+    total = sum(optimal_join_op_ctr.values())
+    optimal_join_op_ctr = {k: v / total for k, v in optimal_join_op_ctr.items()}
+    assert total == sum(selected_join_op_ctr.values())
+    selected_join_op_ctr = {k: v / total for k, v in selected_join_op_ctr.items()}
+
+    def autopct_format(values):
+        def my_format(pct):
+            return ('%1.1f%%' % pct) if pct > 2 else ''
+
+        return my_format
+
+    # create pie chart for optimal join operator distribution and predicted join operator distribution
+    fig, axs = plt.subplots(1, 2, figsize=(12, 6))
+    axs[0].pie(optimal_join_op_ctr.values(), autopct=autopct_format(optimal_join_op_ctr.values()))
+    axs[0].set_title('Optimal Join Operator Distribution')
+
+    axs[1].pie(selected_join_op_ctr.values(), autopct=autopct_format(selected_join_op_ctr.values()))
+    axs[1].set_title('Predicted Join Operator Distribution')
+
+    # create legend
+    fig.legend(optimal_join_op_ctr.keys(), loc='lower center')
+    plt.show()
+
+    # log to wandb
+    wandb.log({f'{log_prefix}/join_op_distribution': wandb.Image(plt)})
+
     return
 
 
@@ -124,7 +182,7 @@ def evaluate_access_path_selection(predictions: dict):
     prediction_dataframe = pd.DataFrame(predictions)
     prediction_dataframe["hint"] = prediction_dataframe["hint"].fillna("")
 
-    metrics = {"selected_runtime": SelectedRuntime()}  # ToDO: Implement Balanced accuracy, which is more complex
+    metrics = {"selected_runtime": SelectedRuntime(), 'optimal_runtime': OptimalRuntime()}
     aggregated_results = {key: [] for key in metrics}
 
     # Group dataframe by SQL and iterate over each group
@@ -132,17 +190,23 @@ def evaluate_access_path_selection(predictions: dict):
         preds = group_df["prediction"]
         labels = group_df["label"]
 
-        assert len(group_df) == 2, "Access path selection requires exactly "
+        if len(group_df) != 2:
+            print(
+                f'Access path selection requires exactly two different query plans per SQL statement. Got: {len(group_df)}')
+            continue
 
         for key, metric in metrics.items():
             aggregated_results[key].append(metric.evaluate_metric(preds=preds, labels=labels))
 
     total_selected_runtime = np.sum(aggregated_results['selected_runtime'])
+    total_optimal_runtime = np.sum(aggregated_results['optimal_runtime'])
 
     print("Access path evaluation results:")
     print(f"Total Selected runtime: {total_selected_runtime}")
+    print(f"Total Optimal runtime: {total_optimal_runtime}")
 
     wandb.run.summary[f'accesspath_eval/total_selected_runtime'] = total_selected_runtime
+    wandb.run.summary[f'accesspath_eval/total_optimal_runtime'] = total_optimal_runtime
 
     def extract_table_col(sql):
         table_name = sql.split("FROM")[1].split("WHERE")[0].strip()
@@ -168,14 +232,18 @@ def evaluate_access_path_selection(predictions: dict):
         seq_preds_dict = {}
         for idx, row in group_df.iterrows():
             if 'IndexScan' in row['hint']:
-                if 'Index Scan' != row['scan_op']:
+                if 'Index Scan' != row[
+                    'scan_op']:  # not necessary - discarding plans where hint was not obeyed in dataset creation
+                    raise Exception('this should not happen - hint and scan_op do not match')
                     continue
                 sel_runtimes_idx_dict[float(row['selectivity'])] = {'label': float(row['label']),
                                                                     'prediction': float(row['prediction'])}
                 idx_labels_dict[row['sql']] = float(row['label'])
                 idx_preds_dict[row['sql']] = float(row['prediction'])
             elif 'SeqScan' in row['hint']:
-                if 'Seq Scan' != row['scan_op']:
+                if 'Seq Scan' != row[
+                    'scan_op']:  # not necessary - discarding plans where hint was not obeyed in dataset creation
+                    raise Exception('this should not happen - hint and scan_op do not match')
                     continue
                 sel_runtimes_seq_dict[float(row['selectivity'])] = {'label': float(row['label']),
                                                                     'prediction': float(row['prediction'])}
@@ -220,7 +288,7 @@ def evaluate_access_path_selection(predictions: dict):
         plt.show()
 
         # log to wandb
-        wandb.log({f'access_path_eval/{table_name}.{col_name}': wandb.Image(plt)})
+        wandb.log({f'access_path_eval/col_plots/{table_name}.{col_name}': wandb.Image(plt)})
 
         # selection list
         pred_selection = []

@@ -35,6 +35,7 @@ def generate_training_commands(datasets: List[Dataset], seeds: list[int], python
                 test_runs += " " + target_model.assemble_wl_path(Dataset('imdb'), "access_path_selection")
             if eval_physical_operator:  # and target_dataset.db_name in ['imdb', 'tpc_h', 'baseball']:
                 test_runs += " " + target_model.assemble_wl_path(Dataset('imdb'), "physical_operator")
+                test_runs += " " + target_model.assemble_wl_path(Dataset('imdb'), "physical_operator_w_idx")
 
             statistics_path = target_model.get_statistics(source_path=ClusterPaths(),
                                                           dataset=target_dataset,

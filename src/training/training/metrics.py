@@ -126,6 +126,16 @@ class SelectedRuntime(Metric):
         return runtime_of_minimal_prediction
 
 
+class OptimalRuntime(Metric):
+    """ Given a list of queries, this metric reports the real runtime of the optimal plan"""
+
+    def __init__(self, **kwargs):
+        super().__init__(metric_name='optimal_runtime', **kwargs)
+
+    def evaluate_metric(self, labels=None, preds=None, probs=None):
+        return labels.min()
+
+
 class SurpassedPlans(Metric):
     """ Given a list of plans this metric reports of how optimal the chosen plan is by calculating the fraction of
     worse plans that are surpassed"""

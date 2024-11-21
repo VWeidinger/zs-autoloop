@@ -58,7 +58,7 @@ def predict_model(mode: str,
                 if "join_order" in str(test_path):
                     evaluate_join_order(predictions=predictions_dict)
                 if "physical_operator" in str(test_path):
-                    evaluate_physical_plan_selection(predictions=predictions_dict)
+                    evaluate_physical_plan_selection(predictions=predictions_dict, with_idxs='_w_idx' in str(test_path))
                 if "access_path_selection" in str(test_path):
                     evaluate_access_path_selection(predictions=predictions_dict)
         else:

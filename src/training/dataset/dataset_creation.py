@@ -21,6 +21,7 @@ def read_workload_runs(workload_run_paths: List[Path],
                        limit_queries_affected_wl: int = None,
                        input_format: InputFormats = InputFormats.parsed,
                        include_timeout_queries: bool = False,
+                       include_hint_not_obeyed_queries: bool = False,
                        stratify_per_wl_file: bool = False,
                        stratify_dataset: bool = False):
 
@@ -54,6 +55,10 @@ def read_workload_runs(workload_run_paths: List[Path],
                     # Skip timeout queries
                     continue
 
+                if not include_hint_not_obeyed_queries and plan["invalid_hint"]:
+                    # Skip queries with invalid hints
+                    continue
+
                 plan["database_id"] = path_index
                 per_file_plans.append(plan)
                 if limit_per_ds is not None and p_id > limit_per_ds:
@@ -69,6 +74,10 @@ def read_workload_runs(workload_run_paths: List[Path],
 
                 if not include_timeout_queries and plan["timeout"]:
                     # Skip timeout queries
+                    continue
+
+                if not include_hint_not_obeyed_queries and plan["invalid_hint"]:
+                    # Skip queries with invalid hints
                     continue
 
                 if plan["zero_card"] != True and plan["invalid_hint"] != True:
