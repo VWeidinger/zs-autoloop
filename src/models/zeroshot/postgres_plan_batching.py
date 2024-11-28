@@ -350,7 +350,11 @@ def postgres_plan_collator(plans: List[Tuple], feature_statistics: dict[dict] = 
                                         num_nodes_dict)
 
     # create graph
-    graph = dgl.heterograph(data_dict, num_nodes_dict=num_nodes_dict)
+    try:
+        graph = dgl.heterograph(data_dict, num_nodes_dict=num_nodes_dict)
+    except Exception as e:
+        print(f'Error in creating graph: {num_nodes_dict}')
+        raise e
     graph.max_depth = max_depth
     graph.max_pred_depth = max_pred_depth
 

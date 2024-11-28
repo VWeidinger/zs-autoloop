@@ -64,3 +64,7 @@ def save_config(save_dict, target_dir, json_name):
 
     with open(target_params_path, 'w') as f:
         json.dump(save_dict, f)
+
+
+def prefix_dict(dictionary, prefix):
+    return {prefix + k: v for k, v in dictionary.items()}

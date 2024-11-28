@@ -25,7 +25,7 @@ from training.evaluate_query_optimization import evaluate_join_order, evaluate_p
 from training.featurizations import Featurization
 from training.training.checkpoint import save_csv
 from training.training.metrics import QError, RMSE, MAPE
-from training.training.train import to_rows
+from training.training.validate import to_rows
 
 
 def train_tabular_model(workload_runs: WorkloadRuns,
@@ -122,7 +122,7 @@ def train_tabular_model(workload_runs: WorkloadRuns,
     save_csv([param_dict], str(model_dir) + f'_{config.seed}_params.csv')
 
 
-def predict_tabular_model(config: ModelConfig,
+def test_tabular_model(config: ModelConfig,
                           workload_runs: WorkloadRuns,
                           statistics_file: Path,
                           model_dir: Path,

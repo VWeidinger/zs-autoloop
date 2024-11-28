@@ -108,18 +108,21 @@ class ModelConfig:
             training_workloads = []
             for db in training_datasets:
                 if db.db_name != target_dataset.db_name:
-                    path = self.get_data_base_dir() / f"{db.db_name}_scaled{db.scale}" / f"{wl_name}.json"
+                    path = self.get_data_base_dir(
+                        stratified_workloads=False) / f"{db.db_name}_scaled{db.scale}" / f"{wl_name}.json"
                     training_workloads.append(str(path))
 
             # assert len(training_workloads) == 19, f"Found {len(training_workloads)}, but it should be 19"
             return training_workloads
 
         elif self.type == ModelType.WL_DRIVEN:
-            path = self.get_data_base_dir() / f"{target_dataset.db_name}_scaled{target_dataset.scale}" / f"{wl_name}.json"
+            path = self.get_data_base_dir(
+                stratified_workloads=False) / f"{target_dataset.db_name}_scaled{target_dataset.scale}" / f"{wl_name}.json"
             return [str(path)]
 
     def assemble_wl_path(self, target_db: Dataset, wl_name):
-        return str(self.get_data_base_dir() / f"{target_db.db_name}_scaled{target_db.scale}" / f"{wl_name}.json")
+        return str(self.get_data_base_dir(
+            stratified_workloads=False) / f"{target_db.db_name}_scaled{target_db.scale}" / f"{wl_name}.json")
 
     def get_test_workloads(self, target_db: Dataset) -> str:
         return self.assemble_wl_path(target_db, "workload_200k_s1")

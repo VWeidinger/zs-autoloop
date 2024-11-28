@@ -11,7 +11,7 @@ class Metric:
     Abstract class defining a metric used to evaluate the zero-shot cost model performance (e.g., Q-error)
     """
 
-    def __init__(self, metric_prefix='val_', metric_name='metric', maximize=True, early_stopping_metric=False):
+    def __init__(self, metric_prefix='', metric_name='metric', maximize=True, early_stopping_metric=False):
         self.maximize = maximize
         self.default_value = -np.inf
         if not self.maximize:

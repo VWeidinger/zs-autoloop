@@ -13,14 +13,18 @@ from classes.classes import ModelConfig
 from training.bound_predictions_with_history import PredictionBounder
 from training.training.checkpoint import save_checkpoint
 from training.training.metrics import Metric
-from training.training.train import validate_model, train_epoch
+from training.training.test import test_model
+from training.training.train import train_epoch
 from training.training.train_w_rank import RankModel, train_epoch_rank, validate_rank
+from training.training.validate import validate_model
 
 
 def train_model(csv_stats: List,
                 model_dir: Path,
                 config: ModelConfig,
                 train_loader: DataLoader,
+                test_loaders: List[DataLoader],
+                test_csv_paths: List[Path],
                 epochs_wo_improvement: int,
                 epoch_offset: int,  # this is only for reporting purposes
                 epoch: int,
@@ -33,7 +37,7 @@ def train_model(csv_stats: List,
                 pt_profiler: bool = False,
                 train_w_rank_model: bool = False,
                 bound_predictions: bool = False,
-                prediction_bounder:PredictionBounder = None):
+                prediction_bounder: PredictionBounder = None):
     if train_w_rank_model:
         # wrap the model with the rank model
         ranking_wrapper = RankModel(model)
@@ -54,6 +58,7 @@ def train_model(csv_stats: List,
     target_epochs = config.epochs if not train_w_rank_model else 20
 
     while epoch < target_epochs:
+        print(f"Epoch {epoch + epoch_offset + 1}/{config.epochs + epoch_offset}")
         epoch_stats = dict()
         epoch_stats.update(epoch=epoch + epoch_offset, train_w_rank=train_w_rank_model)
         epoch_start_time: float = time.perf_counter()
@@ -87,8 +92,8 @@ def train_model(csv_stats: List,
                         custom_batch_to=config.batch_to_func,
                         profiler=prof)
 
-        any_best_metric = any_best_metric or validate_model(
-            config=config,
+        # validate model
+        new_best_metric_seen, _ = validate_model(
             val_loader=val_loader,
             model=model,
             epoch=epoch,
@@ -98,14 +103,32 @@ def train_model(csv_stats: List,
             custom_batch_to=config.batch_to_func,
             log_all_queries=False,
             target_path=None,
-            run=None,
             bound_predictions=bound_predictions,
-            prediction_bounder=prediction_bounder)
-
+            prediction_bounder=prediction_bounder,
+            log_prefix='epoch_val'
+        )
+        any_best_metric = any_best_metric or new_best_metric_seen
         epoch_stats.update(epoch_time=time.perf_counter() - epoch_start_time)
 
         if run:
-            wandb.log(epoch_stats)
+            wandb.log(epoch_stats, step=epoch)
+
+        # validate on test sets with test evaluations
+        test_model(config=config,
+                   test_csv_paths=test_csv_paths,
+                   test_loaders=test_loaders,
+                   model_dir=model_dir,
+                   epoch=epoch,
+                   model=model,
+                   metrics=metrics,
+                   run=run,
+                   file_suffix=f'_epoch{epoch}',
+                   bound_predictions=bound_predictions,
+                   prediction_bounder=prediction_bounder,
+                   load_best_checkpoint=False,
+                   log_prefix='epoch_test',
+                   is_per_epoch=True)
+
 
         # See if we can already stop the training
         stop_early = False

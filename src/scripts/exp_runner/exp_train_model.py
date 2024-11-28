@@ -8,6 +8,7 @@ from classes.classes import ModelConfig, ModelType, \
     ZeroShotModelConfig
 from scripts.exp_runner.exp_runner import ExpRunner, TrainingServers
 
+
 def generate_training_commands(datasets: List[Dataset], seeds: list[int], python_version: str, wandb_project: str,
                                wandb_entity: str,
                                model_list: list[ModelConfig] = ModelConfig, quick_run: bool = False,
@@ -15,7 +16,8 @@ def generate_training_commands(datasets: List[Dataset], seeds: list[int], python
                                ft_with_ranking: bool = False, bound_predictions: bool = False,
                                eval_join_order: bool = False, eval_access_path: bool = False,
                                eval_physical_operator: bool = False,
-                               stratified_workloads: bool = False) -> List[str]:
+                               stratified_workloads: bool = False,
+                               qo_eval_after_each_epoch: bool = False) -> List[str]:
     if test_against:
         print(f'Testing the models against {test_against}')
 
@@ -27,10 +29,8 @@ def generate_training_commands(datasets: List[Dataset], seeds: list[int], python
         for target_model in model_list:
             training_runs = " ".join(
                 target_model.get_training_workloads(training_datasets=datasets,
-                                                    target_dataset=target_dataset,
-                                                    stratified_workloads=stratified_workloads))
-            # test_runs = target_model.get_test_workloads(target_dataset)
-            test_runs = ''
+                                                    target_dataset=target_dataset))
+            test_runs = target_model.get_test_workloads(target_dataset)
             if eval_join_order:  # and target_dataset.db_name in ['imdb']:
                 test_runs += " " + target_model.assemble_wl_path(Dataset('imdb'), 'join_order')
             if eval_access_path:  # and target_dataset.db_name in ['imdb', 'tpc_h', 'baseball']:
@@ -90,6 +90,9 @@ def generate_training_commands(datasets: List[Dataset], seeds: list[int], python
                 if bound_predictions:
                     command += " --bound_predictions"
 
+                if qo_eval_after_each_epoch:
+                    command += " --qo_eval_after_each_epoch"
+
                 commands.append(command)
 
     return commands
@@ -132,13 +135,13 @@ if __name__ == '__main__':
         Dataset('fhnk', scale=2)
     ]
 
-    seeds = [1]
-    node = TrainingServers.NODE03
+    seeds = [54]
+    node = TrainingServers.NODE02
 
     # ===================
     # CONFIGS
     # ===================
-    quick_run = False  # if True, it will run only a few epochs on a few workloads
+    quick_run = True  # if True, it will run only a few epochs on a few workloads
     pt_profiler = False  # Profiler for PyTorch
     test_against = 'imdb'  # if not set, will test against all in an leave one out style
     ft_with_ranking = False  # fine-tune with ranking (pretrains a model and then fine-tunes it with ranking)
@@ -147,6 +150,7 @@ if __name__ == '__main__':
     eval_access_path = True  # evaluate access path selection (Idx Scan vs. SeqScan)
     eval_physical_operator = True  # evaluate physical operator selection
     stratified_workloads = True  # if True, will use stratified workloads
+    qo_eval_after_each_epoch = True  # if True, will run a full QO evaluation after each epoch
     # ===================
 
     # Standard Models
@@ -190,7 +194,8 @@ if __name__ == '__main__':
                                                eval_join_order=eval_join_order,
                                                eval_access_path=eval_access_path,
                                                eval_physical_operator=eval_physical_operator,
-                                               stratified_workloads=stratified_workloads)
+                                               stratified_workloads=stratified_workloads,
+                                               qo_eval_after_each_epoch=qo_eval_after_each_epoch)
 
     runner.run_exp(node_names=[node["hostname"]],
                    commands=eval_commands,

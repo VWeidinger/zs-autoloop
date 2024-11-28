@@ -63,7 +63,6 @@ def read_workload_runs(workload_run_paths: List[Path],
                 plan["database_id"] = path_index
                 per_file_plans.append(plan)
                 if limit_per_ds is not None and p_id > limit_per_ds:
-                    print("Stopping now")
                     break
         elif input_format == InputFormats.json:
             if "query_list" not in run:
@@ -93,7 +92,8 @@ def read_workload_runs(workload_run_paths: List[Path],
             set(per_file_timeout_thresholds)) == 1, f"Multiple timeout thresholds in {path}: {set(per_file_timeout_thresholds)}"
         timeout_thresholds.append(per_file_timeout_thresholds[0])
 
-        print(f'Stratify per wl file: {stratify_per_wl_file}')
+        if stratify_per_wl_file:
+            print(f'Stratify per wl file: {stratify_per_wl_file}')
 
         if any([blacklist in str(path) for blacklist in stratify_file_blacklist]):
             # Do not stratify if the file is in the blacklist

@@ -25,17 +25,17 @@ from models.dace.dace_model import DACELora
 from models.qppnet.qppnet_dataloader import create_qppnet_dataloader
 from models.qppnet.qppnet_model import QPPNet
 from models.query_former.model import QueryFormer
-from models.tabular.train_tabular_baseline import train_tabular_model, predict_tabular_model
+from models.tabular.train_tabular_baseline import train_tabular_model, test_tabular_model
 from models.workload_driven.dataset.dataset_creation import create_baseline_dataloader
 from models.workload_driven.model.e2e_model import E2EModel
 from models.workload_driven.model.mscn_model import MSCNModel
 from models.zeroshot.specific_models.postgres_zero_shot import PostgresZeroShotModel
-from predict import predict_model
 from train import train_model
 from training.bound_predictions_with_history import PredictionBounder
 from training.dataset.dataset_creation import create_zeroshot_dataloader
 from training.training.checkpoint import load_checkpoint
 from training.training.metrics import RMSE, MAPE, QError, Metric, RankAccuracy, SpearmanRank
+from training.training.test import test_model
 
 
 def init_model(statistics_file: Path,
@@ -115,7 +115,7 @@ def init_model(statistics_file: Path,
             timeout_count += 1 if plan['timeout'] else 0
 
         print(f"Timeout count: {timeout_count} of {overall_count} "
-              f"({timeout_count / overall_count * 100:.2f}%) in {string}\n")
+              f"({timeout_count / overall_count * 100:.2f}%) in {string}")
 
     if train_loader:
         gather_dataloader_stats(train_loader, "train_loader")
@@ -169,7 +169,8 @@ def use_model(mode: str,
               config: ModelConfig,
               wandb_run: Run,
               pt_profiler: bool,
-              bound_predictions: bool):
+              bound_predictions: bool,
+              run_qo_test_pipeline_after_each_epoch: bool = False):
     # Seed for reproducibility
     print(f"Found model config {config}")
     torch.manual_seed(config.seed)
@@ -194,6 +195,25 @@ def use_model(mode: str,
                                                                               column_statistics=column_statistics,
                                                                               workload_runs=wl_runs,
                                                                               word_embeddings=word_embeddings)
+
+    # extract test data for testing after each epoch
+    if run_qo_test_pipeline_after_each_epoch:
+        test_after_epoch_dataloaders = test_loaders
+        test_after_epoch_testfiles = wl_runs.target_test_csv_paths
+    else:
+        test_after_epoch_dataloaders = []
+        test_after_epoch_testfiles = []
+        for dl, wl_file in zip(test_loaders, wl_runs.target_test_csv_paths):
+            str_wl_file = str(wl_file)
+            if 'join_order' in str_wl_file:
+                continue
+            if 'physical_operator' in str_wl_file:
+                continue
+            if 'access_path_selection' in str_wl_file:
+                continue
+
+            test_after_epoch_dataloaders.append(dl)
+            test_after_epoch_testfiles.append(wl_file)
 
     found = False
     rank_found = False
@@ -280,6 +300,8 @@ def use_model(mode: str,
                 train_model(model_dir=model_dir,
                             train_loader=train_loader,
                             val_loader=val_loader,
+                            test_loaders=test_after_epoch_dataloaders,
+                            test_csv_paths=test_after_epoch_testfiles,
                             config=config,
                             csv_stats=csv_stats,
                             epochs_wo_improvement=epochs_wo_improvement,
@@ -297,28 +319,28 @@ def use_model(mode: str,
 
             # perform validation - after each training stage
             if isinstance(model_config, TabularModelConfig):
-                predict_tabular_model(config=config,
-                                      workload_runs=wl_runs,
-                                      statistics_file=statistics_file,
-                                      model_dir=model_dir,
-                                      target_path=target_dir,
-                                      run=wandb_run,
-                                      bound_predictions=bound_predictions,
-                                      prediction_bounder=prediction_bounder,
-                                      dataloader_options=DataLoaderOptions())
+                test_tabular_model(config=config,
+                                   workload_runs=wl_runs,
+                                   statistics_file=statistics_file,
+                                   model_dir=model_dir,
+                                   target_path=target_dir,
+                                   run=wandb_run,
+                                   bound_predictions=bound_predictions,
+                                   prediction_bounder=prediction_bounder,
+                                   dataloader_options=DataLoaderOptions())
             else:
-                predict_model(mode=mode,
-                              config=config,
-                              workload_runs=wl_runs,
-                              test_loaders=test_loaders,
-                              model_dir=model_dir,
-                              epoch=epoch,
-                              model=model,
-                              metrics=metrics,
-                              run=wandb_run,
-                              file_suffix=f"{'_rankmodel' if train_w_rank_model else ''}",
-                              bound_predictions=bound_predictions,
-                              prediction_bounder=prediction_bounder)
+                test_model(config=config,
+                           test_csv_paths=wl_runs.target_test_csv_paths,
+                           test_loaders=test_loaders,
+                           model_dir=model_dir,
+                           epoch=epoch,
+                           model=model,
+                           metrics=metrics,
+                           run=wandb_run,
+                           log_prefix='test',
+                           file_suffix=f"{'_rankmodel' if train_w_rank_model else ''}",
+                           bound_predictions=bound_predictions,
+                           prediction_bounder=prediction_bounder)
 
             # reset stats
             epoch = 0
@@ -329,30 +351,30 @@ def use_model(mode: str,
     if mode in ["predict"] or rerun_predict:
         print(f"Predicting model {config.name.NAME} with seed {config.seed}")
         if isinstance(model_config, TabularModelConfig):
-            predict_tabular_model(config=config,
-                                  workload_runs=wl_runs,
-                                  statistics_file=statistics_file,
-                                  model_dir=model_dir,
-                                  target_path=target_dir,
-                                  run=wandb_run,
-                                  bound_predictions=bound_predictions,
-                                  prediction_bounder=prediction_bounder,
-                                  dataloader_options=DataLoaderOptions()
-                                  )
+            test_tabular_model(config=config,
+                               workload_runs=wl_runs,
+                               statistics_file=statistics_file,
+                               model_dir=model_dir,
+                               target_path=target_dir,
+                               run=wandb_run,
+                               bound_predictions=bound_predictions,
+                               prediction_bounder=prediction_bounder,
+                               dataloader_options=DataLoaderOptions()
+                               )
         else:
-            predict_model(mode=mode,
-                          config=config,
-                          workload_runs=wl_runs,
-                          test_loaders=test_loaders,
-                          model_dir=model_dir,
-                          epoch=epoch,
-                          model=model,
-                          metrics=metrics,
-                          run=wandb_run,
-                          file_suffix='',
-                          bound_predictions=bound_predictions,
-                          prediction_bounder=prediction_bounder
-                          )
+            test_model(config=config,
+                       test_csv_paths=wl_runs.target_test_csv_paths,
+                       test_loaders=test_loaders,
+                       model_dir=model_dir,
+                       epoch=epoch,
+                       model=model,
+                       metrics=metrics,
+                       run=wandb_run,
+                       file_suffix='',
+                       bound_predictions=bound_predictions,
+                       prediction_bounder=prediction_bounder,
+                       log_prefix='test'
+                       )
 
     if wandb_run:
         wandb_run.finish()
@@ -416,6 +438,7 @@ if __name__ == '__main__':
     parser.add_argument('--quick_run', action='store_true')
     parser.add_argument('--pt_profiler', action='store_true')
     parser.add_argument('--bound_predictions', action='store_true')
+    parser.add_argument('--qo_eval_after_each_epoch', action='store_true')
     args = parser.parse_args()
 
     # Init model configuration by either reading out hyperparameters or using standard config
@@ -425,24 +448,19 @@ if __name__ == '__main__':
                       num_workers=args.num_workers)
 
     if args.quick_run:
-        model_args.update(limit_queries=2000, limit_queries_affected_wl=1, epochs=2, batch_size=64)
+        model_args.update(limit_queries=2000, limit_queries_affected_wl=1, epochs=3, batch_size=64)
 
     # Create workload runs
-    if args.mode in ["predict", "explain"]:
-        runs = WorkloadRuns([], [Path(raw_path) for raw_path in args.test_workload_runs])
-        model_args.update(batch_size=16)
-
+    train_runs = [Path(raw_path) for raw_path in args.workload_runs]
+    if args.test_workload_runs:
+        test_runs = [Path(raw_path) for raw_path in args.test_workload_runs]
     else:
-        train_runs = [Path(raw_path) for raw_path in args.workload_runs]
-        if args.test_workload_runs:
-            test_runs = [Path(raw_path) for raw_path in args.test_workload_runs]
-        else:
-            test_runs = []
+        test_runs = []
 
-        if args.quick_run:
-            train_runs = train_runs[:1]
+    if args.quick_run:
+        train_runs = train_runs[:1]
 
-        runs = WorkloadRuns(train_workload_runs=train_runs, test_workload_runs=test_runs)
+    runs = WorkloadRuns(train_workload_runs=train_runs, test_workload_runs=test_runs)
 
     model_config = get_model_config(model_type=args.model_type, m_args=model_args)
 
@@ -477,7 +495,8 @@ if __name__ == '__main__':
         column_statistics=Path(args.column_statistics) if args.column_statistics else None,
         pt_profiler=args.pt_profiler,
         bound_predictions=args.bound_predictions,
-        wandb_run=run
+        wandb_run=run,
+        run_qo_test_pipeline_after_each_epoch=args.qo_eval_after_each_epoch
     )
 
     use_model(**args)
