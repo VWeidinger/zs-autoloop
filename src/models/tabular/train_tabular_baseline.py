@@ -131,7 +131,7 @@ def predict_tabular_model(config: ModelConfig,
                           run: Optional[Run] = None,
                           bound_predictions: bool = False,
                           prediction_bounder: Optional[PredictionBounder] = None,
-                          dataloader_options: DataLoaderOptions = None, ):
+                          dataloader_options: DataLoaderOptions = None):
     if bound_predictions or prediction_bounder:
         raise NotImplementedError("prediction bounding needs to be implemented for flat models")
 
@@ -177,9 +177,7 @@ def predict_tabular_model(config: ModelConfig,
                                                                        featurization=featurization,
                                                                        val_ratio=0,
                                                                        shuffle=False,
-                                                                       include_timeout_queries=False,
-                                                                       stratify_dataset=dataloader_options.stratify_dataset,
-                                                                       stratify_per_wl_file=dataloader_options.stratify_per_wl_file)
+                                                                       include_timeout_queries=False)
         test_datasets.append((x_test, y_test, test_sqls, test_hints))
 
     metrics = [RMSE(),
@@ -211,26 +209,21 @@ def predict_tabular_model(config: ModelConfig,
                        labels=[float(f) for f in y_test],
                        predictions=[float(f) for f in pred_runtimes],
                        sqls=sqls,
-                       hints=hints)
+                       hints=hints,
+                       selectivitys=[None] * len(y_test),  # ToDo
+                       scan_ops=[None] * len(y_test),  # ToDo
+                       join_ops=[None] * len(y_test),  # ToDo
+                       )
         save_csv(rows, target_csv_path=str(test_path) + "_test_pred.csv")
 
         # Update test stats and use this for query optimization evaluation
         test_stats.update(test_preds=rows)
         if "join_order" in str(test_path):
-            evaluate_join_order(test_stats=test_stats)
+            evaluate_join_order(predictions=rows)
         if "physical_operator" in str(test_path):
-            evaluate_physical_plan_selection(test_stats=test_stats)
+            evaluate_physical_plan_selection(predictions=rows)
         if "access_path_selection" in str(test_path):
-            evaluate_access_path_selection(test_stats=test_stats)
-
-        # Additionally log results to wandb: ToDO: Streamline results / Aggregate
-        if run:
-            test_stats.pop('test_labels')
-            test_stats.pop('test_preds')
-            wandb.log({f"{config.name.NAME}/{model_dir.stem}/{config.seed}/test_scores":
-                           wandb.Table(columns=["metric", "value"], data=list(test_stats.items()))})
-            wandb.log({f"{config.name.NAME}/{model_dir.stem}/{config.seed}/test_preds":
-                           wandb.Table(dataframe=pd.DataFrame(rows))})
+            evaluate_access_path_selection(predictions=rows)
     return
 
 
@@ -284,10 +277,15 @@ def gen_flattened_dataset(workload_runs: List[Path],
                                                     stratify_per_wl_file=stratify_per_wl_file)
     feature_vecs = []
     labels = []
+    selectivities = []
+    join_ops = []
+    scan_ops = []
+
     sqls, hints = [], []  # Required to later evaluate against query optimization
     for plan in plans:
         sqls.append(plan["sql"])
         hints.append(plan["hint"])
+        selectivities.append(plan)
         # number an operator occurs
         feature_num_vec = np.zeros(no_ops)
         # number of rows per op (estimated by postgres)
