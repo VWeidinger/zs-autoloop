@@ -216,9 +216,7 @@ def create_zeroshot_dataloader(workload_runs: WorkloadRuns,
         label_norm, train_dataset, val_dataset, database_statistics \
             = create_datasets(workload_run_paths=workload_runs.train_workload_runs,
                               model_config=model_config,
-                              val_ratio=data_loader_options.val_ratio,
-                              stratify_dataset=data_loader_options.stratify_dataset,
-                              stratify_per_wl_file=data_loader_options.stratify_per_wl_file)
+                              val_ratio=data_loader_options.val_ratio)
 
         train_collate_fn = functools.partial(plan_collator,
                                              db_statistics=database_statistics,
@@ -239,9 +237,7 @@ def create_zeroshot_dataloader(workload_runs: WorkloadRuns,
                                                                            model_config=model_config,
                                                                            shuffle_before_split=False,
                                                                            val_ratio=0.0,
-                                                                           is_test_dataset=True,
-                                                                           stratify_dataset=data_loader_options.stratify_dataset,
-                                                                           stratify_per_wl_file=data_loader_options.stratify_per_wl_file)
+                                                                           is_test_dataset=True)
             # test dataset
             test_collate_fn = functools.partial(plan_collator,
                                                 db_statistics=test_database_statistics,

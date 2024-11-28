@@ -8,14 +8,14 @@ from classes.classes import ModelConfig, ModelType, \
     ZeroShotModelConfig
 from scripts.exp_runner.exp_runner import ExpRunner, TrainingServers
 
-
 def generate_training_commands(datasets: List[Dataset], seeds: list[int], python_version: str, wandb_project: str,
                                wandb_entity: str,
                                model_list: list[ModelConfig] = ModelConfig, quick_run: bool = False,
                                pt_profiler: bool = False, leave_one_out_style: bool = True, test_against: str = None,
                                ft_with_ranking: bool = False, bound_predictions: bool = False,
                                eval_join_order: bool = False, eval_access_path: bool = False,
-                               eval_physical_operator: bool = False) -> List[str]:
+                               eval_physical_operator: bool = False,
+                               stratified_workloads: bool = False) -> List[str]:
     if test_against:
         print(f'Testing the models against {test_against}')
 
@@ -26,7 +26,9 @@ def generate_training_commands(datasets: List[Dataset], seeds: list[int], python
 
         for target_model in model_list:
             training_runs = " ".join(
-                target_model.get_training_workloads(training_datasets=datasets, target_dataset=target_dataset))
+                target_model.get_training_workloads(training_datasets=datasets,
+                                                    target_dataset=target_dataset,
+                                                    stratified_workloads=stratified_workloads))
             # test_runs = target_model.get_test_workloads(target_dataset)
             test_runs = ''
             if eval_join_order:  # and target_dataset.db_name in ['imdb']:
@@ -144,13 +146,14 @@ if __name__ == '__main__':
     eval_join_order = True  # evaluate join order using JOB-Light runs with exhaustive join orders
     eval_access_path = True  # evaluate access path selection (Idx Scan vs. SeqScan)
     eval_physical_operator = True  # evaluate physical operator selection
+    stratified_workloads = True  # if True, will use stratified workloads
     # ===================
 
     # Standard Models
     # model_config = ScaledPostgresModelConfig()        # --> Working
     # model_config = FlatModelConfig()                  # --> Working
     # model_config = E2EModelConfig()                   # --> ToDo: Adapt to new codebase and generate sentences
-    # model_config = QPPNetModelConfig()                  # --> Working?
+    # model_config = QPPNetModelConfig()                # --> Working?
     # model_config = MSCNModelConfig()                  # --> ToDo: Adapt to new codebase and generate sentences
     # model_config = DACEModelConfig()                  # --> Working
     # model_config = QueryFormerModelConfig()           # --> ToDo: Generate Sentences
@@ -186,7 +189,8 @@ if __name__ == '__main__':
                                                bound_predictions=bound_predictions,
                                                eval_join_order=eval_join_order,
                                                eval_access_path=eval_access_path,
-                                               eval_physical_operator=eval_physical_operator)
+                                               eval_physical_operator=eval_physical_operator,
+                                               stratified_workloads=stratified_workloads)
 
     runner.run_exp(node_names=[node["hostname"]],
                    commands=eval_commands,

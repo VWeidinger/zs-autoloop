@@ -124,13 +124,22 @@ class ModelConfig:
     def get_test_workloads(self, target_db: Dataset) -> str:
         return self.assemble_wl_path(target_db, "workload_200k_s1")
 
-    def get_data_base_dir(self) -> Path:
-        if self.input_format == InputFormats.baseline_parsed:
-            return ClusterPaths().Data.augmented_plans
-        elif self.input_format == InputFormats.parsed:
-            return ClusterPaths().Data.parsed_plans
-        elif self.input_format == InputFormats.json:
-            return ClusterPaths().Data.json_plans
+    def get_data_base_dir(self, stratified_workloads: bool) -> Path:
+        if stratified_workloads:
+            if self.input_format == InputFormats.baseline_parsed:
+                raise NotImplementedError("ToDo")
+            elif self.input_format == InputFormats.parsed:
+                return ClusterPaths().Data.parsed_plans_stratified
+            elif self.input_format == InputFormats.json:
+                raise NotImplementedError("ToDo")
+
+        else:
+            if self.input_format == InputFormats.baseline_parsed:
+                return ClusterPaths().Data.augmented_plans
+            elif self.input_format == InputFormats.parsed:
+                return ClusterPaths().Data.parsed_plans
+            elif self.input_format == InputFormats.json:
+                return ClusterPaths().Data.json_plans
 
 
 @attrs.define(frozen=True, slots=False)
