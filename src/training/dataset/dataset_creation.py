@@ -39,7 +39,8 @@ def read_workload_runs(workload_run_paths: List[Path],
         try:
             run = load_json(str(path))
         except JSONDecodeError:
-            raise ValueError(f"Error reading {path}")
+            print(f'Error reading {path} - skip')
+            continue
         database_statistics[path_index] = run["database_stats"]
 
         limit_per_ds = None

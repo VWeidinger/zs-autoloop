@@ -35,7 +35,7 @@ def train_epoch(epoch_stats: dict, train_loader: DataLoader, model: nn.Module,
     for batch_idx, batch in enumerate(tqdm(train_loader)):
         if max_epoch_tuples is not None and batch_idx * train_loader.batch_size > max_epoch_tuples:
             break
-        input_model, label, sample_idxs, _, _ = custom_batch_to(batch, model.device, model.label_norm)
+        input_model, label, sample_idxs, _, _, _, _, _ = custom_batch_to(batch, model.device, model.label_norm)
 
         # Reset gradients first
         if isinstance(model, QPPNet):
@@ -93,7 +93,7 @@ def validate_model(val_loader: DataLoader,
                    log_all_queries: bool = False,
                    run: Optional[Run] = None,
                    bound_predictions: bool = False,
-                   prediction_bounder:Optional[PredictionBounder] = None) -> bool:
+                   prediction_bounder: Optional[PredictionBounder] = None) -> bool:
     model.eval()
 
     with torch.autograd.no_grad():
@@ -162,7 +162,8 @@ def validate_model(val_loader: DataLoader,
         epoch_stats.update(val_std=np.std(labels))
 
         if bound_predictions:
-            bounded_preds = bound_predictions_helper(target_dataset=val_loader.dataset,predictions=preds, prediction_bounder=prediction_bounder)
+            bounded_preds = bound_predictions_helper(target_dataset=val_loader.dataset, predictions=preds,
+                                                     prediction_bounder=prediction_bounder)
             bound_list = [True, False]
         else:
             bound_list = [False]

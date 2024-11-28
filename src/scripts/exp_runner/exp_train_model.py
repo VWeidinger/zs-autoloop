@@ -108,26 +108,26 @@ if __name__ == '__main__':
     pickup_steps = [Rsync(src=[ClusterPaths().Data.runs], dest=[LocalPaths().data], put=False, update=True)]
 
     datasets = [
-        # Dataset('airline', max_no_joins=5),
+        Dataset('airline', max_no_joins=5),
         Dataset('imdb'),
         Dataset('ssb', max_no_joins=3),
-        # Dataset('tpc_h', max_no_joins=5),
-        # Dataset('walmart', max_no_joins=2),
-        # Dataset('financial', scale=4),
-        # Dataset('basketball', scale=200),
-        # Dataset('accidents', scale=1, contain_unicode=True),
-        # Dataset('movielens', scale=8),
-        # Dataset('baseball', scale=10),
-        # Dataset('hepatitis', scale=2000),
-        # Dataset('tournament', scale=50),
-        # Dataset('credit', scale=5),
-        # Dataset('employee', scale=3),
-        # Dataset('consumer', scale=6),
-        # Dataset('geneea', scale=23, contain_unicode=True),
-        # Dataset('genome', scale=6),
-        # Dataset('carcinogenesis', scale=674),
-        # Dataset('seznam', scale=2),
-        # Dataset('fhnk', scale=2)
+        Dataset('tpc_h', max_no_joins=5),
+        Dataset('walmart', max_no_joins=2),
+        Dataset('financial', scale=4),
+        Dataset('basketball', scale=200),
+        Dataset('accidents', scale=1, contain_unicode=True),
+        Dataset('movielens', scale=8),
+        Dataset('baseball', scale=10),
+        Dataset('hepatitis', scale=2000),
+        Dataset('tournament', scale=50),
+        Dataset('credit', scale=5),
+        Dataset('employee', scale=3),
+        Dataset('consumer', scale=6),
+        Dataset('geneea', scale=23, contain_unicode=True),
+        Dataset('genome', scale=6),
+        Dataset('carcinogenesis', scale=674),
+        Dataset('seznam', scale=2),
+        Dataset('fhnk', scale=2)
     ]
 
     seeds = [1]
@@ -138,7 +138,7 @@ if __name__ == '__main__':
     # ===================
     quick_run = False  # if True, it will run only a few epochs on a few workloads
     pt_profiler = False  # Profiler for PyTorch
-    test_against = 'ssb'  # if not set, will test against all in an leave one out style
+    test_against = 'imdb'  # if not set, will test against all in an leave one out style
     ft_with_ranking = False  # fine-tune with ranking (pretrains a model and then fine-tunes it with ranking)
     bound_predictions = False  # bound predictions to the range of the training data and output them as separate metrics - at the moment not competitive
     eval_join_order = True  # evaluate join order using JOB-Light runs with exhaustive join orders
