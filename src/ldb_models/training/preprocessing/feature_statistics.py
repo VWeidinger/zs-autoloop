@@ -1,12 +1,11 @@
 import collections
 import json
-
-import orjson
 import multiprocessing
 import os
 from enum import Enum
 
 import numpy as np
+import orjson
 from sklearn.preprocessing import RobustScaler
 from tqdm import tqdm
 
