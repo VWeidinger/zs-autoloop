@@ -303,6 +303,9 @@ def postgres_plan_collator(plans: List[Tuple], feature_statistics: dict[dict] = 
             sql_statements.append(p["sql"])
             hints.append(p["hint"])
             assign_additional_plan_info(p, db_statistics)
+            selectivity_list += p["selectivity"]
+            scan_op_list +=p["scan_op"]
+            join_op_list+= p["join_op"]
 
         # Parse the plan as graph
         plan_to_graph(p, p["database_id"], plan_depths, plan_features, plan_to_plan_edges, db_statistics,

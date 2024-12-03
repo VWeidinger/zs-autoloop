@@ -67,11 +67,11 @@ def test_model(config: ModelConfig,
                 save_csv([test_stats], str(test_path) + f"_test_stats{file_suffix}.csv")
 
                 if "join_order" in str(test_path):
-                    evaluate_join_order(predictions=predictions_dict, is_per_epoch=is_per_epoch, epoch=epoch)
+                    evaluate_join_order(predictions=predictions_dict, is_per_epoch=is_per_epoch, epoch=epoch, run=run)
                 if "physical_operator" in str(test_path):
                     evaluate_physical_plan_selection(predictions=predictions_dict, with_idxs='_w_idx' in str(test_path),
-                                                     is_per_epoch=is_per_epoch, epoch=epoch)
+                                                     is_per_epoch=is_per_epoch, epoch=epoch, run=run)
                 if "access_path_selection" in str(test_path):
-                    evaluate_access_path_selection(predictions=predictions_dict, is_per_epoch=is_per_epoch, epoch=epoch)
+                    evaluate_access_path_selection(predictions=predictions_dict, is_per_epoch=is_per_epoch, epoch=epoch, run=run)
         else:
             print("Skipping saving the test stats")
