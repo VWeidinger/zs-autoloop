@@ -18,6 +18,7 @@ from wandb.apis.public import Run
 from classes.classes import FlatModelConfig, ModelConfig, ScaledPostgresModelConfig, \
     AnalyticalEstCardModelConfig, AnalyticalActCardModelConfig, DataLoaderOptions
 from classes.workload_runs import WorkloadRuns
+from models.zeroshot.postgres_plan_batching import assign_additional_plan_info
 from training.bound_predictions_with_history import PredictionBounder
 from training.dataset.dataset_creation import read_workload_runs
 from training.evaluate_query_optimization import evaluate_join_order, evaluate_physical_plan_selection, \
@@ -76,7 +77,7 @@ def train_tabular_model(workload_runs: WorkloadRuns,
             featurization = config.featurization
         else:
             featurization = None
-        x_train, x_test, y_train, y_test, sqls, hints = gen_dataset_func(
+        x_train, x_test, y_train, y_test, sqls, hints, selectivities, scan_op, join_op = gen_dataset_func(
             workload_runs=workload_runs.train_workload_runs,
             statistics_file=statistics_file,
             cap_training_samples=cap_training_samples,
@@ -122,7 +123,7 @@ def train_tabular_model(workload_runs: WorkloadRuns,
     save_csv([param_dict], str(model_dir) + f'_{config.seed}_params.csv')
 
 
-def test_tabular_model(config: ModelConfig,
+def predict_tabular_model(config: ModelConfig,
                           workload_runs: WorkloadRuns,
                           statistics_file: Path,
                           model_dir: Path,
@@ -171,14 +172,15 @@ def test_tabular_model(config: ModelConfig,
 
     test_datasets = []
     for test_wl in workload_runs.test_workload_runs:
-        x_test, _, y_test, _, test_sqls, test_hints = gen_dataset_func(workload_runs=[test_wl],
-                                                                       statistics_file=statistics_file,
-                                                                       cap_training_samples=cap_training_samples,
-                                                                       featurization=featurization,
-                                                                       val_ratio=0,
-                                                                       shuffle=False,
-                                                                       include_timeout_queries=False)
-        test_datasets.append((x_test, y_test, test_sqls, test_hints))
+        x_test, _, y_test, _, test_sqls, test_hints, test_selectivities, test_scan_op_list, test_join_op_list \
+            = gen_dataset_func(workload_runs=[test_wl],
+                               statistics_file=statistics_file,
+                               cap_training_samples=cap_training_samples,
+                               featurization=featurization,
+                               val_ratio=0,
+                               shuffle=False,
+                               include_timeout_queries=False)
+        test_datasets.append((x_test, y_test, test_sqls, test_hints, test_selectivities, test_scan_op_list, test_join_op_list))
 
     metrics = [RMSE(),
                MAPE(),
@@ -186,7 +188,7 @@ def test_tabular_model(config: ModelConfig,
                QError(percentile=95),
                QError(percentile=100)]
 
-    for (x_test, y_test, sqls, hints), test_path in zip(test_datasets, workload_runs.target_test_csv_paths):
+    for (x_test, y_test, sqls, hints, selectivities, scan_ops, join_ops), test_path in zip(test_datasets, workload_runs.target_test_csv_paths):
         print(f"Starting validation for {test_path}")
         test_stats = dict()
         start_t = time.perf_counter()
@@ -210,20 +212,19 @@ def test_tabular_model(config: ModelConfig,
                        predictions=[float(f) for f in pred_runtimes],
                        sqls=sqls,
                        hints=hints,
-                       selectivitys=[None] * len(y_test),  # ToDo
-                       scan_ops=[None] * len(y_test),  # ToDo
-                       join_ops=[None] * len(y_test),  # ToDo
-                       )
+                       selectivitys=selectivities,
+                       scan_ops=scan_ops,
+                       join_ops=join_ops)
         save_csv(rows, target_csv_path=str(test_path) + "_test_pred.csv")
 
         # Update test stats and use this for query optimization evaluation
         test_stats.update(test_preds=rows)
         if "join_order" in str(test_path):
-            evaluate_join_order(predictions=rows)
+            evaluate_join_order(predictions=rows, run=run)
         if "physical_operator" in str(test_path):
-            evaluate_physical_plan_selection(predictions=rows)
+            evaluate_physical_plan_selection(predictions=rows, run=run)
         if "access_path_selection" in str(test_path):
-            evaluate_access_path_selection(predictions=rows)
+            evaluate_access_path_selection(predictions=rows, run=run)
     return
 
 
@@ -235,21 +236,25 @@ def gen_postgres_cost_dataset(workload_runs: List[Path],
                               val_ratio: float = 0.15,
                               include_timeout_queries: bool = False,
                               stratify_dataset: bool = False,
-                              stratify_per_wl_file: bool = False
-                              ) -> Tuple[np.ndarray]:
+                              stratify_per_wl_file: bool = False) -> Tuple[np.ndarray]:
+
     plans, database_statistics = read_workload_runs(workload_runs, include_timeout_queries=include_timeout_queries,
                                                     stratify_dataset=stratify_dataset,
                                                     stratify_per_wl_file=stratify_per_wl_file)
     feature_vecs = []
     labels = []
     sqls, hints = [], []  # Required to later evaluate against join order
-
+    selectivities, join_ops, scan_ops = [], [], []
     for plan in plans:
         # append to all feature vectors and runtime labels
         feature_vecs.append([plan["plan_parameters"]["pg_cost"]])
         labels.append(plan["plan_runtime_ms"] / 1000)
         sqls.append(plan["sql"])
         hints.append(plan["hint"])
+        assign_additional_plan_info(plan=plan, db_statistics=database_statistics)
+        selectivities += plan["selectivity"]
+        join_ops += plan["join_op"]
+        scan_ops += plan["scan_op"]
 
     X_train, X_val, Y_train, Y_val = slice_train_val(cap_training_samples,
                                                      feature_vecs,
@@ -257,7 +262,8 @@ def gen_postgres_cost_dataset(workload_runs: List[Path],
                                                      plans,
                                                      val_ratio,
                                                      shuffle)
-    return X_train, X_val, Y_train, Y_val, sqls, hints
+
+    return X_train, X_val, Y_train, Y_val, sqls, hints, selectivities, scan_ops, join_ops
 
 
 def gen_flattened_dataset(workload_runs: List[Path],
@@ -266,15 +272,11 @@ def gen_flattened_dataset(workload_runs: List[Path],
                           featurization: Featurization,
                           val_ratio: float = 0.15,
                           shuffle: bool = True,
-                          include_timeout_queries: bool = False,
-                          stratify_dataset: bool = False,
-                          stratify_per_wl_file: bool = False, ):
+                          include_timeout_queries: bool = False):
     feature_statistics = load_json(str(statistics_file), namespace=False)
     op_idx_dict = feature_statistics['op_name']['value_dict']
     no_ops = len(op_idx_dict)
-    plans, database_statistics = read_workload_runs(workload_runs, include_timeout_queries=include_timeout_queries,
-                                                    stratify_dataset=stratify_dataset,
-                                                    stratify_per_wl_file=stratify_per_wl_file)
+    plans, database_statistics = read_workload_runs(workload_runs, include_timeout_queries=include_timeout_queries)
     feature_vecs = []
     labels = []
     selectivities = []
@@ -285,7 +287,11 @@ def gen_flattened_dataset(workload_runs: List[Path],
     for plan in plans:
         sqls.append(plan["sql"])
         hints.append(plan["hint"])
-        selectivities.append(plan)
+        assign_additional_plan_info(plan=plan, db_statistics=database_statistics)
+        selectivities += plan["selectivity"]
+        join_ops += plan["join_op"]
+        scan_ops  += plan["scan_op"]
+
         # number an operator occurs
         feature_num_vec = np.zeros(no_ops)
         # number of rows per op (estimated by postgres)
@@ -318,7 +324,7 @@ def gen_flattened_dataset(workload_runs: List[Path],
         labels.append(plan["plan_runtime_ms"] / 1000)
     X_train, X_val, Y_train, Y_val = slice_train_val(cap_training_samples, feature_vecs, labels, plans, val_ratio,
                                                      shuffle=shuffle)
-    return X_train, X_val, Y_train, Y_val, sqls, hints
+    return X_train, X_val, Y_train, Y_val, sqls, hints, selectivities, scan_ops, join_ops
 
 
 def extract_card(p, act_card):
@@ -345,7 +351,8 @@ def gen_analytical_flattened_dataset(workload_runs, statistics_file, cap_trainin
     feature_statistics = load_json(str(statistics_file), namespace=False)
     op_idx_dict = feature_statistics['op_name']['value_dict']
     no_ops = len(op_idx_dict)
-    plans, database_statistics = read_workload_runs(workload_runs, include_timeout_queries=include_timeout_queries,
+    plans, database_statistics = read_workload_runs(workload_run_paths=workload_runs,
+                                                    include_timeout_queries=include_timeout_queries,
                                                     stratify_dataset=stratify_dataset,
                                                     stratify_per_wl_file=stratify_per_wl_file)
     feature_vecs = []

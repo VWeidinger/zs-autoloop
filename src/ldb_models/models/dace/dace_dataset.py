@@ -38,9 +38,7 @@ def create_dace_dataloader(statistics_file: Path,
     if workload_runs.train_workload_runs:
         train_dataset, val_dataset = create_dace_datasets(workload_run_paths=workload_runs.train_workload_runs,
                                                           model_config=model_config,
-                                                          val_ratio=dataloader_options.val_ratio,
-                                                          stratify_dataset=dataloader_options.stratify_dataset,
-                                                          stratify_per_wl_file=dataloader_options.stratify_per_wl_file)
+                                                          val_ratio=dataloader_options.val_ratio)
         train_loader: DataLoader = DataLoader(train_dataset, **dataloader_args)
         val_loader: DataLoader = DataLoader(val_dataset, **dataloader_args)
 

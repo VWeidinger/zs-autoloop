@@ -18,14 +18,15 @@ from classes.classes import ModelConfig, E2EModelConfig, ZeroShotModelConfig, MS
     TlstmModelConfig, ModelName, FlatModelConfig, ScaledPostgresModelConfig, TabularModelConfig, TPoolModelConfig, \
     QPPNetModelConfig, DACEModelConfig, DACEModelNoCostsConfig, QPPModelNoCostsConfig, FlatModelActCardModelConfig, \
     QPPModelActCardsConfig, ZeroShotModelActCardConfig, DACEModelActCardConfig, QueryFormerModelConfig, \
-    ZSLearnFromTimeoutConfig, ZSRankLossConfig
+    ZSLearnFromTimeoutConfig, ZSRankLossConfig, FlatStratifiedModelConfig, ZSStratifiedModelConfig, \
+    DACEStratifiedModelConfig
 from classes.workload_runs import WorkloadRuns
 from models.dace.dace_dataset import create_dace_dataloader
 from models.dace.dace_model import DACELora
 from models.qppnet.qppnet_dataloader import create_qppnet_dataloader
 from models.qppnet.qppnet_model import QPPNet
 from models.query_former.model import QueryFormer
-from models.tabular.train_tabular_baseline import train_tabular_model, test_tabular_model
+from models.tabular.train_tabular_baseline import train_tabular_model, predict_tabular_model
 from models.workload_driven.dataset.dataset_creation import create_baseline_dataloader
 from models.workload_driven.model.e2e_model import E2EModel
 from models.workload_driven.model.mscn_model import MSCNModel
@@ -170,7 +171,7 @@ def use_model(mode: str,
               wandb_run: Run,
               pt_profiler: bool,
               bound_predictions: bool,
-              run_qo_test_pipeline_after_each_epoch: bool = False):
+              run_qo_test_pipeline_after_each_epoch: bool = True):
     # Seed for reproducibility
     print(f"Found model config {config}")
     torch.manual_seed(config.seed)
@@ -195,25 +196,24 @@ def use_model(mode: str,
                                                                               column_statistics=column_statistics,
                                                                               workload_runs=wl_runs,
                                                                               word_embeddings=word_embeddings)
-
-    # extract test data for testing after each epoch
-    if run_qo_test_pipeline_after_each_epoch:
-        test_after_epoch_dataloaders = test_loaders
-        test_after_epoch_testfiles = wl_runs.target_test_csv_paths
-    else:
-        test_after_epoch_dataloaders = []
-        test_after_epoch_testfiles = []
-        for dl, wl_file in zip(test_loaders, wl_runs.target_test_csv_paths):
-            str_wl_file = str(wl_file)
-            if 'join_order' in str_wl_file:
-                continue
-            if 'physical_operator' in str_wl_file:
-                continue
-            if 'access_path_selection' in str_wl_file:
-                continue
-
-            test_after_epoch_dataloaders.append(dl)
-            test_after_epoch_testfiles.append(wl_file)
+    if test_loaders:
+        # extract test data for testing after each epoch
+        if run_qo_test_pipeline_after_each_epoch:
+            test_after_epoch_dataloaders = test_loaders
+            test_after_epoch_testfiles = wl_runs.target_test_csv_paths
+        else:
+            test_after_epoch_dataloaders = []
+            test_after_epoch_testfiles = []
+            for dl, wl_file in zip(test_loaders, wl_runs.target_test_csv_paths):
+                str_wl_file = str(wl_file)
+                if 'join_order' in str_wl_file:
+                    continue
+                if 'physical_operator' in str_wl_file:
+                    continue
+                if 'access_path_selection' in str_wl_file:
+                    continue
+                test_after_epoch_dataloaders.append(dl)
+                test_after_epoch_testfiles.append(wl_file)
 
     found = False
     rank_found = False
@@ -319,7 +319,7 @@ def use_model(mode: str,
 
             # perform validation - after each training stage
             if isinstance(model_config, TabularModelConfig):
-                test_tabular_model(config=config,
+                predict_tabular_model(config=config,
                                    workload_runs=wl_runs,
                                    statistics_file=statistics_file,
                                    model_dir=model_dir,
@@ -351,7 +351,7 @@ def use_model(mode: str,
     if mode in ["predict"] or rerun_predict:
         print(f"Predicting model {config.name.NAME} with seed {config.seed}")
         if isinstance(model_config, TabularModelConfig):
-            test_tabular_model(config=config,
+            predict_tabular_model(config=config,
                                workload_runs=wl_runs,
                                statistics_file=statistics_file,
                                model_dir=model_dir,
@@ -392,6 +392,11 @@ def get_model_config(model_type: str, m_args: dict) -> ModelConfig:
         ModelName.FLAT.NAME: FlatModelConfig,
         ModelName.FLAT_ACT_CARDS.NAME: FlatModelActCardModelConfig,
         ModelName.QUERY_FORMER.NAME: QueryFormerModelConfig,
+
+        # Stratified Models
+        ModelName.FLAT_STRATIFIED.NAME: FlatStratifiedModelConfig,
+        ModelName.ZS_STRATIFIED.NAME: ZSStratifiedModelConfig,
+        ModelName.DACE_STRATIFIED.NAME: DACEStratifiedModelConfig,
 
         # learn from timeout
         ModelName.ZS_FROM_TIMEOUT.NAME: ZSLearnFromTimeoutConfig,
@@ -496,7 +501,6 @@ if __name__ == '__main__':
         pt_profiler=args.pt_profiler,
         bound_predictions=args.bound_predictions,
         wandb_run=run,
-        run_qo_test_pipeline_after_each_epoch=args.qo_eval_after_each_epoch
-    )
+        run_qo_test_pipeline_after_each_epoch=args.qo_eval_after_each_epoch)
 
     use_model(**args)

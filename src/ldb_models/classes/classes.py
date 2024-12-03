@@ -30,20 +30,27 @@ class Name:
 
 class ModelName:
     POSTGRES: Name = Name("postgres", "Sc. Postgres")
+
     FLAT: Name = Name("flat", "Flat Vector")
     FLAT_ACT_CARDS = Name("flat_act_cards", "Flat Vector (act. card.)")
+    FLAT_STRATIFIED = Name("flat_stratified", "Flat Vector (stratified)")
+
     MSCN = Name("mscn", "MSCN")
     E2E = Name("e2e", "E2E")
     ZEROSHOT = Name("zeroshot", "Zero-Shot")
     ZEROSHOT_ACT_CARD = Name("zeroshot_act_card", "Zero-Shot (act. card)")
     ZS_FROM_TIMEOUT = Name('zeroshot_learn_from_timeout', 'Zero-Shot (learn from timeout)')
     ZS_RANK_LOSS = Name('zeroshot_rank_loss', 'Zero-Shot (Rank Loss)')
+    ZS_STRATIFIED = Name("zeroshot_stratified", "Zero-Shot (stratified)")
+
     QPP_NET = Name("qppnet", "QPP-Net")
     QPP_NET_NO_COSTS = Name("qppnet_no_costs", "QPP-Net\n(w/o PG costs)")
     QPP_NET_ACT_CARDS = Name("qppnet_act_cards", "QPP-Net (act. card.)")
     DACE = Name("dace", "DACE")
     DACE_ACT_CARDS = Name("dace_act_cards", "DACE (act. card.)")
     DACE_NO_COSTS = Name("dace_no_costs", "DACE\n(w/o PG costs)")
+    DACE_STRATIFIED = Name("dace_stratified", "DACE (stratified)")
+
     QUERY_FORMER = Name("query_former", "QueryFormer")
 
 
@@ -75,6 +82,7 @@ class ModelConfig:
     hyperparameter: Path = None
     column_statistics: bool = False
     word_embeddings: bool = False
+    stratified_workloads: bool = False
 
     def get_model_dir(self, source_path: Paths, database: Dataset) -> Path:
         return source_path.Data.models / self.name.NAME / database.db_name
@@ -103,13 +111,13 @@ class ModelConfig:
             return None
 
     def get_training_workloads(self, training_datasets: List[Dataset], target_dataset: Dataset,
-                               wl_name: str = "workload_200k_s1") -> List[str]:
+                               wl_name: str = "workload_200k_s1", stratified_workload: bool = False) -> List[str]:
         if self.type == ModelType.WL_AGNOSTIC:
             training_workloads = []
             for db in training_datasets:
                 if db.db_name != target_dataset.db_name:
                     path = self.get_data_base_dir(
-                        stratified_workloads=False) / f"{db.db_name}_scaled{db.scale}" / f"{wl_name}.json"
+                        stratified_workloads=stratified_workload) / f"{db.db_name}_scaled{db.scale}" / f"{wl_name}.json"
                     training_workloads.append(str(path))
 
             # assert len(training_workloads) == 19, f"Found {len(training_workloads)}, but it should be 19"
@@ -117,7 +125,7 @@ class ModelConfig:
 
         elif self.type == ModelType.WL_DRIVEN:
             path = self.get_data_base_dir(
-                stratified_workloads=False) / f"{target_dataset.db_name}_scaled{target_dataset.scale}" / f"{wl_name}.json"
+                stratified_workloads=stratified_workload) / f"{target_dataset.db_name}_scaled{target_dataset.scale}" / f"{wl_name}.json"
             return [str(path)]
 
     def assemble_wl_path(self, target_db: Dataset, wl_name):
@@ -157,6 +165,11 @@ class FlatModelConfig(TabularModelConfig):
     device: str = "cpu"
     input_format: str = InputFormats.parsed
     featurization: Featurization = FlatModelFeaturization
+
+@attrs.define(frozen=True, slots=False)
+class FlatStratifiedModelConfig(FlatModelConfig):
+    name: ModelName = ModelName.FLAT_STRATIFIED
+    stratified_workloads: bool = True
 
 
 @attrs.define(frozen=True, slots=False)
@@ -279,6 +292,11 @@ class ZeroShotModelConfig(ModelConfig):
 
 
 @attrs.define(frozen=True, slots=False)
+class ZSStratifiedModelConfig(ZeroShotModelConfig):
+    name: Name = ModelName.ZS_STRATIFIED
+    stratified_workloads: bool = True
+
+@attrs.define(frozen=True, slots=False)
 class ZSRankLossConfig(ZeroShotModelConfig):
     name: Name = ModelName.ZS_RANK_LOSS
     loss_class_name:str = 'RankLoss'
@@ -333,6 +351,11 @@ class DACEModelConfig(ModelConfig):
     optimizer_class_name: str = "Adam"
     optimizer_kwargs: dict = dict(lr=1e-3)
     device: str = "cuda:0" # ToDo: Device selection should be handled by octopus - but how?
+
+@attrs.define(frozen=True, slots=False)
+class DACEStratifiedModelConfig(DACEModelConfig):
+    name: Name = ModelName.DACE_STRATIFIED
+    stratified_workloads: bool = True
 
 
 @attrs.define(frozen=True, slots=False)

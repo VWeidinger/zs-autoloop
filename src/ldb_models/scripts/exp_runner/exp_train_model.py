@@ -5,7 +5,8 @@ from ldb_schema.paths import ClusterPaths, LocalPaths
 from octopus.step import Rsync, KillAllScreens, SetupVenv, RsyncCurrentRepo, SetupRYEVenv
 
 from classes.classes import ModelConfig, ModelType, \
-    ZeroShotModelConfig
+    ZeroShotModelConfig, FlatModelConfig, ScaledPostgresModelConfig, FlatStratifiedModelConfig, \
+    DACEStratifiedModelConfig, ZSStratifiedModelConfig
 from scripts.exp_runner.exp_runner import ExpRunner, TrainingServers
 
 
@@ -29,7 +30,8 @@ def generate_training_commands(datasets: List[Dataset], seeds: list[int], python
         for target_model in model_list:
             training_runs = " ".join(
                 target_model.get_training_workloads(training_datasets=datasets,
-                                                    target_dataset=target_dataset))
+                                                    target_dataset=target_dataset,
+                                                    stratified_workload=stratified_workloads))
             test_runs = target_model.get_test_workloads(target_dataset)
             if eval_join_order:  # and target_dataset.db_name in ['imdb']:
                 test_runs += " " + target_model.assemble_wl_path(Dataset('imdb'), 'join_order')
@@ -140,8 +142,8 @@ if __name__ == '__main__':
         Dataset('fhnk', scale=2)
     ]
 
-    seeds = [54]
-    node = TrainingServers.NODE02
+    seeds = [0]
+    node = TrainingServers.NODE04
 
     # ===================
     # CONFIGS
@@ -154,7 +156,6 @@ if __name__ == '__main__':
     eval_join_order = True  # evaluate join order using JOB-Light runs with exhaustive join orders
     eval_access_path = True  # evaluate access path selection (Idx Scan vs. SeqScan)
     eval_physical_operator = True  # evaluate physical operator selection
-    stratified_workloads = True  # if True, will use stratified workloads
     qo_eval_after_each_epoch = True  # if True, will run a full QO evaluation after each epoch
     # ===================
 
@@ -166,9 +167,14 @@ if __name__ == '__main__':
     # model_config = MSCNModelConfig()                  # --> ToDo: Adapt to new codebase and generate sentences
     # model_config = DACEModelConfig()                  # --> Working
     # model_config = QueryFormerModelConfig()           # --> ToDo: Generate Sentences
-    model_config = ZeroShotModelConfig()  # --> Working
+    # model_config = ZeroShotModelConfig()  # --> Working
     # model_config = ZSLearnFromTimeoutConfig()         # --> Working
     # model_config = ZSRankLossConfig()                 # --> Working
+
+    # Stratified Models
+    # model_config = FlatStratifiedModelConfig()        # --> Working
+    model_config = ZSStratifiedModelConfig()            # --> Working
+    # model_config = DACEStratifiedModelConfig()        # --> Not yet working
 
     # Ablation Models (without postgres Estimates)
     # model_config = DACEModelNoCostsConfig()
@@ -199,7 +205,7 @@ if __name__ == '__main__':
                                                eval_join_order=eval_join_order,
                                                eval_access_path=eval_access_path,
                                                eval_physical_operator=eval_physical_operator,
-                                               stratified_workloads=stratified_workloads,
+                                               stratified_workloads=model_config.stratified_workloads,
                                                qo_eval_after_each_epoch=qo_eval_after_each_epoch)
 
     runner.run_exp(node_names=[node["hostname"]],
