@@ -191,6 +191,7 @@ def use_model(mode: str,
     metrics: List[Metric] = init_metrics(config.loss_class_name)
 
     # Initialize models and data loaders
+    print(f'Initializing model {config.name.NAME} with seed {config.seed} and load datasets', flush=True)
     model, train_loader, val_loader, test_loaders, feature_stats = init_model(config=config,
                                                                               statistics_file=statistics_file,
                                                                               column_statistics=column_statistics,
@@ -220,13 +221,14 @@ def use_model(mode: str,
     finished = False
     if model:
         # Move model to device
+        print(f"Model device: {model.device}")
         model = model.to(model.device)
 
         # Init optimizer
         optimizer: Optimizer = opt.__dict__[config.optimizer_class_name](model.parameters(),
                                                                          **config.optimizer_kwargs)
 
-        print(f"Load model with name {config.name.NAME} and seed {config.seed} from {model_dir}")
+        print(f"Try to load model with name {config.name.NAME} and seed {config.seed} from {model_dir}")
         csv_stats, epochs_wo_improvement, epoch, model, optimizer, metrics, finished, found, rank_found = \
             load_checkpoint(model=model,
                             target_path=model_dir,

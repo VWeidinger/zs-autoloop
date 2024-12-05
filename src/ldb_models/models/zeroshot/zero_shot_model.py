@@ -11,7 +11,7 @@ class ZeroShotModel(FcOutModel):
     A zero-shot cost model that predicts query runtimes on unseen databases out-of-the-box without retraining.
     """
 
-    def __init__(self, model_config: ZeroShotModelConfig, device='cpu', feature_statistics=None,
+    def __init__(self, model_config: ZeroShotModelConfig, feature_statistics=None,
                  add_tree_model_types=None, prepasses=None, plan_featurization=None, encoders=None, label_norm=None):
 
         super().__init__(output_dim=model_config.output_dim,
@@ -24,7 +24,7 @@ class ZeroShotModel(FcOutModel):
         self.label_norm = label_norm
         self.test = False  # ToDo?
         self.skip_message_passing = False
-        self.device = device
+        self.device = model_config.device
         self.hidden_dim = model_config.hidden_dim
 
         # use different models per edge type

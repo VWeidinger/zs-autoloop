@@ -15,7 +15,7 @@
     <option name="ADD_SOURCE_ROOTS" value="true" />
     <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
       <option name="SCRIPT_NAME" value="$PROJECT_DIR$/src/ldb_models/scripts/exp_runner/exp_train_model.py"/>
-    <option name="PARAMETERS" value="--task setup deliver start  monitor" />
+      <option name="PARAMETERS" value="--task setup deliver start monitor"/>
     <option name="SHOW_COMMAND_LINE" value="false" />
     <option name="EMULATE_TERMINAL" value="false" />
     <option name="MODULE_MODE" value="false" />

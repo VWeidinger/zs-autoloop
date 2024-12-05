@@ -6,18 +6,17 @@ from octopus.step import Rsync, KillAllScreens, SetupVenv, RsyncCurrentRepo, Set
 
 from classes.classes import ModelConfig, ModelType, \
     ZeroShotModelConfig, FlatModelConfig, ScaledPostgresModelConfig, FlatStratifiedModelConfig, \
-    DACEStratifiedModelConfig, ZSStratifiedModelConfig
+    ZSStratifiedModelConfig, ScaledPostgresStratifiedModelConfig
 from scripts.exp_runner.exp_runner import ExpRunner, TrainingServers
 
 
 def generate_training_commands(datasets: List[Dataset], seeds: list[int], python_version: str, wandb_project: str,
                                wandb_entity: str,
                                model_list: list[ModelConfig] = ModelConfig, quick_run: bool = False,
-                               pt_profiler: bool = False, leave_one_out_style: bool = True, test_against: str = None,
+                               pt_profiler: bool = False, test_against: str = None,
                                ft_with_ranking: bool = False, bound_predictions: bool = False,
                                eval_join_order: bool = False, eval_access_path: bool = False,
                                eval_physical_operator: bool = False,
-                               stratified_workloads: bool = False,
                                qo_eval_after_each_epoch: bool = False) -> List[str]:
     if test_against:
         print(f'Testing the models against {test_against}')
@@ -31,15 +30,19 @@ def generate_training_commands(datasets: List[Dataset], seeds: list[int], python
             training_runs = " ".join(
                 target_model.get_training_workloads(training_datasets=datasets,
                                                     target_dataset=target_dataset,
-                                                    stratified_workload=stratified_workloads))
+                                                    stratified_workload=target_model.stratified_workloads))
             test_runs = target_model.get_test_workloads(target_dataset)
             if eval_join_order:  # and target_dataset.db_name in ['imdb']:
-                test_runs += " " + target_model.assemble_wl_path(Dataset('imdb'), 'join_order')
+                test_runs += " " + target_model.assemble_wl_path(Dataset('imdb'), 'join_order',
+                                                                 stratified_workloads=False)
             if eval_access_path:  # and target_dataset.db_name in ['imdb', 'tpc_h', 'baseball']:
-                test_runs += " " + target_model.assemble_wl_path(Dataset('imdb'), "access_path_selection")
+                test_runs += " " + target_model.assemble_wl_path(Dataset('imdb'), "access_path_selection",
+                                                                 stratified_workloads=False)
             if eval_physical_operator:  # and target_dataset.db_name in ['imdb', 'tpc_h', 'baseball']:
-                test_runs += " " + target_model.assemble_wl_path(Dataset('imdb'), "physical_operator")
-                test_runs += " " + target_model.assemble_wl_path(Dataset('imdb'), "physical_operator_w_idx")
+                test_runs += " " + target_model.assemble_wl_path(Dataset('imdb'), "physical_operator",
+                                                                 stratified_workloads=False)
+                test_runs += " " + target_model.assemble_wl_path(Dataset('imdb'), "physical_operator_w_idx",
+                                                                 stratified_workloads=False)
 
             statistics_path = target_model.get_statistics(source_path=ClusterPaths(),
                                                           dataset=target_dataset,
@@ -143,12 +146,16 @@ if __name__ == '__main__':
     ]
 
     seeds = [0]
-    node = TrainingServers.NODE04
+    nodes = [
+        TrainingServers.NODE03,
+        TrainingServers.NODE04,
+        TrainingServers.NODE05,
+    ]
 
     # ===================
     # CONFIGS
     # ===================
-    quick_run = True  # if True, it will run only a few epochs on a few workloads
+    quick_run = False  # if True, it will run only a few epochs on a few workloads
     pt_profiler = False  # Profiler for PyTorch
     test_against = 'imdb'  # if not set, will test against all in an leave one out style
     ft_with_ranking = False  # fine-tune with ranking (pretrains a model and then fine-tunes it with ranking)
@@ -160,39 +167,43 @@ if __name__ == '__main__':
     # ===================
 
     # Standard Models
-    # model_config = ScaledPostgresModelConfig()        # --> Working
-    # model_config = FlatModelConfig()                  # --> Working
-    # model_config = E2EModelConfig()                   # --> ToDo: Adapt to new codebase and generate sentences
-    # model_config = QPPNetModelConfig()                # --> Working?
-    # model_config = MSCNModelConfig()                  # --> ToDo: Adapt to new codebase and generate sentences
-    # model_config = DACEModelConfig()                  # --> Working
-    # model_config = QueryFormerModelConfig()           # --> ToDo: Generate Sentences
-    # model_config = ZeroShotModelConfig()  # --> Working
-    # model_config = ZSLearnFromTimeoutConfig()         # --> Working
-    # model_config = ZSRankLossConfig()                 # --> Working
+    model_configs = [
+        ScaledPostgresModelConfig(),  # --> Working
+        FlatModelConfig(),  # --> Working
+        # E2EModelConfig(),                   # --> ToDo: Adapt to new codebase and generate sentences
+        # QPPNetModelConfig(),                # --> Working?
+        # MSCNModelConfig(),                  # --> ToDo: Adapt to new codebase and generate sentences
+        # DACEModelConfig(),                  # --> Working
+        # QueryFormerModelConfig(),           # --> ToDo: Generate Sentences
+        ZeroShotModelConfig(),  # --> Working
+        # ZSLearnFromTimeoutConfig(),         # --> Working
+        # ZSRankLossConfig(),                 # --> Working
 
-    # Stratified Models
-    # model_config = FlatStratifiedModelConfig()        # --> Working
-    model_config = ZSStratifiedModelConfig()            # --> Working
-    # model_config = DACEStratifiedModelConfig()        # --> Not yet working
+        # Stratified Models
+        FlatStratifiedModelConfig(),  # --> Working
+        ZSStratifiedModelConfig(),  # --> Working
+        # DACEStratifiedModelConfig(),        # --> Not yet working
+        ScaledPostgresStratifiedModelConfig(),
 
-    # Ablation Models (without postgres Estimates)
-    # model_config = DACEModelNoCostsConfig()
-    # model_config = QPPModelNoCostsConfig()
+        # Ablation Models (without postgres Estimates)
+        # DACEModelNoCostsConfig(),
+        # QPPModelNoCostsConfig(),
 
-    # Ablation Models (actual cardinalities)
-    # model_config = FlatModelActCardModelConfig()
-    # model_config = QPPModelActCardsConfig()
-    # model_config = DACEModelActCardConfig()
-    # model_config = ZeroShotModelActCardConfig()
+        # Ablation Models (actual cardinalities)
+        # FlatModelActCardModelConfig(),
+        # QPPModelActCardsConfig(),
+        # DACEModelActCardConfig(),
+        # ZeroShotModelActCardConfig(),
+    ]
 
     runner = ExpRunner(replicate=False,
-                       node_names=[node["hostname"]],
-                       python_version='rye')
+                       node_names=[node["hostname"] for node in nodes],
+                       python_version='rye',
+                       available_sockets=[0, 1])
 
     # for dataset in datasets:
     eval_commands = generate_training_commands(datasets=datasets,
-                                               model_list=[model_config],
+                                               model_list=model_configs,
                                                python_version='',
                                                seeds=seeds,
                                                wandb_project=runner.wandb_project,
@@ -205,11 +216,9 @@ if __name__ == '__main__':
                                                eval_join_order=eval_join_order,
                                                eval_access_path=eval_access_path,
                                                eval_physical_operator=eval_physical_operator,
-                                               stratified_workloads=model_config.stratified_workloads,
                                                qo_eval_after_each_epoch=qo_eval_after_each_epoch)
 
-    runner.run_exp(node_names=[node["hostname"]],
-                   commands=eval_commands,
+    runner.run_exp(commands=eval_commands,
                    set_up_steps=setup_steps,
                    purge_steps=purge_steps,
                    pickup_steps=pickup_steps,

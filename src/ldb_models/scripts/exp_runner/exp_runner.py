@@ -34,7 +34,9 @@ class ExpRunner:
     def __init__(self,
                  replicate: bool,
                  node_names: List[str],
-                 python_version: str = "3.9"):
+                 python_version: str = "3.9",
+                 available_sockets: List[int] = [0, 1],
+                 ):
 
         # Read environments variable and arguments
         # Read credentials from environment variables
@@ -70,28 +72,27 @@ class ExpRunner:
             self.prefix = f"set -x; cd {self.root_path}/src/ldb_models \n"
 
         # Create nodes
-        self.nodes = self.create_nodes(node_names, self.ssh_username, self.private_key_path, self.ssh_passphrase)
+        self.nodes = self.create_nodes(node_names, self.ssh_username, self.private_key_path, self.ssh_passphrase,
+                                       available_sockets=available_sockets)
 
         # Define script distribution
         self.exp_script_gen = functools.partial(distribute_exp_scripts, shuffle=False, replicate=replicate)
         self.shuffle_seed = randint(0, 8192)
 
     def run_exp(self,
-                node_names: List,
                 commands: List[str],
                 set_up_steps: List[Step],
                 purge_steps: List[Step],
                 pickup_steps: List[Step],
                 offset: int = 0,
-                screens_per_node: int = 1):
-
-        target_nodes = [n for n in self.nodes if n.ssh_hostname in node_names]
+                screens_per_node: int = 1,
+                ):
 
         e = Experiment(
             experiment_commands=commands,
             experiment_prefix=self.prefix,
             local_cmd_prefix='',
-            nodes=target_nodes,
+            nodes=self.nodes,
             setup_steps=set_up_steps,
             purge_steps=purge_steps,
             monitor_steps=[CheckActiveScreens()],
@@ -103,7 +104,7 @@ class ExpRunner:
             slurm_num_gpus_per_job=1,
             run_exp_message="Cost Model Evaluation",
             run_exp_expected_runtime="05:00",
-            use_run_exp_numa_socket="0",
+            use_run_exp_pin=True,
             screen_or_job_id_offset=offset,
             python_version=self.python_version, )
 
@@ -111,7 +112,8 @@ class ExpRunner:
         for task in self.tasks:
             e.run_task(task)
 
-    def create_nodes(self, names: List[str], username: str, key_path: str, passphrase: str) -> List[Node]:
+    def create_nodes(self, names: List[str], username: str, key_path: str, passphrase: str,
+                     available_sockets: List[int] = [0, 1]) -> List[Node]:
         # Create nodes
         nodes = []
         nodes += [Node(ssh_hostname=ssh_hostname,
@@ -124,7 +126,8 @@ class ExpRunner:
                        use_slurm="dgx" in ssh_hostname,
                        use_run_exp="dgx" not in ssh_hostname and "cloudlab" not in ssh_hostname,
                        python_version=self.python_version,
-                       test_connection=False) for ssh_hostname in names]
+                       test_connection=False,
+                       available_sockets=available_sockets) for ssh_hostname in names]
         return nodes
 
     @staticmethod

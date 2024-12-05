@@ -62,7 +62,10 @@ def test_model(config: ModelConfig,
                     # remove the number annotation
                     filename = '_'.join(filename.split('_')[:-1])
 
-                    wandb.log(prefix_dict(test_stats, f'{filename}.json/'), step=epoch)
+                    if is_per_epoch:
+                        wandb.log(prefix_dict(test_stats, f'{filename}.json/'), step=epoch)
+                    else:
+                        wandb.run.summary.update(prefix_dict(test_stats, f'{filename}.json/'))
 
                 save_csv([test_stats], str(test_path) + f"_test_stats{file_suffix}.csv")
 

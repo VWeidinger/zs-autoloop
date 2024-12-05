@@ -24,7 +24,7 @@ class E2EModel(nn.Module):
         self.hidden_dim_plan = model_config.hidden_dim_plan
         self.input_dim_pred = input_dims.input_dim_pred
         self.input_dim_plan = input_dims.input_dim_plan
-        self.device = device
+        self.device = model_config.device
         self.label_norm = None
 
         # original architecture by Sun et al.

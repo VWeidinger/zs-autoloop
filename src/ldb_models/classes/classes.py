@@ -128,12 +128,12 @@ class ModelConfig:
                 stratified_workloads=stratified_workload) / f"{target_dataset.db_name}_scaled{target_dataset.scale}" / f"{wl_name}.json"
             return [str(path)]
 
-    def assemble_wl_path(self, target_db: Dataset, wl_name):
+    def assemble_wl_path(self, target_db: Dataset, wl_name, stratified_workloads: bool = True):
         return str(self.get_data_base_dir(
-            stratified_workloads=False) / f"{target_db.db_name}_scaled{target_db.scale}" / f"{wl_name}.json")
+            stratified_workloads=stratified_workloads) / f"{target_db.db_name}_scaled{target_db.scale}" / f"{wl_name}.json")
 
     def get_test_workloads(self, target_db: Dataset) -> str:
-        return self.assemble_wl_path(target_db, "workload_200k_s1")
+        return self.assemble_wl_path(target_db, "workload_200k_s1", stratified_workloads=True)
 
     def get_data_base_dir(self, stratified_workloads: bool) -> Path:
         if stratified_workloads:
@@ -188,6 +188,11 @@ class ScaledPostgresModelConfig(TabularModelConfig):
 
 
 @attrs.define(frozen=True, slots=False)
+class ScaledPostgresStratifiedModelConfig(ScaledPostgresModelConfig):
+    stratified_workloads: bool = True
+
+
+@attrs.define(frozen=True, slots=False)
 class AnalyticalEstCardModelConfig(TabularModelConfig):
     model_name: Name = Name("analytical_est_card", "Analytical (est. card)")
 
@@ -210,6 +215,7 @@ class QPPNetModelConfig(ModelConfig):
     device: str = "cpu"
     input_format: str = InputFormats.json
     column_statistics: bool = True
+
 
 @attrs.define(frozen=True, slots=False)
 class QPPModelNoCostsConfig(QPPNetModelConfig):
@@ -256,8 +262,8 @@ class ZeroShotModelConfig(ModelConfig):
     name: Name = ModelName.ZEROSHOT
     type: ModelType = ModelType.WL_AGNOSTIC
     featurization: Featurization = PostgresEstSystemCardDetail
-    loss_class_name:str = "QLoss"
-    loss_class_kwargs:dict = dict()
+    loss_class_name: str = "QLoss"
+    loss_class_kwargs: dict = dict()
 
     fc_out_kwargs: dict = dict(activation_class_name='LeakyReLU',
                                activation_class_kwargs={},
@@ -269,7 +275,7 @@ class ZeroShotModelConfig(ModelConfig):
                                activation=True,
                                inplace=True)
     final_mlp_kwargs: dict = dict(width_factor=1.5,
-                                  n_layers=4,)
+                                  n_layers=4, )
     tree_layer_kwargs: dict = dict(width_factor=0.6,
                                    n_layers=2)
     node_type_kwargs: dict = dict(width_factor=1.5,
@@ -288,7 +294,7 @@ class ZeroShotModelConfig(ModelConfig):
     batch_to_func: Callable = batch_to
     collator_func: Callable = postgres_plan_collator
     input_format: InputFormats = InputFormats.parsed
-    device: str = "cuda:0" # ToDo: Device selection should be handled by octopus - but how?
+    device: str = "cuda:[socket]"  # ToDo: Device selection should be handled by octopus - but how?
 
 
 @attrs.define(frozen=True, slots=False)
@@ -299,7 +305,7 @@ class ZSStratifiedModelConfig(ZeroShotModelConfig):
 @attrs.define(frozen=True, slots=False)
 class ZSRankLossConfig(ZeroShotModelConfig):
     name: Name = ModelName.ZS_RANK_LOSS
-    loss_class_name:str = 'RankLoss'
+    loss_class_name: str = 'RankLoss'
 
 
 @attrs.define(frozen=True, slots=False)
@@ -350,7 +356,7 @@ class DACEModelConfig(ModelConfig):
     input_format: InputFormats = InputFormats.parsed
     optimizer_class_name: str = "Adam"
     optimizer_kwargs: dict = dict(lr=1e-3)
-    device: str = "cuda:0" # ToDo: Device selection should be handled by octopus - but how?
+    device: str = "cuda:[socket]"  # ToDo: Device selection should be handled by octopus - but how?
 
 @attrs.define(frozen=True, slots=False)
 class DACEStratifiedModelConfig(DACEModelConfig):
