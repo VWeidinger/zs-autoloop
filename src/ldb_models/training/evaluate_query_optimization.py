@@ -49,6 +49,7 @@ def evaluate_join_order(predictions, is_per_epoch: bool = False, epoch: int = No
         if search_sql == sql:
             # sort both lists by labels
             sorted_labels, sorted_preds = zip(*sorted(zip(labels, preds)))
+            # assert len(sorted_labels) == len(sorted_preds) and  len(sorted_labels) == 120, "Missing labels for example query"
             if run:
                 # create a plot
                 data = {prefix: wandb.plot.line_series(
@@ -188,6 +189,7 @@ def evaluate_physical_plan_selection(predictions: dict, with_idxs: bool = False,
         return my_format
 
     # create pie chart for optimal join operator distribution and predicted join operator distribution
+    plt.close()
     fig, axs = plt.subplots(1, 2, figsize=(12, 6))
     axs[0].pie(optimal_join_op_ctr.values(), autopct=autopct_format(optimal_join_op_ctr.values()))
     axs[0].set_title('Optimal Join Operator Distribution')
