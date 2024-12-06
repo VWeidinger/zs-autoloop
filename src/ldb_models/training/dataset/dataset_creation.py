@@ -17,13 +17,13 @@ from training.dataset.statification import stratify_plans
 
 
 def read_workload_runs(workload_run_paths: List[Path],
-                       limit_queries: int = None,
-                       limit_queries_affected_wl: int = None,
+                       limit_plans_per_file: int,
+                       limit_plans_overall: int,
                        input_format: InputFormats = InputFormats.parsed,
                        include_timeout_queries: bool = False,
                        include_hint_not_obeyed_queries: bool = False,
                        stratify_per_wl_file: bool = False,
-                       stratify_dataset: bool = False):
+                       stratify_dataset: bool = False, ) -> (List[dict], dict):
 
     # reads several workload runs
     plans = []
@@ -32,6 +32,7 @@ def read_workload_runs(workload_run_paths: List[Path],
     timeout_thresholds = []
 
     stratify_file_blacklist = ['join_order', 'physical_operator', 'access_path_selection']
+    limit_plans_blacklist = ['join_order', 'physical_operator', 'access_path_selection']
 
     for path_index, path in enumerate(workload_run_paths):
         per_file_plans = []
@@ -42,12 +43,6 @@ def read_workload_runs(workload_run_paths: List[Path],
             print(f'Error reading {path} - skip')
             continue
         database_statistics[path_index] = run["database_stats"]
-
-        limit_per_ds = None
-        if limit_queries is not None:
-            if path_index >= len(workload_run_paths) - limit_queries_affected_wl:
-                limit_per_ds = limit_queries // limit_queries_affected_wl
-                print(f"Capping workload {path} after {limit_per_ds} queries")
 
         if input_format == InputFormats.parsed:
             for p_id, plan in enumerate(run["parsed_plans"]):
@@ -62,8 +57,10 @@ def read_workload_runs(workload_run_paths: List[Path],
 
                 plan["database_id"] = path_index
                 per_file_plans.append(plan)
-                if limit_per_ds is not None and p_id > limit_per_ds:
+
+                if limit_plans_per_file is not None and len(per_file_plans) >= limit_plans_per_file:
                     break
+
         elif input_format == InputFormats.json:
             if "query_list" not in run:
                 raise ValueError(f"This model requires json format, are you sure {path} is in json format?")
@@ -83,6 +80,14 @@ def read_workload_runs(workload_run_paths: List[Path],
                 if plan["zero_card"] != True and plan["invalid_hint"] != True:
                     assert "Execution Time" in plan["analyze_plans"][0].keys(), f"Execution Time not in plan {plan}"
                     per_file_plans.append(plan)
+
+                if limit_plans_per_file is not None and len(per_file_plans) >= limit_plans_per_file:
+                    #  check if file is in limit blacklist
+                    if any([blacklist in str(path) for blacklist in limit_plans_blacklist]):
+                        pass
+                    else:
+                        print(f'Limiting plans per file to {limit_plans_per_file} for {path}')
+                        break
         else:
             raise ValueError(f"Input format {input_format} not supported")
 
@@ -122,6 +127,11 @@ def read_workload_runs(workload_run_paths: List[Path],
             shuffle_before=True
         )
 
+    if limit_plans_overall is not None:
+        # shuffle plans
+        np.random.shuffle(plans)
+        plans = plans[:limit_plans_overall]
+
     return plans, database_statistics
 
 
@@ -136,8 +146,8 @@ def create_datasets(workload_run_paths,
                     stratify_dataset: bool = False, stratify_per_wl_file: bool = False) -> (
         Pipeline, PlanDataset, PlanDataset, PlanDataset, dict):
     plans, database_statistics = read_workload_runs(workload_run_paths=workload_run_paths,
-                                                    limit_queries=model_config.limit_queries,
-                                                    limit_queries_affected_wl=model_config.limit_queries_affected_wl,
+                                                    limit_plans_per_file=model_config.limit_plans_per_file,
+                                                    limit_plans_overall=model_config.limit_plans_overall,
                                                     input_format=model_config.input_format,
                                                     include_timeout_queries=model_config.include_timeout_queries and not is_test_dataset,
                                                     stratify_dataset=stratify_dataset,

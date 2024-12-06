@@ -76,8 +76,8 @@ class ModelConfig:
     cap_training_samples: int = field(default=None)
     loss_class_name: str = "QLoss"
     loss_class_kwargs: dict = field(default=dict())
-    limit_queries: int = field(default=None)
-    limit_queries_affected_wl: int = field(default=0)
+    limit_plans_per_file: int = field(default=10000)
+    limit_plans_overall: int = field(default=None)
     include_timeout_queries: bool = False
     input_format: InputFormats = field(default=None)
     hyperparameter: Path = None

@@ -145,10 +145,11 @@ if __name__ == '__main__':
         Dataset('fhnk', scale=2)
     ]
 
-    seeds = [0]
+    seeds = [1]
     nodes = [
+        TrainingServers.NODE02,
         TrainingServers.NODE03,
-        # TrainingServers.NODE04,
+        TrainingServers.NODE04,
         # TrainingServers.NODE05,
     ]
 
@@ -168,22 +169,22 @@ if __name__ == '__main__':
 
     # Standard Models
     model_configs = [
-        # ScaledPostgresModelConfig(),  # --> Working
-        # FlatModelConfig(),  # --> Working
+        ScaledPostgresModelConfig(),  # --> Working
+        FlatModelConfig(),  # --> Working
         # E2EModelConfig(),                   # --> ToDo: Adapt to new codebase and generate sentences
         # QPPNetModelConfig(),                # --> Working?
         # MSCNModelConfig(),                  # --> ToDo: Adapt to new codebase and generate sentences
         # DACEModelConfig(),                  # --> Working
         # QueryFormerModelConfig(),           # --> ToDo: Generate Sentences
-        # ZeroShotModelConfig(),  # --> Working
+        ZeroShotModelConfig(),  # --> Working
         # ZSLearnFromTimeoutConfig(),         # --> Working
         # ZSRankLossConfig(),                 # --> Working
 
         # Stratified Models
-        # FlatStratifiedModelConfig(),  # --> Working
-        # ZSStratifiedModelConfig(),  # --> Working
+        FlatStratifiedModelConfig(),  # --> Working
+        ZSStratifiedModelConfig(),  # --> Working
         # DACEStratifiedModelConfig(),        # --> Not yet working
-        ScaledPostgresStratifiedModelConfig(),
+        ScaledPostgresStratifiedModelConfig(),  # --> Working
 
         # Ablation Models (without postgres Estimates)
         # DACEModelNoCostsConfig(),

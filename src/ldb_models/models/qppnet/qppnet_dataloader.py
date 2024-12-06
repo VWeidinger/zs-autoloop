@@ -98,8 +98,8 @@ def create_datasets(workload_run_paths,
                     stratify_dataset: bool = False, stratify_per_wl_file: bool = False) -> (
         Pipeline, PlanDataset, PlanDataset, PlanDataset, dict):
     plans, database_statistics = read_workload_runs(workload_run_paths=workload_run_paths,
-                                                    limit_queries=model_config.limit_queries,
-                                                    limit_queries_affected_wl=model_config.limit_queries_affected_wl,
+                                                    limit_plans_per_file=model_config.limit_plans_per_file,
+                                                    limit_plans_overall=model_config.limit_plans_overall,
                                                     input_format=model_config.input_format,
                                                     include_timeout_queries=model_config.include_timeout_queries and not is_test_dataset,
                                                     stratify_dataset=stratify_dataset,

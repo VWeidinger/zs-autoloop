@@ -38,7 +38,9 @@ def create_dace_dataloader(statistics_file: Path,
     if workload_runs.train_workload_runs:
         train_dataset, val_dataset = create_dace_datasets(workload_run_paths=workload_runs.train_workload_runs,
                                                           model_config=model_config,
-                                                          val_ratio=dataloader_options.val_ratio)
+                                                          val_ratio=dataloader_options.val_ratio,
+                                                          limit_plans_per_file=model_config.limit_plans_per_file,
+                                                          limit_plans_overall=model_config.limit_plans_overall)
         train_loader: DataLoader = DataLoader(train_dataset, **dataloader_args)
         val_loader: DataLoader = DataLoader(val_dataset, **dataloader_args)
 
@@ -52,7 +54,9 @@ def create_dace_dataloader(statistics_file: Path,
             test_dataset, _ = create_dace_datasets([test_path],
                                                     model_config=model_config,
                                                     shuffle_before_split=False,
-                                                    val_ratio=0.0, is_test_dataset=True)
+                                                   val_ratio=0.0, is_test_dataset=True,
+                                                   limit_plans_per_file=model_config.limit_plans_per_file,
+                                                   limit_plans_overall=model_config.limit_plans_overall)
             test_loader = DataLoader(test_dataset, **dataloader_args)
             test_loaders.append(test_loader)
 
@@ -63,11 +67,16 @@ def create_dace_datasets(workload_run_paths,
                          model_config: DACEModelConfig,
                          val_ratio=0.15,
                          shuffle_before_split=True,
-                         is_test_dataset: bool = False) -> (PlanDataset, PlanDataset):
+                         is_test_dataset: bool = False,
+                         limit_plans_per_file: int = None,
+                         limit_plans_overall: int = None
+                         ) -> (PlanDataset, PlanDataset):
 
     plans, statistics = read_workload_runs(workload_run_paths=workload_run_paths,
                                            input_format=model_config.input_format,
-                                           include_timeout_queries=model_config.include_timeout_queries and not is_test_dataset)
+                                           include_timeout_queries=model_config.include_timeout_queries and not is_test_dataset,
+                                           limit_plans_per_file=limit_plans_per_file,
+                                           limit_plans_overall=limit_plans_overall)
 
     no_plans = len(plans)
     plan_indexes = list(range(no_plans))

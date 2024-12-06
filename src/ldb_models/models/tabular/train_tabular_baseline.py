@@ -69,7 +69,9 @@ def train_tabular_model(workload_runs: WorkloadRuns,
                                                                   val_ratio=0.20,
                                                                   shuffle=True,
                                                                   stratify_dataset=dataloader_options.stratify_dataset,
-                                                                  stratify_per_wl_file=dataloader_options.stratify_per_wl_file)
+                                                                  stratify_per_wl_file=dataloader_options.stratify_per_wl_file,
+                                                                  limit_plans_per_file=config.limit_plans_per_file,
+                                                                  limit_plans_overall=config.limit_plans_overall)
         raise NotImplementedError("This needs to be solved for workload driven model due to the correct split")
     elif config.type == 'wl_agnostic':
 
@@ -83,7 +85,10 @@ def train_tabular_model(workload_runs: WorkloadRuns,
             cap_training_samples=cap_training_samples,
             featurization=featurization,
             val_ratio=0.20,
-            shuffle=True)
+            shuffle=True,
+            limit_plans_per_file=config.limit_plans_per_file,
+            limit_plans_overall=config.limit_plans_overall
+        )
     else:
         raise RuntimeError("Not supported")
 
@@ -177,7 +182,9 @@ def predict_tabular_model(config: ModelConfig,
                                featurization=featurization,
                                val_ratio=0,
                                shuffle=False,
-                               include_timeout_queries=False)
+                               include_timeout_queries=False,
+                               limit_plans_overall=config.limit_plans_overall,
+                               limit_plans_per_file=config.limit_plans_per_file)
         test_datasets.append(
             (x_test, y_test, test_sqls, test_hints, test_selectivities, test_scan_op_list, test_join_op_list))
 
@@ -239,13 +246,17 @@ def gen_postgres_cost_dataset(workload_runs: List[Path],
                               statistics_file: Path,
                               featurization: Optional,
                               shuffle: bool,
+                              limit_plans_overall: int,
+                              limit_plans_per_file: int,
                               val_ratio: float = 0.15,
                               include_timeout_queries: bool = False,
                               stratify_dataset: bool = False,
                               stratify_per_wl_file: bool = False) -> Tuple[np.ndarray]:
     plans, database_statistics = read_workload_runs(workload_runs, include_timeout_queries=include_timeout_queries,
                                                     stratify_dataset=stratify_dataset,
-                                                    stratify_per_wl_file=stratify_per_wl_file)
+                                                    stratify_per_wl_file=stratify_per_wl_file,
+                                                    limit_plans_overall=limit_plans_overall,
+                                                    limit_plans_per_file=limit_plans_per_file)
     feature_vecs = []
     labels = []
     sqls, hints = [], []  # Required to later evaluate against join order
@@ -275,13 +286,18 @@ def gen_flattened_dataset(workload_runs: List[Path],
                           statistics_file: Path,
                           cap_training_samples: Optional[bool],
                           featurization: Featurization,
+                          limit_plans_per_file: int,
+                          limit_plans_overall: int,
                           val_ratio: float = 0.15,
                           shuffle: bool = True,
-                          include_timeout_queries: bool = False):
+                          include_timeout_queries: bool = False,
+                          ):
     feature_statistics = load_json(str(statistics_file), namespace=False)
     op_idx_dict = feature_statistics['op_name']['value_dict']
     no_ops = len(op_idx_dict)
-    plans, database_statistics = read_workload_runs(workload_runs, include_timeout_queries=include_timeout_queries)
+    plans, database_statistics = read_workload_runs(workload_runs, include_timeout_queries=include_timeout_queries,
+                                                    limit_plans_per_file=limit_plans_per_file,
+                                                    limit_plans_overall=limit_plans_overall)
     feature_vecs = []
     labels = []
     selectivities = []
@@ -352,14 +368,17 @@ def extract_card(p, act_card):
 
 def gen_analytical_flattened_dataset(workload_runs, statistics_file, cap_training_samples, val_ratio=0.15,
                                      act_card=False, include_timeout_queries: bool = False,
-                                     stratify_dataset: bool = False, stratify_per_wl_file: bool = False):
+                                     stratify_dataset: bool = False, stratify_per_wl_file: bool = False,
+                                     limit_plans_per_file: int = None, limit_plans_overall: int = None):
     feature_statistics = load_json(str(statistics_file), namespace=False)
     op_idx_dict = feature_statistics['op_name']['value_dict']
     no_ops = len(op_idx_dict)
     plans, database_statistics = read_workload_runs(workload_run_paths=workload_runs,
                                                     include_timeout_queries=include_timeout_queries,
                                                     stratify_dataset=stratify_dataset,
-                                                    stratify_per_wl_file=stratify_per_wl_file)
+                                                    stratify_per_wl_file=stratify_per_wl_file,
+                                                    limit_plans_per_file=limit_plans_per_file,
+                                                    limit_plans_overall=limit_plans_overall)
     feature_vecs = []
     labels = []
     for plan in plans:
