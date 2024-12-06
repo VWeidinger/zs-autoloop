@@ -148,8 +148,8 @@ if __name__ == '__main__':
     seeds = [0]
     nodes = [
         TrainingServers.NODE03,
-        TrainingServers.NODE04,
-        TrainingServers.NODE05,
+        # TrainingServers.NODE04,
+        # TrainingServers.NODE05,
     ]
 
     # ===================
@@ -168,20 +168,20 @@ if __name__ == '__main__':
 
     # Standard Models
     model_configs = [
-        ScaledPostgresModelConfig(),  # --> Working
-        FlatModelConfig(),  # --> Working
+        # ScaledPostgresModelConfig(),  # --> Working
+        # FlatModelConfig(),  # --> Working
         # E2EModelConfig(),                   # --> ToDo: Adapt to new codebase and generate sentences
         # QPPNetModelConfig(),                # --> Working?
         # MSCNModelConfig(),                  # --> ToDo: Adapt to new codebase and generate sentences
         # DACEModelConfig(),                  # --> Working
         # QueryFormerModelConfig(),           # --> ToDo: Generate Sentences
-        ZeroShotModelConfig(),  # --> Working
+        # ZeroShotModelConfig(),  # --> Working
         # ZSLearnFromTimeoutConfig(),         # --> Working
         # ZSRankLossConfig(),                 # --> Working
 
         # Stratified Models
-        FlatStratifiedModelConfig(),  # --> Working
-        ZSStratifiedModelConfig(),  # --> Working
+        # FlatStratifiedModelConfig(),  # --> Working
+        # ZSStratifiedModelConfig(),  # --> Working
         # DACEStratifiedModelConfig(),        # --> Not yet working
         ScaledPostgresStratifiedModelConfig(),
 
@@ -222,5 +222,4 @@ if __name__ == '__main__':
                    set_up_steps=setup_steps,
                    purge_steps=purge_steps,
                    pickup_steps=pickup_steps,
-                   screens_per_node=len(datasets),
                    offset=0)

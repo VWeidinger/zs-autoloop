@@ -19,7 +19,7 @@ from classes.classes import ModelConfig, E2EModelConfig, ZeroShotModelConfig, MS
     QPPNetModelConfig, DACEModelConfig, DACEModelNoCostsConfig, QPPModelNoCostsConfig, FlatModelActCardModelConfig, \
     QPPModelActCardsConfig, ZeroShotModelActCardConfig, DACEModelActCardConfig, QueryFormerModelConfig, \
     ZSLearnFromTimeoutConfig, ZSRankLossConfig, FlatStratifiedModelConfig, ZSStratifiedModelConfig, \
-    DACEStratifiedModelConfig
+    DACEStratifiedModelConfig, ScaledPostgresStratifiedModelConfig
 from classes.workload_runs import WorkloadRuns
 from models.dace.dace_dataset import create_dace_dataloader
 from models.dace.dace_model import DACELora
@@ -35,7 +35,7 @@ from train import train_model
 from training.bound_predictions_with_history import PredictionBounder
 from training.dataset.dataset_creation import create_zeroshot_dataloader
 from training.training.checkpoint import load_checkpoint
-from training.training.metrics import RMSE, MAPE, QError, Metric, RankAccuracy, SpearmanRank
+from training.training.metrics import Metric, RankAccuracy, init_metrics
 from training.training.test import test_model
 
 
@@ -127,36 +127,6 @@ def init_model(statistics_file: Path,
     print('\n')
 
     return model, train_loader, val_loader, test_loaders, feature_statistics
-
-
-def init_metrics(loss_class_name: str) -> List[Metric]:
-    if loss_class_name in ['QLoss', 'QPPLoss', 'DaceLoss']:
-        metrics: List[Metric] = [RMSE(),
-                                 MAPE(),
-                                 QError(percentile=50, early_stopping_metric=True),
-                                 QError(percentile=95),
-                                 QError(percentile=100),
-                                 SpearmanRank()]
-
-    elif loss_class_name in ['MSELoss']:
-        metrics: List[Metric] = [RMSE(early_stopping_metric=True),
-                                 MAPE(),
-                                 QError(percentile=50),
-                                 QError(percentile=95),
-                                 QError(percentile=100),
-                                 SpearmanRank()]
-    elif loss_class_name in ['RankLoss']:
-        metrics: List[Metric] = [
-            RMSE(),
-            MAPE(),
-            QError(percentile=50),
-            QError(percentile=95),
-            QError(percentile=100),
-            SpearmanRank(early_stopping_metric=True),
-        ]
-    else:
-        raise Exception("Loss class not supported")
-    return metrics
 
 
 def use_model(mode: str,
@@ -322,14 +292,12 @@ def use_model(mode: str,
             # perform validation - after each training stage
             if isinstance(model_config, TabularModelConfig):
                 predict_tabular_model(config=config,
-                                   workload_runs=wl_runs,
-                                   statistics_file=statistics_file,
-                                   model_dir=model_dir,
-                                   target_path=target_dir,
-                                   run=wandb_run,
-                                   bound_predictions=bound_predictions,
-                                   prediction_bounder=prediction_bounder,
-                                   dataloader_options=DataLoaderOptions())
+                                      workload_runs=wl_runs,
+                                      statistics_file=statistics_file,
+                                      model_dir=model_dir,
+                                      run=wandb_run,
+                                      bound_predictions=bound_predictions,
+                                      prediction_bounder=prediction_bounder, )
             else:
                 test_model(config=config,
                            test_csv_paths=wl_runs.target_test_csv_paths,
@@ -354,15 +322,15 @@ def use_model(mode: str,
         print(f"Predicting model {config.name.NAME} with seed {config.seed}")
         if isinstance(model_config, TabularModelConfig):
             predict_tabular_model(config=config,
-                               workload_runs=wl_runs,
-                               statistics_file=statistics_file,
-                               model_dir=model_dir,
-                               target_path=target_dir,
-                               run=wandb_run,
-                               bound_predictions=bound_predictions,
-                               prediction_bounder=prediction_bounder,
-                               dataloader_options=DataLoaderOptions()
-                               )
+                                  workload_runs=wl_runs,
+                                  statistics_file=statistics_file,
+                                  model_dir=model_dir,
+                                  target_path=target_dir,
+                                  run=wandb_run,
+                                  bound_predictions=bound_predictions,
+                                  prediction_bounder=prediction_bounder,
+                                  dataloader_options=DataLoaderOptions()
+                                  )
         else:
             test_model(config=config,
                        test_csv_paths=wl_runs.target_test_csv_paths,
@@ -399,6 +367,7 @@ def get_model_config(model_type: str, m_args: dict) -> ModelConfig:
         ModelName.FLAT_STRATIFIED.NAME: FlatStratifiedModelConfig,
         ModelName.ZS_STRATIFIED.NAME: ZSStratifiedModelConfig,
         ModelName.DACE_STRATIFIED.NAME: DACEStratifiedModelConfig,
+        ModelName.POSTGRES_STRATIFIED.NAME: ScaledPostgresStratifiedModelConfig,
 
         # learn from timeout
         ModelName.ZS_FROM_TIMEOUT.NAME: ZSLearnFromTimeoutConfig,

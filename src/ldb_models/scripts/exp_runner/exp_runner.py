@@ -85,7 +85,6 @@ class ExpRunner:
                 purge_steps: List[Step],
                 pickup_steps: List[Step],
                 offset: int = 0,
-                screens_per_node: int = 1,
                 ):
 
         e = Experiment(

@@ -8,7 +8,6 @@ from typing import Optional, List, Tuple
 import joblib
 import lightgbm as lgb
 import numpy as np
-import pandas as pd
 import torch
 import wandb
 from ldb_schema.load_schema import load_json
@@ -25,7 +24,8 @@ from training.evaluate_query_optimization import evaluate_join_order, evaluate_p
     evaluate_access_path_selection
 from training.featurizations import Featurization
 from training.training.checkpoint import save_csv
-from training.training.metrics import QError, RMSE, MAPE
+from training.training.metrics import init_metrics
+from training.training.utils import prefix_dict
 from training.training.validate import to_rows
 
 
@@ -127,12 +127,11 @@ def predict_tabular_model(config: ModelConfig,
                           workload_runs: WorkloadRuns,
                           statistics_file: Path,
                           model_dir: Path,
-                          target_path: Path,
                           cap_training_samples: bool = None,
                           run: Optional[Run] = None,
                           bound_predictions: bool = False,
                           prediction_bounder: Optional[PredictionBounder] = None,
-                          dataloader_options: DataLoaderOptions = None):
+                          log_all_queries: bool = False):
     if bound_predictions or prediction_bounder:
         raise NotImplementedError("prediction bounding needs to be implemented for flat models")
 
@@ -152,7 +151,6 @@ def predict_tabular_model(config: ModelConfig,
 
         # Partially apply the predict_with_lower_bound function
         pred_func = functools.partial(predict_with_lower_bound, lower_bound=0.01)
-        # pred_func = functools.partial(bst.predict, num_iteration=bst.best_iteration)
 
         gen_dataset_func = gen_flattened_dataset
 
@@ -180,23 +178,24 @@ def predict_tabular_model(config: ModelConfig,
                                val_ratio=0,
                                shuffle=False,
                                include_timeout_queries=False)
-        test_datasets.append((x_test, y_test, test_sqls, test_hints, test_selectivities, test_scan_op_list, test_join_op_list))
+        test_datasets.append(
+            (x_test, y_test, test_sqls, test_hints, test_selectivities, test_scan_op_list, test_join_op_list))
 
-    metrics = [RMSE(),
-               MAPE(),
-               QError(percentile=50, early_stopping_metric=True),
-               QError(percentile=95),
-               QError(percentile=100)]
+    # retrieve metrics similar to the ones used for QLoss
+    metrics = init_metrics('QLoss')
 
-    for (x_test, y_test, sqls, hints, selectivities, scan_ops, join_ops), test_path in zip(test_datasets, workload_runs.target_test_csv_paths):
+    for (x_test, y_test, sqls, hints, selectivities, scan_ops, join_ops), test_path in zip(test_datasets,
+                                                                                           workload_runs.target_test_csv_paths):
         print(f"Starting validation for {test_path}")
         test_stats = dict()
         start_t = time.perf_counter()
         pred_runtimes = pred_func(x_test)
-        test_stats.update(test_time=time.perf_counter() - start_t,
-                          no_test_points=len(y_test),
-                          test_labels=y_test,
-                          test_preds=pred_runtimes)
+        test_stats.update(
+            test_time=time.perf_counter() - start_t,
+            no_test_points=len(y_test),
+            # test_labels=y_test,
+            # test_preds=pred_runtimes
+        )
 
         for metric in metrics:
             metric.evaluate(metrics_dict=test_stats,
@@ -207,22 +206,29 @@ def predict_tabular_model(config: ModelConfig,
         save_csv([test_stats], target_csv_path=str(test_path.with_suffix('')) + f"_test_stats.csv")
 
         # Logging all queries
-        rows = to_rows(indexes=[int(i) for i in range(0, len(y_test))],
-                       labels=[float(f) for f in y_test],
-                       predictions=[float(f) for f in pred_runtimes],
-                       sqls=sqls,
-                       hints=hints,
-                       selectivitys=selectivities,
-                       scan_ops=scan_ops,
-                       join_ops=join_ops)
-        save_csv(rows, target_csv_path=str(test_path) + "_test_pred.csv")
+        rows = to_rows(
+            indexes=[int(i) for i in range(0, len(y_test))],
+            labels=[float(f) for f in y_test],
+            predictions=[float(f) for f in pred_runtimes],
+            sqls=sqls,
+            hints=hints,
+            selectivitys=selectivities,
+            scan_ops=scan_ops,
+            join_ops=join_ops)
+        if log_all_queries:
+            save_csv(rows, target_csv_path=str(test_path) + "_test_pred.csv")
 
-        # Update test stats and use this for query optimization evaluation
-        test_stats.update(test_preds=rows)
+        # Log to wandb
+        test_file_name = test_path.stem
+        # remove _seed from name
+        test_file_name = '_'.join(test_file_name.split('_')[:-1])
+
+        wandb.run.summary.update(prefix_dict(test_stats, f'{test_file_name}.json/test_'))
+
         if "join_order" in str(test_path):
             evaluate_join_order(predictions=rows, run=run)
         if "physical_operator" in str(test_path):
-            evaluate_physical_plan_selection(predictions=rows, run=run)
+            evaluate_physical_plan_selection(predictions=rows, run=run, with_idxs='_w_idx' in str(test_path))
         if "access_path_selection" in str(test_path):
             evaluate_access_path_selection(predictions=rows, run=run)
     return
@@ -237,7 +243,6 @@ def gen_postgres_cost_dataset(workload_runs: List[Path],
                               include_timeout_queries: bool = False,
                               stratify_dataset: bool = False,
                               stratify_per_wl_file: bool = False) -> Tuple[np.ndarray]:
-
     plans, database_statistics = read_workload_runs(workload_runs, include_timeout_queries=include_timeout_queries,
                                                     stratify_dataset=stratify_dataset,
                                                     stratify_per_wl_file=stratify_per_wl_file)
@@ -290,7 +295,7 @@ def gen_flattened_dataset(workload_runs: List[Path],
         assign_additional_plan_info(plan=plan, db_statistics=database_statistics)
         selectivities += plan["selectivity"]
         join_ops += plan["join_op"]
-        scan_ops  += plan["scan_op"]
+        scan_ops += plan["scan_op"]
 
         # number an operator occurs
         feature_num_vec = np.zeros(no_ops)

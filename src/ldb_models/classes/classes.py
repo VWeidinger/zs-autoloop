@@ -30,6 +30,7 @@ class Name:
 
 class ModelName:
     POSTGRES: Name = Name("postgres", "Sc. Postgres")
+    POSTGRES_STRATIFIED = Name("postgres_stratified", "Sc. Postgres (stratified)")
 
     FLAT: Name = Name("flat", "Flat Vector")
     FLAT_ACT_CARDS = Name("flat_act_cards", "Flat Vector (act. card.)")
@@ -189,6 +190,7 @@ class ScaledPostgresModelConfig(TabularModelConfig):
 
 @attrs.define(frozen=True, slots=False)
 class ScaledPostgresStratifiedModelConfig(ScaledPostgresModelConfig):
+    name: Name = ModelName.POSTGRES_STRATIFIED
     stratified_workloads: bool = True
 
 

@@ -1,10 +1,10 @@
 import copy
+from typing import List
 
 import numpy as np
 import scipy
 import sklearn
 from sklearn.metrics import mean_squared_error
-
 
 class Metric:
     """
@@ -48,6 +48,34 @@ class Metric:
                     self.best_model = copy.deepcopy(model.state_dict())
         return best_seen
 
+def init_metrics(loss_class_name: str) -> List[Metric]:
+    if loss_class_name in ['QLoss', 'QPPLoss', 'DaceLoss']:
+        metrics: List[Metric] = [RMSE(),
+                                 MAPE(),
+                                 QError(percentile=50, early_stopping_metric=True),
+                                 QError(percentile=95),
+                                 QError(percentile=100),
+                                 SpearmanRank()]
+
+    elif loss_class_name in ['MSELoss']:
+        metrics: List[Metric] = [RMSE(early_stopping_metric=True),
+                                 MAPE(),
+                                 QError(percentile=50),
+                                 QError(percentile=95),
+                                 QError(percentile=100),
+                                 SpearmanRank()]
+    elif loss_class_name in ['RankLoss']:
+        metrics: List[Metric] = [
+            RMSE(),
+            MAPE(),
+            QError(percentile=50),
+            QError(percentile=95),
+            QError(percentile=100),
+            SpearmanRank(early_stopping_metric=True),
+        ]
+    else:
+        raise Exception("Loss class not supported")
+    return metrics
 
 class MAPE(Metric):
     def __init__(self, **kwargs):

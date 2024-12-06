@@ -244,8 +244,14 @@ def evaluate_access_path_selection(predictions: dict, is_per_epoch: bool = False
         prefix += '-per_epoch'
 
     if run:
-        wandb.run.summary[f'{prefix}/total_selected_runtime'] = total_selected_runtime
-        wandb.run.summary[f'{prefix}/total_optimal_runtime'] = total_optimal_runtime
+        if is_per_epoch:
+            wandb.log({
+                f'{prefix}/total_selected_runtime': total_selected_runtime,
+                f'{prefix}/total_optimal_runtime': total_optimal_runtime
+            }, step=epoch)
+        else:
+            wandb.run.summary[f'{prefix}/total_selected_runtime'] = total_selected_runtime
+            wandb.run.summary[f'{prefix}/total_optimal_runtime'] = total_optimal_runtime
 
     def extract_table_col(sql):
         table_name = sql.split("FROM")[1].split("WHERE")[0].strip()
@@ -355,7 +361,7 @@ def evaluate_access_path_selection(predictions: dict, is_per_epoch: bool = False
                 wandb.log({
                     f'{prefix}/acc/{table_name}.{col_name}': accuracy,
                     f'{prefix}/bal_acc/{table_name}.{col_name}': balanced_accuracy
-                }, step=epoch)
+                }, step=epoch, commit=False)
             else:
                 wandb.run.summary[f'{prefix}/acc/{table_name}.{col_name}'] = accuracy
                 wandb.run.summary[f'{prefix}/bal_acc/{table_name}.{col_name}'] = balanced_accuracy
@@ -388,11 +394,11 @@ def evaluate_access_path_selection(predictions: dict, is_per_epoch: bool = False
     plt.ylabel('Ratio SeqScan')
     plt.legend()
     plt.title('SeqScan Ratio')
+    plt.show()
 
     if run:
         if is_per_epoch:
             wandb.log({f'{prefix}/seq_scan_ratio': wandb.Image(plt)}, step=epoch)
         else:
-            wandb.run.summary[f'{prefix}/seq_scan_ratio'] = wandb.Image(plt)
-
-    return
+            print(f'Logging seq_scan_ratio to wandb summary',flush=True)
+            wandb.run.summary[f'{prefix}/overall/seq_scan_ratio'] = wandb.Image(plt)
