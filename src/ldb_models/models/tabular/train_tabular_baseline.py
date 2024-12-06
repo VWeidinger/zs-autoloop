@@ -230,7 +230,8 @@ def predict_tabular_model(config: ModelConfig,
         # remove _seed from name
         test_file_name = '_'.join(test_file_name.split('_')[:-1])
 
-        wandb.run.summary.update(prefix_dict(test_stats, f'{test_file_name}.json/test_'))
+        if run:
+            wandb.run.summary.update(prefix_dict(test_stats, f'{test_file_name}.json/test_'))
 
         if "join_order" in str(test_path):
             evaluate_join_order(predictions=rows, run=run)

@@ -12,6 +12,7 @@ from torch.utils.data import DataLoader
 
 from classes.classes import DACEModelConfig, DataLoaderOptions
 from classes.workload_runs import WorkloadRuns
+from models.zeroshot.postgres_plan_batching import assign_additional_plan_info
 from training.dataset.dataset_creation import read_workload_runs
 from training.dataset.plan_dataset import PlanDataset
 from training.preprocessing.feature_statistics import FeatureType
@@ -20,8 +21,8 @@ from training.preprocessing.feature_statistics import FeatureType
 def create_dace_dataloader(statistics_file: Path,
                            model_config: DACEModelConfig,
                            workload_runs: WorkloadRuns,
-                           dataloader_options: DataLoaderOptions) -> Tuple[dict, DataLoader, DataLoader, list[DataLoader]]:
-
+                           dataloader_options: DataLoaderOptions) -> Tuple[
+    dict, DataLoader, DataLoader, list[DataLoader]]:
     feature_statistics = load_json(str(statistics_file), namespace=False)
     assert feature_statistics != {}, "Feature statistics file is empty!"
 
@@ -30,17 +31,21 @@ def create_dace_dataloader(statistics_file: Path,
     dataloader_args = dict(batch_size=model_config.batch_size,
                            shuffle=dataloader_options.shuffle,
                            num_workers=model_config.num_workers,
-                           pin_memory=dataloader_options.pin_memory,
-                           collate_fn=functools.partial(dace_collator,
-                                                        feature_statistics=feature_statistics,
-                                                        config=model_config))
+                           pin_memory=dataloader_options.pin_memory)
 
     if workload_runs.train_workload_runs:
-        train_dataset, val_dataset = create_dace_datasets(workload_run_paths=workload_runs.train_workload_runs,
-                                                          model_config=model_config,
-                                                          val_ratio=dataloader_options.val_ratio,
-                                                          limit_plans_per_file=model_config.limit_plans_per_file,
-                                                          limit_plans_overall=model_config.limit_plans_overall)
+        train_dataset, val_dataset, db_statistics = create_dace_datasets(
+            workload_run_paths=workload_runs.train_workload_runs,
+            model_config=model_config,
+            val_ratio=dataloader_options.val_ratio,
+            limit_plans_per_file=model_config.limit_plans_per_file,
+            limit_plans_overall=model_config.limit_plans_overall)
+
+        dataloader_args.update(collate_fn=functools.partial(dace_collator,
+                                                            feature_statistics=feature_statistics,
+                                                            config=model_config,
+                                                            db_statistics=db_statistics))
+
         train_loader: DataLoader = DataLoader(train_dataset, **dataloader_args)
         val_loader: DataLoader = DataLoader(val_dataset, **dataloader_args)
 
@@ -51,12 +56,17 @@ def create_dace_dataloader(statistics_file: Path,
         print("Creating dataloader for test data")
         test_loaders = []
         for test_path in workload_runs.test_workload_runs:
-            test_dataset, _ = create_dace_datasets([test_path],
-                                                    model_config=model_config,
-                                                    shuffle_before_split=False,
-                                                   val_ratio=0.0, is_test_dataset=True,
+            test_dataset, _, db_statistics = create_dace_datasets([test_path],
+                                                   model_config=model_config,
+                                                   shuffle_before_split=False,
+                                                   val_ratio=0.0,
+                                                   is_test_dataset=True,
                                                    limit_plans_per_file=model_config.limit_plans_per_file,
                                                    limit_plans_overall=model_config.limit_plans_overall)
+            dataloader_args.update(collate_fn=functools.partial(dace_collator,
+                                                                feature_statistics=feature_statistics,
+                                                                config=model_config,
+                                                                db_statistics=db_statistics))
             test_loader = DataLoader(test_dataset, **dataloader_args)
             test_loaders.append(test_loader)
 
@@ -71,12 +81,11 @@ def create_dace_datasets(workload_run_paths,
                          limit_plans_per_file: int = None,
                          limit_plans_overall: int = None
                          ) -> (PlanDataset, PlanDataset):
-
-    plans, statistics = read_workload_runs(workload_run_paths=workload_run_paths,
-                                           input_format=model_config.input_format,
-                                           include_timeout_queries=model_config.include_timeout_queries and not is_test_dataset,
-                                           limit_plans_per_file=limit_plans_per_file,
-                                           limit_plans_overall=limit_plans_overall)
+    plans, db_statistics = read_workload_runs(workload_run_paths=workload_run_paths,
+                                              input_format=model_config.input_format,
+                                              include_timeout_queries=model_config.include_timeout_queries and not is_test_dataset,
+                                              limit_plans_per_file=limit_plans_per_file,
+                                              limit_plans_overall=limit_plans_overall)
 
     no_plans = len(plans)
     plan_indexes = list(range(no_plans))
@@ -101,10 +110,10 @@ def create_dace_datasets(workload_run_paths,
         val_indexes = plan_indexes[split_train:]
         val_dataset = PlanDataset([plans[i] for i in val_indexes], val_indexes)
 
-    return train_dataset, val_dataset
+    return train_dataset, val_dataset, db_statistics
 
 
-def dace_collator(batch: Tuple, feature_statistics: dict, config: DACEModelConfig):
+def dace_collator(batch: Tuple, feature_statistics: dict, config: DACEModelConfig, db_statistics: dict):
     # Get plan encodings
     add_numerical_scalers(feature_statistics)
 
@@ -112,12 +121,18 @@ def dace_collator(batch: Tuple, feature_statistics: dict, config: DACEModelConfi
     op_name_to_one_hot = get_op_name_to_one_hot(feature_statistics)
 
     labels, sample_idxs, seq_encodings, attention_masks, loss_masks, all_runtimes = [], [], [], [], [], []
-    all_sqls, all_hints = [], []
+    all_sqls, all_hints, all_selectivities, all_scan_ops, all_join_ops = [], [], [], [], []
 
     for sample_idx, p in batch:
         sample_idxs.append(sample_idx)
+
         all_sqls.append(p["sql"])
         all_hints.append(p["hint"])
+        assign_additional_plan_info(p, db_statistics=db_statistics)
+        all_selectivities += p["selectivity"]
+        all_scan_ops += p["scan_op"]
+        all_join_ops += p["join_op"]
+
         seq_encoding, attention_mask, loss_mask, run_times = get_plan_encoding(query_plan=p,
                                                                                model_config=config,
                                                                                op_name_to_one_hot=op_name_to_one_hot,
@@ -137,7 +152,7 @@ def dace_collator(batch: Tuple, feature_statistics: dict, config: DACEModelConfi
     attention_masks = torch.stack(attention_masks)
     loss_masks = torch.stack(loss_masks)
 
-    return seq_encodings, attention_masks, loss_masks, all_runtimes, labels, sample_idxs, all_hints, all_sqls
+    return seq_encodings, attention_masks, loss_masks, all_runtimes, labels, sample_idxs, all_sqls, all_hints, all_selectivities, all_scan_ops, all_join_ops
 
 
 def get_op_name_to_one_hot(feature_statistics: dict) -> dict:
