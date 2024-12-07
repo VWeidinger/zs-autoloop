@@ -30,4 +30,4 @@ class PostgresZeroShotModel(ZeroShotModel):
                          prepasses=prepasses,
                          add_tree_model_types=tree_model_types,
                          model_config=model_config,
-                         feature_statistics=feature_statistics, )
+                         feature_statistics=feature_statistics, **zero_shot_kwargs)

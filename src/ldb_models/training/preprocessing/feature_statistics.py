@@ -107,3 +107,4 @@ def gather_feature_statistics(workload_run_paths, target):
     os.makedirs(os.path.dirname(target), exist_ok=True)
     with open(target, 'w') as outfile:
         json.dump(statistics_dict, outfile)
+    os.chmod(target, 0o777)

@@ -107,3 +107,4 @@ def augment_sample_vectors(dataset, data_dir, plan_path, target_path, no_samples
 
     with open(target_path, 'w') as outfile:
         json.dump(run, outfile, default=dumper)
+    os.chmod(target_path, 0o777)

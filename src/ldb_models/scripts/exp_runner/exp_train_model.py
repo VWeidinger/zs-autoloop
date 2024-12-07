@@ -5,8 +5,7 @@ from ldb_schema.paths import ClusterPaths, LocalPaths
 from octopus.step import Rsync, KillAllScreens, SetupVenv, RsyncCurrentRepo, SetupRYEVenv
 
 from classes.classes import ModelConfig, ModelType, \
-    ZeroShotModelConfig, FlatModelConfig, ScaledPostgresModelConfig, FlatStratifiedModelConfig, \
-    ZSStratifiedModelConfig, ScaledPostgresStratifiedModelConfig
+    ZeroShotModelConfig, ZSStratifiedModelConfig
 from scripts.exp_runner.exp_runner import ExpRunner, TrainingServers
 
 
@@ -149,7 +148,7 @@ if __name__ == '__main__':
     nodes = [
         TrainingServers.NODE02,
         TrainingServers.NODE03,
-        TrainingServers.NODE04,
+        # TrainingServers.NODE04,
         # TrainingServers.NODE05,
     ]
 
@@ -169,8 +168,8 @@ if __name__ == '__main__':
 
     # Standard Models
     model_configs = [
-        ScaledPostgresModelConfig(),  # --> Working
-        FlatModelConfig(),  # --> Working
+        # ScaledPostgresModelConfig(),  # --> Working
+        # FlatModelConfig(),  # --> Working
         # E2EModelConfig(),                   # --> ToDo: Adapt to new codebase and generate sentences
         # QPPNetModelConfig(),                # --> Working?
         # MSCNModelConfig(),                  # --> ToDo: Adapt to new codebase and generate sentences
@@ -181,10 +180,10 @@ if __name__ == '__main__':
         # ZSRankLossConfig(),                 # --> Working
 
         # Stratified Models
-        FlatStratifiedModelConfig(),  # --> Working
+        # FlatStratifiedModelConfig(),  # --> Working
         ZSStratifiedModelConfig(),  # --> Working
         # DACEStratifiedModelConfig(),        # --> Not yet working
-        ScaledPostgresStratifiedModelConfig(),  # --> Working
+        # ScaledPostgresStratifiedModelConfig(),  # --> Working
 
         # Ablation Models (without postgres Estimates)
         # DACEModelNoCostsConfig(),
@@ -200,7 +199,7 @@ if __name__ == '__main__':
     runner = ExpRunner(replicate=False,
                        node_names=[node["hostname"] for node in nodes],
                        python_version='rye',
-                       available_sockets=[0, 1])
+                       available_sockets=[0])
 
     # for dataset in datasets:
     eval_commands = generate_training_commands(datasets=datasets,

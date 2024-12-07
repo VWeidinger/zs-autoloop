@@ -117,6 +117,7 @@ def train_tabular_model(workload_runs: WorkloadRuns,
         m.fit(x_train, y_train)
         joblib.dump(m, f'{model_dir}_{config.seed}.pkl')
         print(f'Model saved to {model_dir}_{config.seed}.pkl')
+        os.chmod(f'{model_dir}_{config.seed}.pkl', 0o777)
 
     else:
         raise NotImplementedError('Not supported tabular model')

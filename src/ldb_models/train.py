@@ -108,10 +108,6 @@ def train_model(csv_stats: List,
             log_prefix='epoch_val'
         )
         any_best_metric = any_best_metric or new_best_metric_seen
-        epoch_stats.update(epoch_time=time.perf_counter() - epoch_start_time)
-
-        if run:
-            wandb.log(epoch_stats, step=epoch)
 
         # validate on test sets with test evaluations
         test_model(config=config,
@@ -160,6 +156,12 @@ def train_model(csv_stats: List,
                         csv_stats=csv_stats,
                         finished=stop_early,
                         rank_model=train_w_rank_model)
+
+        epoch_stats.update(epoch_time=time.perf_counter() - epoch_start_time)
+
+        if run:
+            wandb.log(epoch_stats, step=epoch)
+
         epoch += 1
         if stop_early:
             print(f"Early stopping kicked in due to no improvement in {config.early_stopping_patience} epochs")

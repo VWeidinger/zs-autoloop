@@ -70,6 +70,7 @@ def create_sentences(dataset, plan_paths, data_dir, target):
 
     with open(target, 'w') as outfile:
         json.dump(sentences, outfile, default=dumper)
+    os.chmod(target, 0o777)
 
 
 def augment_regex_pattern_per_filter(filter, regex_patterns, col_stats):

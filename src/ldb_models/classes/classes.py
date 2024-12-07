@@ -296,7 +296,7 @@ class ZeroShotModelConfig(ModelConfig):
     batch_to_func: Callable = batch_to
     collator_func: Callable = postgres_plan_collator
     input_format: InputFormats = InputFormats.parsed
-    device: str = "cuda:[socket]"  # ToDo: Device selection should be handled by octopus - but how?
+    device: str = "cuda:[socket]"  # Device selection is handled by octopus
 
 
 @attrs.define(frozen=True, slots=False)
@@ -407,11 +407,13 @@ class QueryFormerModelConfig(ModelConfig):
 @attrs.define(frozen=True, slots=False)
 class DataLoaderOptions:
     val_ratio: float = 0.20
-    shuffle: bool = True
+    shuffle: bool = False
     pin_memory: bool = False
     dim_bitmaps: int = 1000  # ToDo move to another class?
     stratify_dataset: bool = False
     stratify_per_wl_file: bool = False
+    prefetch_factor: int = 2
+    persistent_workers: bool = True
 
 
 MODEL_CONFIGS = [

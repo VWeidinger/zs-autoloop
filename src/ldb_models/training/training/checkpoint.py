@@ -42,6 +42,7 @@ def save_csv(csv_rows, target_csv_path):
             if i == 0:
                 w.writeheader()
             w.writerow(row)
+    os.chmod(target_csv_path, 0o777)
 
 
 def save_checkpoint(epochs_wo_improvement, epoch, model, optimizer, target_path, config: ModelConfig, metrics,
