@@ -1,3 +1,4 @@
+import time
 from collections import defaultdict
 
 import numpy as np
@@ -9,7 +10,6 @@ from wandb.sdk.wandb_run import Run
 
 from training.training.metrics import SpearmanRank, SelectedRuntime, SurpassedPlans, QError, MaxOverestimation, \
     MaxUnderestimation, PickRate, OptimalRuntime
-import time
 
 
 def evaluate_join_order(predictions, is_per_epoch: bool = False, epoch: int = None, run: Run = None):
@@ -38,7 +38,11 @@ def evaluate_join_order(predictions, is_per_epoch: bool = False, epoch: int = No
 
         # print(f"Found {len(group_df)} predictions for SQL query in {sql}")
 
-        if len(group_df) == 1 or pd.isna(SpearmanRank().evaluate_metric(preds=preds, labels=labels)):
+        if len(group_df) == 1:
+            print(f'Join order evaluation: Skipping SQL query in {sql} as only one plan was predicted')
+            continue
+
+        if pd.isna(SpearmanRank().evaluate_metric(preds=preds, labels=labels)):
             print(f'Join order evaluation: Skipping SQL query in {sql} as Spearman correlation is invalid/NaN')
             continue
 
@@ -310,7 +314,8 @@ def evaluate_access_path_selection(predictions: dict, is_per_epoch: bool = False
                 sel_winners[sel] = sel_runtimes_idx_dict[sel]['label']
                 predicted_scan_op_list_dict[sel].append('IndexScan')
 
-            if sel_runtimes_seq_dict[sel]['label'] < sel_runtimes_idx_dict[sel]['label']:
+            if sel not in sel_runtimes_idx_dict or sel_runtimes_seq_dict[sel]['label'] < sel_runtimes_idx_dict[sel][
+                'label']:
                 optimal_scan_op_list_dict[sel].append('SeqScan')
             else:
                 optimal_scan_op_list_dict[sel].append('IndexScan')

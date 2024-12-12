@@ -150,6 +150,7 @@ class ModelConfig:
                 return ClusterPaths().Data.augmented_plans
             elif self.input_format == InputFormats.parsed:
                 return ClusterPaths().Data.parsed_plans
+                # return ClusterPaths().Data.root / "runs_roman" / "parsed_plans"
             elif self.input_format == InputFormats.json:
                 return ClusterPaths().Data.json_plans
 

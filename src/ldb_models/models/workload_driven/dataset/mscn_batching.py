@@ -38,7 +38,7 @@ def extract_set_features(plan, feature_statistics, dim_word_hash, dim_word_emdb,
                                    dim_word_hash, feature_statistics, word_embeddings)
 
     # table feature set
-    table = params.get('table')
+    table = params.get('table_name')
     if table is not None:
         _, _, dim_tables, _ = extract_dimensions(feature_statistics)
         table_vec = np.zeros(dim_tables)

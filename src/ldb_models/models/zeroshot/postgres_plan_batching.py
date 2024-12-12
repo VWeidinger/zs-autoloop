@@ -16,13 +16,18 @@ def encode(column, plan_params, feature_statistics):
     if column == 'act_card' and column not in plan_params:
         value = 0
     else:
-        value = plan_params[column]
+        if column == 'literal' and column not in plan_params:
+            # with logical operators, we have no literal (only children and operator)
+            value = '0'
+        else:
+            value = plan_params[column]
     if feature_statistics[column].get('type') == str(FeatureType.numeric):
         enc_value = feature_statistics[column]['scaler'].transform(np.array([[value]])).item()
     elif feature_statistics[column].get('type') == str(FeatureType.categorical):
         value_dict = feature_statistics[column]['value_dict']
         if isinstance(value, list) and len(value) == 1:
             value = value[0]
+        assert str(value) in value_dict, f'{value} not in {value_dict.keys()}'
         enc_value = value_dict[str(value)]
     else:
         raise NotImplementedError
@@ -51,9 +56,10 @@ def assign_additional_plan_info(plan: dict, db_statistics: dict):
         base_table_name = leaf_node['plan_parameters']['table_name']
         base_table_id = leaf_node['plan_parameters']['table_id']
 
+        assert 'database_id' in plan, f'No database_id in plan: {plan}'
         assert plan['database_id'] in db_statistics
         assert 'table_stats' in db_statistics[plan['database_id']]
-        # assert base_table_name in db_statistics[p['database_id']]['table_stats'], f'{base_table_name} not in {db_statistics[p["database_id"]]["table_stats"].keys()}'
+
         assert 'reltuples' in db_statistics[plan['database_id']]['table_stats'][
             base_table_id], f'table_size not in {db_statistics[plan["database_id"]]["table_stats"][base_table_id].keys()}'
 
@@ -126,9 +132,16 @@ def plan_to_graph(node, database_id, plan_depths, plan_features, plan_to_plan_ed
                 for column in output_column["columns"]:
                     column_node_id = column_idx.get((str(column), database_id))
                     if column_node_id is None:
-                        curr_column_features = [
-                            encode(feature_name, db_column_features[column["col_id"]], feature_statistics)
-                            for feature_name in plan_featurization.COLUMN_FEATURES]
+                        assert isinstance(column, dict), f'Column is not a dict: {column} / {node}'
+                        try:
+                            curr_column_features = [
+                                encode(feature_name, db_column_features[column["col_id"]], feature_statistics)
+                                for feature_name in plan_featurization.COLUMN_FEATURES]
+                        except Exception as e:
+                            print(
+                                f'Error in column: {column} / {db_column_features[column["col_id"]]} / {str(feature_statistics)[:100]}',
+                                flush=True)
+                            raise e
                         column_node_id = len(column_features)
                         column_features.append(curr_column_features)
                         column_idx[(str(column), database_id)] = column_node_id
@@ -139,29 +152,34 @@ def plan_to_graph(node, database_id, plan_depths, plan_features, plan_to_plan_ed
 
     # filter_columns (we do not reference the filter columns to columns since we anyway have to create a node per filter
     #  node)
-    filter_column = plan_params.get('filter_columns')
-    if filter_column is not None:
+    filter = plan_params.get('filter')
+    if filter is not None:
         db_column_features = db_statistics[database_id]["column_stats"]
 
         # check if node already exists in the graph
         # filter_node_id = fitler_node_idx.get((filter_column.operator, filter_column.column, database_id))
 
-        parse_predicates(db_column_features, feature_statistics, filter_column, filter_to_plan_edges,
+        parse_predicates(db_column_features, feature_statistics, filter, filter_to_plan_edges,
                          plan_featurization, predicate_col_features, predicate_depths, intra_predicate_edges,
                          logical_preds, plan_node_id=plan_node_id)
 
+    # TODO featurize join conditions
+
     # tables
-    table = plan_params.get('table')
-    if table is not None:
-        table_node_id = table_idx.get((table, database_id))
-        db_table_statistics = db_statistics[database_id].table_stats
+    table_id = plan_params.get('table_id')
+    if 'Scan' in plan_params['op_name']:
+        assert table_id is not None, f'No table in scan: {plan_params}'
+    if table_id is not None:
+        assert isinstance(table_id, int), f'Table id is not an int: {table_id} / {plan_params}'
+        table_node_id = table_idx.get((table_id, database_id))
+        db_table_statistics = db_statistics[database_id]['table_stats']
 
         if table_node_id is None:
-            curr_table_features = [encode(feature_name, vars(db_table_statistics[table]), feature_statistics)
+            curr_table_features = [encode(feature_name, db_table_statistics[table_id], feature_statistics)
                                    for feature_name in plan_featurization.TABLE_FEATURES]
             table_node_id = len(table_features)
             table_features.append(curr_table_features)
-            table_idx[(table, database_id)] = table_node_id
+            table_idx[(table_id, database_id)] = table_node_id
 
         table_to_plan_edges.append((table_node_id, plan_node_id))
 
@@ -178,7 +196,7 @@ def plan_to_graph(node, database_id, plan_depths, plan_features, plan_to_plan_ed
                       intra_predicate_edges, logical_preds, parent_node_id=plan_node_id, depth=depth + 1)
 
 
-def parse_predicates(db_column_features, feature_statistics, filter_column, filter_to_plan_edges, plan_featurization,
+def parse_predicates(db_column_features, feature_statistics, filter, filter_to_plan_edges, plan_featurization,
                      predicate_col_features, predicate_depths, intra_predicate_edges, logical_preds, plan_node_id=None,
                      parent_filter_node_id=None, depth=0):
     """
@@ -186,7 +204,7 @@ def parse_predicates(db_column_features, feature_statistics, filter_column, filt
 
     :param db_column_features:
     :param feature_statistics:
-    :param filter_column:
+    :param filter:
     :param filter_to_plan_edges:
     :param plan_featurization:
     :param plan_node_id:
@@ -197,13 +215,13 @@ def parse_predicates(db_column_features, feature_statistics, filter_column, filt
     predicate_depths.append(depth)
 
     # gather features
-    if filter_column.operator in {str(op) for op in list(Operator)}:
-        curr_filter_features = [encode(feature_name, vars(filter_column), feature_statistics)
+    if filter['operator'] in {str(op) for op in list(Operator)}:
+        curr_filter_features = [encode(feature_name, filter, feature_statistics)
                                 for feature_name in plan_featurization.FILTER_FEATURES]
 
-        if filter_column.column is not None:
+        if 'column_id' in filter and filter['column_id'] is not None:
             curr_filter_col_feats = [
-                encode(column, vars(db_column_features[filter_column.column]), feature_statistics)
+                encode(column, vars(db_column_features[filter['column_id']]), feature_statistics)
                 for column in plan_featurization.COLUMN_FEATURES]
         # hack for cases in which we have no base filter column (e.g., in a having clause where the column is some
         # result column of a subquery/groupby). In the future, this should be replaced by some graph model that also
@@ -214,7 +232,7 @@ def parse_predicates(db_column_features, feature_statistics, filter_column, filt
         logical_preds.append(False)
 
     else:
-        curr_filter_features = [encode(feature_name, vars(filter_column), feature_statistics)
+        curr_filter_features = [encode(feature_name, filter, feature_statistics)
                                 for feature_name in plan_featurization.FILTER_FEATURES]
         logical_preds.append(True)
 
@@ -231,8 +249,9 @@ def parse_predicates(db_column_features, feature_statistics, filter_column, filt
         intra_predicate_edges.append((filter_node_id, parent_filter_node_id))
 
     # recurse
-    for c in filter_column.children:
-        parse_predicates(db_column_features, feature_statistics, c, filter_to_plan_edges,
+    if 'children' in filter:
+        for c in filter['children']:
+            parse_predicates(db_column_features, feature_statistics, c, filter_to_plan_edges,
                          plan_featurization, predicate_col_features, predicate_depths, intra_predicate_edges,
                          logical_preds, parent_filter_node_id=filter_node_id, depth=depth + 1)
 
