@@ -9,7 +9,6 @@ import joblib
 import lightgbm as lgb
 import numpy as np
 import torch
-import wandb
 from ldb_schema.load_schema import load_json
 from sklearn.linear_model import LinearRegression
 from wandb.apis.public import Run
@@ -134,7 +133,7 @@ def predict_tabular_model(config: ModelConfig,
                           statistics_file: Path,
                           model_dir: Path,
                           cap_training_samples: bool = None,
-                          run: Optional[Run] = None,
+                          wandb_run: Optional[Run] = None,
                           bound_predictions: bool = False,
                           prediction_bounder: Optional[PredictionBounder] = None,
                           log_all_queries: bool = False):
@@ -231,15 +230,16 @@ def predict_tabular_model(config: ModelConfig,
         # remove _seed from name
         test_file_name = '_'.join(test_file_name.split('_')[:-1])
 
-        if run:
-            wandb.run.summary.update(prefix_dict(test_stats, f'{test_file_name}.json/test_'))
+        if wandb_run:
+            wandb_run.summary.update(prefix_dict(test_stats, f'{test_file_name}.json/test_'))
 
         if "join_order" in str(test_path):
-            evaluate_join_order(predictions=rows, run=run)
+            evaluate_join_order(predictions=rows, wandb_run=wandb_run)
         if "physical_operator" in str(test_path):
-            evaluate_physical_plan_selection(predictions=rows, run=run, with_idxs='_w_idx' in str(test_path))
+            evaluate_physical_plan_selection(predictions=rows, wandb_run=wandb_run,
+                                             with_idxs='_w_idx' in str(test_path))
         if "access_path_selection" in str(test_path):
-            evaluate_access_path_selection(predictions=rows, run=run)
+            evaluate_access_path_selection(predictions=rows, wandb_run=wandb_run)
     return
 
 

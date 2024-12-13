@@ -134,7 +134,7 @@ class ModelConfig:
             stratified_workloads=stratified_workloads) / f"{target_db.db_name}_scaled{target_db.scale}" / f"{wl_name}.json")
 
     def get_test_workloads(self, target_db: Dataset) -> str:
-        return self.assemble_wl_path(target_db, "workload_200k_s1", stratified_workloads=True)
+        return self.assemble_wl_path(target_db, "workload_200k_s1", stratified_workloads=False)
 
     def get_data_base_dir(self, stratified_workloads: bool) -> Path:
         if stratified_workloads:
@@ -149,8 +149,8 @@ class ModelConfig:
             if self.input_format == InputFormats.baseline_parsed:
                 return ClusterPaths().Data.augmented_plans
             elif self.input_format == InputFormats.parsed:
-                return ClusterPaths().Data.parsed_plans
-                # return ClusterPaths().Data.root / "runs_roman" / "parsed_plans"
+                # return ClusterPaths().Data.parsed_plans
+                return ClusterPaths().Data.root / "runs_roman" / "parsed_plans"
             elif self.input_format == InputFormats.json:
                 return ClusterPaths().Data.json_plans
 

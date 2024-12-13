@@ -1,7 +1,6 @@
 from pathlib import Path
 from typing import List, Optional
 
-import wandb
 from dgl.dataloading import DataLoader
 from torch import nn
 from wandb.apis.public import Run
@@ -23,7 +22,7 @@ def test_model(config: ModelConfig,
                metrics: List[Metric],
                model: nn.Module,
                epoch: int,
-               run: Run,
+               wandb_run: Run,
                file_suffix: str,
                bound_predictions: bool = False,
                prediction_bounder: Optional[PredictionBounder] = None,
@@ -56,25 +55,27 @@ def test_model(config: ModelConfig,
                     log_prefix=log_prefix
                 )
 
-                if run:
+                if wandb_run is not None:
                     # extract filename from path
                     filename = test_path.stem
                     # remove the number annotation
                     filename = '_'.join(filename.split('_')[:-1])
 
                     if is_per_epoch:
-                        wandb.log(prefix_dict(test_stats, f'{filename}.json/'), step=epoch)
+                        wandb_run.log(prefix_dict(test_stats, f'{filename}.json/'), step=epoch)
                     else:
-                        wandb.run.summary.update(prefix_dict(test_stats, f'{filename}.json/'))
+                        wandb_run.summary.update(prefix_dict(test_stats, f'{filename}.json/'))
 
                 save_csv([test_stats], str(test_path) + f"_test_stats{file_suffix}.csv")
 
                 if "join_order" in str(test_path):
-                    evaluate_join_order(predictions=predictions_dict, is_per_epoch=is_per_epoch, epoch=epoch, run=run)
+                    evaluate_join_order(predictions=predictions_dict, is_per_epoch=is_per_epoch, epoch=epoch,
+                                        wandb_run=wandb_run)
                 if "physical_operator" in str(test_path):
                     evaluate_physical_plan_selection(predictions=predictions_dict, with_idxs='_w_idx' in str(test_path),
-                                                     is_per_epoch=is_per_epoch, epoch=epoch, run=run)
+                                                     is_per_epoch=is_per_epoch, epoch=epoch, wandb_run=wandb_run)
                 if "access_path_selection" in str(test_path):
-                    evaluate_access_path_selection(predictions=predictions_dict, is_per_epoch=is_per_epoch, epoch=epoch, run=run)
+                    evaluate_access_path_selection(predictions=predictions_dict, is_per_epoch=is_per_epoch, epoch=epoch,
+                                                   wandb_run=wandb_run)
         else:
             print("Skipping saving the test stats")

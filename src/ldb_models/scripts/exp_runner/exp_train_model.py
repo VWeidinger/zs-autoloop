@@ -5,7 +5,7 @@ from ldb_schema.paths import ClusterPaths, LocalPaths
 from octopus.step import Rsync, KillAllScreens, SetupVenv, RsyncCurrentRepo, SetupRYEVenv
 
 from classes.classes import ModelConfig, ModelType, \
-    ZSStratifiedModelConfig
+    ZeroShotModelConfig
 from scripts.exp_runner.exp_runner import ExpRunner, TrainingServers
 
 
@@ -46,7 +46,7 @@ def generate_training_commands(datasets: List[Dataset], seeds: list[int], python
             statistics_path = target_model.get_statistics(source_path=ClusterPaths(),
                                                           dataset=target_dataset,
                                                           format=target_model.input_format)
-            # statistics_path = '/mnt/labstore/SIGs/ML/learned_db/runs_roman/parsed_plans/statistics_complex_workload_combined.json'
+            statistics_path = '/mnt/labstore/SIGs/ML/learned_db/runs_roman/parsed_plans/statistics_complex_workload_combined.json'
 
             for seed in seeds:
                 model_suffix = ''
@@ -145,11 +145,11 @@ if __name__ == '__main__':
         Dataset('fhnk', scale=2)
     ]
 
-    seeds = [1]
+    seeds = [43]
     nodes = [
-        TrainingServers.NODE00,
+        # TrainingServers.NODE00,
         # TrainingServers.NODE02,
-        # TrainingServers.NODE03,
+        TrainingServers.NODE03,
         # TrainingServers.NODE04,
         # TrainingServers.NODE05,
     ]
@@ -177,13 +177,13 @@ if __name__ == '__main__':
         # MSCNModelConfig(),                  # --> ToDo: Adapt to new codebase and generate sentences
         # DACEModelConfig(),                  # --> Working
         # QueryFormerModelConfig(),           # --> ToDo: Generate Sentences
-        # ZeroShotModelConfig(),  # --> Working
+        ZeroShotModelConfig(),  # --> Working
         # ZSLearnFromTimeoutConfig(),         # --> Working
         # ZSRankLossConfig(),                 # --> Working
 
         # Stratified Models
         # FlatStratifiedModelConfig(),  # --> Working
-        ZSStratifiedModelConfig(),  # --> Working
+        # ZSStratifiedModelConfig(),  # --> Working
         # DACEStratifiedModelConfig(),        # --> Not yet working
         # ScaledPostgresStratifiedModelConfig(),  # --> Working
 

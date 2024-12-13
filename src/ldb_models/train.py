@@ -3,7 +3,6 @@ from pathlib import Path
 from typing import List
 
 import torch
-import wandb
 from dgl.dataloading import DataLoader
 from torch import nn
 from torch.optim import Optimizer
@@ -33,7 +32,7 @@ def train_model(csv_stats: List,
                 optimizer: Optimizer,
                 metrics: List[Metric],
                 rank_metric: Metric,
-                run: Run,
+                wandb_run: Run,
                 pt_profiler: bool = False,
                 train_w_rank_model: bool = False,
                 bound_predictions: bool = False,
@@ -117,7 +116,7 @@ def train_model(csv_stats: List,
                    epoch=epoch,
                    model=model,
                    metrics=metrics,
-                   run=run,
+                   wandb_run=wandb_run,
                    file_suffix=f'_epoch{epoch}',
                    bound_predictions=bound_predictions,
                    prediction_bounder=prediction_bounder,
@@ -159,8 +158,8 @@ def train_model(csv_stats: List,
 
         epoch_stats.update(epoch_time=time.perf_counter() - epoch_start_time)
 
-        if run:
-            wandb.log(epoch_stats, step=epoch)
+        if wandb_run:
+            wandb_run.log(epoch_stats, step=epoch)
 
         epoch += 1
         if stop_early:

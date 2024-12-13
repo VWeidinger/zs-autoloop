@@ -224,7 +224,7 @@ def use_model(mode: str,
         epochs_wo_improvement = 0
 
     rerun_predict = False
-
+    epoch = 0
     if mode in ["train", "retrain"]:
         # assemble train to do list - FALSE=no ranking, TRUE=ranking
         if ft_with_ranking:
@@ -282,7 +282,7 @@ def use_model(mode: str,
                             model=model,
                             optimizer=optimizer,
                             metrics=metrics,
-                            run=wandb_run,
+                            wandb_run=wandb_run,
                             pt_profiler=pt_profiler,
                             train_w_rank_model=train_w_rank_model,
                             rank_metric=rank_metric,
@@ -295,7 +295,7 @@ def use_model(mode: str,
                                       workload_runs=wl_runs,
                                       statistics_file=statistics_file,
                                       model_dir=model_dir,
-                                      run=wandb_run,
+                                      wandb_run=wandb_run,
                                       bound_predictions=bound_predictions,
                                       prediction_bounder=prediction_bounder, )
             else:
@@ -306,7 +306,7 @@ def use_model(mode: str,
                            epoch=epoch,
                            model=model,
                            metrics=metrics,
-                           run=wandb_run,
+                           wandb_run=wandb_run,
                            log_prefix='test',
                            file_suffix=f"{'_rankmodel' if train_w_rank_model else ''}",
                            bound_predictions=bound_predictions,
@@ -326,7 +326,7 @@ def use_model(mode: str,
                                   statistics_file=statistics_file,
                                   model_dir=model_dir,
                                   target_path=target_dir,
-                                  run=wandb_run,
+                                  wandb_run=wandb_run,
                                   bound_predictions=bound_predictions,
                                   prediction_bounder=prediction_bounder,
                                   dataloader_options=DataLoaderOptions()
@@ -339,15 +339,12 @@ def use_model(mode: str,
                        epoch=epoch,
                        model=model,
                        metrics=metrics,
-                       run=wandb_run,
+                       wandb_run=wandb_run,
                        file_suffix='',
                        bound_predictions=bound_predictions,
                        prediction_bounder=prediction_bounder,
                        log_prefix='test'
                        )
-
-    if wandb_run:
-        wandb_run.finish()
 
 
 def get_model_config(model_type: str, m_args: dict) -> ModelConfig:
@@ -452,9 +449,9 @@ if __name__ == '__main__':
             model_config = evolve(model_config, final_mlp_kwargs=final_mlp_kwargs)
 
     # initialize wandb
-    run: Optional[Run] = None
+    wandb_run: Optional[Run] = None
     if args.wandb_project:
-        run = wandb.init(entity=args.wandb_entity,
+        wandb_run = wandb.init(entity=args.wandb_entity,
                          project=args.wandb_project,
                          name=args.wandb_name,
                          config=attrs.asdict(model_config))
@@ -471,7 +468,10 @@ if __name__ == '__main__':
         column_statistics=Path(args.column_statistics) if args.column_statistics else None,
         pt_profiler=args.pt_profiler,
         bound_predictions=args.bound_predictions,
-        wandb_run=run,
+        wandb_run=wandb_run,
         run_qo_test_pipeline_after_each_epoch=args.qo_eval_after_each_epoch)
 
     use_model(**args)
+
+    if wandb_run:
+        wandb_run.finish()

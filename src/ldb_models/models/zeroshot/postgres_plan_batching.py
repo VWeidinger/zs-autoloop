@@ -167,7 +167,7 @@ def plan_to_graph(node, database_id, plan_depths, plan_features, plan_to_plan_ed
 
     # tables
     table_id = plan_params.get('table_id')
-    if 'Scan' in plan_params['op_name']:
+    if 'Scan' in plan_params['op_name'] and plan_params['op_name'] != 'Bitmap Index Scan':
         assert table_id is not None, f'No table in scan: {plan_params}'
     if table_id is not None:
         assert isinstance(table_id, int), f'Table id is not an int: {table_id} / {plan_params}'

@@ -12,7 +12,7 @@ from training.training.metrics import SpearmanRank, SelectedRuntime, SurpassedPl
     MaxUnderestimation, PickRate, OptimalRuntime
 
 
-def evaluate_join_order(predictions, is_per_epoch: bool = False, epoch: int = None, run: Run = None):
+def evaluate_join_order(predictions, is_per_epoch: bool = False, epoch: int = None, wandb_run: Run = None):
     """ This method evaluates a given workload of queries, how well the join order was predicted."""
     prediction_dataframe = pd.DataFrame(predictions)
     prediction_dataframe["hint"] = prediction_dataframe["hint"].fillna("")
@@ -54,7 +54,7 @@ def evaluate_join_order(predictions, is_per_epoch: bool = False, epoch: int = No
             # sort both lists by labels
             sorted_labels, sorted_preds = zip(*sorted(zip(labels, preds)))
             # assert len(sorted_labels) == len(sorted_preds) and  len(sorted_labels) == 120, "Missing labels for example query"
-            if run:
+            if wandb_run:
                 # create a plot
                 data = {prefix: wandb.plot.line_series(
                     xs=[i for i in range(len(sorted_labels))],
@@ -64,9 +64,9 @@ def evaluate_join_order(predictions, is_per_epoch: bool = False, epoch: int = No
                     xname='Join Enumeration',
                 )}
                 if is_per_epoch:
-                    wandb.log(data, step=epoch)
+                    wandb_run.log(data, step=epoch)
                 else:
-                    wandb.log(data)
+                    wandb_run.log(data)
 
     avg_spearman_corr = np.mean(aggregated_results['spearman_corr'])
     total_selected_runtime = np.sum(aggregated_results['selected_runtime'])
@@ -83,9 +83,9 @@ def evaluate_join_order(predictions, is_per_epoch: bool = False, epoch: int = No
     print(f"Average Max Overestimation: {avg_max_overestimation}")
     print(f"Average Max Underestimation: {avg_max_underestimation}")
 
-    if run:
+    if wandb_run:
         if is_per_epoch:
-            wandb.log({
+            wandb_run.log({
                 f'{prefix}/avg_spearman_corr': avg_spearman_corr,
                 f'{prefix}/total_selected_runtime': total_selected_runtime,
                 f'{prefix}/avg_surpassed_plans': avg_surpassed_plans,
@@ -94,18 +94,18 @@ def evaluate_join_order(predictions, is_per_epoch: bool = False, epoch: int = No
                 f'{prefix}/avg_max_underestimation': avg_max_underestimation
             }, step=epoch)
         else:
-            wandb.run.summary[f'{prefix}/avg_spearman_corr'] = avg_spearman_corr
-            wandb.run.summary[f'{prefix}/total_selected_runtime'] = total_selected_runtime
-            wandb.run.summary[f'{prefix}/avg_surpassed_plans'] = avg_surpassed_plans
-            wandb.run.summary[f'{prefix}/avg_q_error'] = avg_q_error
-            wandb.run.summary[f'{prefix}/avg_max_overestimation'] = avg_max_overestimation
-            wandb.run.summary[f'{prefix}/avg_max_underestimation'] = avg_max_underestimation
+            wandb_run.summary[f'{prefix}/avg_spearman_corr'] = avg_spearman_corr
+            wandb_run.summary[f'{prefix}/total_selected_runtime'] = total_selected_runtime
+            wandb_run.summary[f'{prefix}/avg_surpassed_plans'] = avg_surpassed_plans
+            wandb_run.summary[f'{prefix}/avg_q_error'] = avg_q_error
+            wandb_run.summary[f'{prefix}/avg_max_overestimation'] = avg_max_overestimation
+            wandb_run.summary[f'{prefix}/avg_max_underestimation'] = avg_max_underestimation
 
     return
 
 
 def evaluate_physical_plan_selection(predictions: dict, with_idxs: bool = False, is_per_epoch: bool = False,
-                                     epoch: int = None, run: Run = None):
+                                     epoch: int = None, wandb_run: Run = None):
     """ This method evaluates a given workload of queries, how well physical operators were selected."""
 
     log_prefix = f'physop_eval'
@@ -169,17 +169,17 @@ def evaluate_physical_plan_selection(predictions: dict, with_idxs: bool = False,
     print(f"Total Optimal runtime: {total_optimal_runtime}")
     print(f"Average Pick Rate: {avg_pick_rate}")
 
-    if run:
+    if wandb_run:
         if is_per_epoch:
-            wandb.log({
+            wandb_run.log({
                 f'{log_prefix}/total_selected_runtime': total_selected_runtime,
                 f'{log_prefix}/total_optimal_runtime': total_optimal_runtime,
                 f'{log_prefix}/avg_pick_rate': avg_pick_rate
             }, step=epoch)
         else:
-            wandb.run.summary[f'{log_prefix}/total_selected_runtime'] = total_selected_runtime
-            wandb.run.summary[f'{log_prefix}/total_optimal_runtime'] = total_optimal_runtime
-            wandb.run.summary[f'{log_prefix}/avg_pick_rate'] = avg_pick_rate
+            wandb_run.summary[f'{log_prefix}/total_selected_runtime'] = total_selected_runtime
+            wandb_run.summary[f'{log_prefix}/total_optimal_runtime'] = total_optimal_runtime
+            wandb_run.summary[f'{log_prefix}/avg_pick_rate'] = avg_pick_rate
 
     total = sum(optimal_join_op_ctr.values())
     optimal_join_op_ctr = {k: v / total for k, v in optimal_join_op_ctr.items()}
@@ -206,16 +206,17 @@ def evaluate_physical_plan_selection(predictions: dict, with_idxs: bool = False,
     plt.show()
 
     # log to wandb
-    if run:
+    if wandb_run:
         if is_per_epoch:
-            wandb.log({f'{log_prefix}/join_op_distribution': wandb.Image(plt)}, step=epoch)
+            wandb_run.log({f'{log_prefix}/join_op_distribution': wandb.Image(plt)}, step=epoch)
         else:
-            wandb.log({f'{log_prefix}/join_op_distribution': wandb.Image(plt)})
+            wandb_run.log({f'{log_prefix}/join_op_distribution': wandb.Image(plt)})
 
     return
 
 
-def evaluate_access_path_selection(predictions: dict, is_per_epoch: bool = False, epoch: int = None, run: Run = None):
+def evaluate_access_path_selection(predictions: dict, is_per_epoch: bool = False, epoch: int = None,
+                                   wandb_run: Run = None):
     """ This method evaluates a given workload of queries, how well access paths were selected.
     """
 
@@ -249,15 +250,15 @@ def evaluate_access_path_selection(predictions: dict, is_per_epoch: bool = False
     if is_per_epoch:
         prefix += '-per_epoch'
 
-    if run:
+    if wandb_run:
         if is_per_epoch:
-            wandb.log({
+            wandb_run.log({
                 f'{prefix}/total_selected_runtime': total_selected_runtime,
                 f'{prefix}/total_optimal_runtime': total_optimal_runtime
-            }, step=epoch)
+            }, step=epoch, commit=False)
         else:
-            wandb.run.summary[f'{prefix}/total_selected_runtime'] = total_selected_runtime
-            wandb.run.summary[f'{prefix}/total_optimal_runtime'] = total_optimal_runtime
+            wandb_run.summary[f'{prefix}/total_selected_runtime'] = total_selected_runtime
+            wandb_run.summary[f'{prefix}/total_optimal_runtime'] = total_optimal_runtime
 
     def extract_table_col(sql):
         table_name = sql.split("FROM")[1].split("WHERE")[0].strip()
@@ -286,7 +287,6 @@ def evaluate_access_path_selection(predictions: dict, is_per_epoch: bool = False
                 if 'Index Scan' != row['scan_op']:
                     # not necessary - discarding plans where hint was not obeyed in dataset creation
                     raise Exception(f'Hint {row["hint"]} and scan_op {row["scan_op"]} do not match')
-                    continue
                 sel_runtimes_idx_dict[float(row['selectivity'])] = {'label': float(row['label']),
                                                                     'prediction': float(row['prediction'])}
                 idx_labels_dict[row['sql']] = float(row['label'])
@@ -295,7 +295,6 @@ def evaluate_access_path_selection(predictions: dict, is_per_epoch: bool = False
                 if 'Seq Scan' != row['scan_op']:
                     # not necessary - discarding plans where hint was not obeyed in dataset creation
                     raise Exception(f'Hint {row["hint"]} and scan_op {row["scan_op"]} do not match')
-                    continue
                 sel_runtimes_seq_dict[float(row['selectivity'])] = {'label': float(row['label']),
                                                                     'prediction': float(row['prediction'])}
                 seq_labels_dict[row['sql']] = float(row['label'])
@@ -338,12 +337,14 @@ def evaluate_access_path_selection(predictions: dict, is_per_epoch: bool = False
         plt.title(f"{table_name}.{col_name}")
         plt.show()
 
-        if run:
+        if wandb_run:
             # log to wandb
             if is_per_epoch:
-                wandb.log({f'{prefix}/col_plots/{table_name}.{col_name}': wandb.Image(plt)}, step=epoch)
+                pass
+                wandb_run.log({f'{prefix}/col_plots/{table_name}.{col_name}': wandb.Image(plt)}, step=epoch,
+                              commit=False)
             else:
-                wandb.log({f'{prefix}/col_plots/{table_name}.{col_name}': wandb.Image(plt)})
+                wandb_run.summary[f'{prefix}/col_plots/{table_name}.{col_name}'] = wandb.Image(plt)
 
         # selection list
         pred_selection = []
@@ -363,15 +364,15 @@ def evaluate_access_path_selection(predictions: dict, is_per_epoch: bool = False
         balanced_accuracy = balanced_accuracy_score(label_selection, pred_selection)
 
         print(f'{table_name}.{col_name} - Accuracy: {accuracy:.2f} - Balanced Accuracy: {balanced_accuracy:.2f}')
-        if run:
+        if wandb_run:
             if is_per_epoch:
-                wandb.log({
+                wandb_run.log({
                     f'{prefix}/acc/{table_name}.{col_name}': accuracy,
                     f'{prefix}/bal_acc/{table_name}.{col_name}': balanced_accuracy
                 }, step=epoch, commit=False)
             else:
-                wandb.run.summary[f'{prefix}/acc/{table_name}.{col_name}'] = accuracy
-                wandb.run.summary[f'{prefix}/bal_acc/{table_name}.{col_name}'] = balanced_accuracy
+                wandb_run.summary[f'{prefix}/acc/{table_name}.{col_name}'] = accuracy
+                wandb_run.summary[f'{prefix}/bal_acc/{table_name}.{col_name}'] = balanced_accuracy
         else:
             time.sleep(0.1)  # Otherwise too many requests for localhost
 
@@ -403,9 +404,9 @@ def evaluate_access_path_selection(predictions: dict, is_per_epoch: bool = False
     plt.title('SeqScan Ratio')
     plt.show()
 
-    if run:
+    if wandb_run:
         if is_per_epoch:
-            wandb.log({f'{prefix}/seq_scan_ratio': wandb.Image(plt)}, step=epoch)
+            wandb_run.log({f'{prefix}/seq_scan_ratio': wandb.Image(plt)}, step=epoch)
         else:
             print(f'Logging seq_scan_ratio to wandb summary',flush=True)
-            wandb.run.summary[f'{prefix}/overall/seq_scan_ratio'] = wandb.Image(plt)
+            wandb_run.summary[f'{prefix}/seq_scan_ratio'] = wandb.Image(plt.figure())
