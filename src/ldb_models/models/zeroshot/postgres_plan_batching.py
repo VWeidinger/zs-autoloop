@@ -109,8 +109,9 @@ def plan_to_graph(node, database_id, plan_depths, plan_features, plan_to_plan_ed
     output_columns = plan_params.get('output_columns')
     if output_columns is not None:
         for output_column in output_columns:
+            output_column_id_list = [col['col_id'] for col in output_column['columns']]
             output_column_node_id = output_column_idx.get(
-                (output_column["aggregation"], str(output_column["columns"]), database_id))
+                (output_column["aggregation"], str(output_column_id_list), database_id))
 
             # if not, create
             if output_column_node_id is None:
@@ -119,14 +120,14 @@ def plan_to_graph(node, database_id, plan_depths, plan_features, plan_to_plan_ed
 
                 output_column_node_id = len(output_column_features)
                 output_column_features.append(curr_output_column_features)
-                output_column_idx[(output_column["aggregation"], str(output_column["columns"]), database_id)] \
+                output_column_idx[(output_column["aggregation"], str(output_column_id_list), database_id)] \
                     = output_column_node_id
 
                 # featurize product of columns if there are any
                 db_column_features = db_statistics[database_id]["column_stats"]
                 assert db_column_features is not None
                 for column in output_column["columns"]:
-                    column_node_id = column_idx.get((str(column), database_id))
+                    column_node_id = column_idx.get((str(column['col_id']), database_id))
                     if column_node_id is None:
                         assert isinstance(column, dict), f'Column is not a dict: {column} / {node}'
                         try:
@@ -140,7 +141,7 @@ def plan_to_graph(node, database_id, plan_depths, plan_features, plan_to_plan_ed
                             raise e
                         column_node_id = len(column_features)
                         column_features.append(curr_column_features)
-                        column_idx[(str(column), database_id)] = column_node_id
+                        column_idx[(str(column['col_id']), database_id)] = column_node_id
                     column_to_output_column_edges.append((column_node_id, output_column_node_id))
 
             # in any case add the corresponding edge
@@ -215,11 +216,11 @@ def parse_predicates(db_column_features, feature_statistics, filter, filter_to_p
 
     # unify filter operator naming
     filter_op = []
-    if 'logical_operator' in filter:
-        filter_op.append(filter['logical_operator'])
+    assert not 'logical_operator' in filter, f'Logical operator is deprecated but found in filter: {filter}'
     if 'operator' in filter:
         filter_op.append(filter['operator'])
     if 'comparison_operator' in filter:
+        # join comparison
         filter_op.append(filter['comparison_operator'])
 
     assert len(filter_op) == 1, f'Multiple filter ops are annotated: {filter_op} / {filter}'
