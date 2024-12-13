@@ -127,7 +127,7 @@ class QPPNetActCardsFeaturization(Featurization):
 
 class PostgresTrueCardDetail(Featurization):
     PLAN_FEATURES = ['act_card', 'est_width', 'workers_planned', 'op_name', 'act_children_card']
-    FILTER_FEATURES = ['logical_operator', ]
+    FILTER_FEATURES = ['operator', ]
     COLUMN_FEATURES = ['avg_width', 'correlation', 'data_type', 'n_distinct', 'null_frac']
     OUTPUT_COLUMN_FEATURES = ['aggregation']
     TABLE_FEATURES = ['reltuples', 'relpages']
@@ -144,7 +144,7 @@ class PostgresTrueCardDetail(Featurization):
 
 class PostgresTrueCardMedium(Featurization):
     PLAN_FEATURES = ['act_card', 'est_width', 'workers_planned', 'op_name', 'act_children_card']
-    FILTER_FEATURES = ['logical_operator', ]
+    FILTER_FEATURES = ['operator', ]
     COLUMN_FEATURES = ['avg_width', 'data_type', 'table_size']
     OUTPUT_COLUMN_FEATURES = ['aggregation']
     TABLE_FEATURES = ['reltuples', 'relpages']
@@ -152,14 +152,13 @@ class PostgresTrueCardMedium(Featurization):
 
 class PostgresTrueCardCoarse(Featurization):
     PLAN_FEATURES = ['act_card', 'est_width', 'workers_planned', 'op_name']
-    FILTER_FEATURES = ['logical_operator']
+    FILTER_FEATURES = ['operator']
     COLUMN_FEATURES = ['avg_width', 'data_type']
     OUTPUT_COLUMN_FEATURES = ['aggregation']
     TABLE_FEATURES = ['reltuples', 'relpages']
 
 
 class PostgresEstSystemCardDetail(Featurization):
-    #PLAN_FEATURES = ['est_card', 'est_width', 'workers_planned', 'op_name', 'est_children_card']
     PLAN_FEATURES = ['est_card', 'est_width', 'op_name', 'est_children_card']
     FILTER_FEATURES = ['operator']
     COLUMN_FEATURES = ['avg_width', 'correlation', 'data_type', 'n_distinct', 'null_frac']
@@ -169,7 +168,7 @@ class PostgresEstSystemCardDetail(Featurization):
 
 class PostgresEstSystemCardMedium(Featurization):
     PLAN_FEATURES = ['est_card', 'est_width', 'workers_planned', 'op_name', 'est_children_card']
-    FILTER_FEATURES = ['logical_operator']
+    FILTER_FEATURES = ['operator']
     COLUMN_FEATURES = ['avg_width', 'data_type', 'table_size']
     OUTPUT_COLUMN_FEATURES = ['aggregation']
     TABLE_FEATURES = ['reltuples', 'relpages']
@@ -177,7 +176,7 @@ class PostgresEstSystemCardMedium(Featurization):
 
 class PostgresEstSystemCardCoarse(Featurization):
     PLAN_FEATURES = ['est_card', 'est_width', 'workers_planned', 'op_name']
-    FILTER_FEATURES = ['logical_operator']
+    FILTER_FEATURES = ['operator']
     COLUMN_FEATURES = ['avg_width', 'data_type']
     OUTPUT_COLUMN_FEATURES = ['aggregation']
     TABLE_FEATURES = ['reltuples', 'relpages']
@@ -185,7 +184,7 @@ class PostgresEstSystemCardCoarse(Featurization):
 
 class PostgresDeepDBEstSystemCardDetail(Featurization):
     PLAN_FEATURES = ['dd_est_card', 'est_width', 'workers_planned', 'op_name', 'dd_est_children_card']
-    FILTER_FEATURES = ['logical_operator']
+    FILTER_FEATURES = ['operator']
     COLUMN_FEATURES = ['avg_width', 'correlation', 'data_type', 'n_distinct', 'null_frac']
     OUTPUT_COLUMN_FEATURES = ['aggregation']
     TABLE_FEATURES = ['reltuples', 'relpages']
@@ -193,7 +192,7 @@ class PostgresDeepDBEstSystemCardDetail(Featurization):
 
 class PostgresTrueCardAblateTableFeats(Featurization):
     PLAN_FEATURES = ['act_card', 'est_width', 'workers_planned', 'op_name', 'act_children_card']
-    FILTER_FEATURES = ['logical_operator']
+    FILTER_FEATURES = ['operator']
     COLUMN_FEATURES = ['avg_width', 'correlation', 'data_type', 'n_distinct', 'null_frac']
     OUTPUT_COLUMN_FEATURES = ['aggregation']
     TABLE_FEATURES = []
@@ -201,7 +200,7 @@ class PostgresTrueCardAblateTableFeats(Featurization):
 
 class PostgresTrueCardAblateColumnFeats(Featurization):
     PLAN_FEATURES = ['act_card', 'est_width', 'workers_planned', 'op_name', 'act_children_card']
-    FILTER_FEATURES = ['logical_operator']
+    FILTER_FEATURES = ['operator']
     COLUMN_FEATURES = []
     OUTPUT_COLUMN_FEATURES = ['aggregation']
     TABLE_FEATURES = ['reltuples', 'relpages']
@@ -217,7 +216,7 @@ class PostgresTrueCardAblateOperatorFeats(Featurization):
 
 class PostgresTrueCardAblateDataDistributionFeats(Featurization):
     PLAN_FEATURES = ['workers_planned', 'op_name']
-    FILTER_FEATURES = ['logical_operator', ]
+    FILTER_FEATURES = ['operator', ]
     COLUMN_FEATURES = ['avg_width', 'correlation', 'data_type', 'n_distinct', 'null_frac']
     OUTPUT_COLUMN_FEATURES = ['aggregation']
     TABLE_FEATURES = ['reltuples', 'relpages']
@@ -241,7 +240,7 @@ class PostgresTrueCardDecAblationColumnFeats(Featurization):
 
 class PostgresTrueCardDecAblationOperatorFeats(Featurization):
     PLAN_FEATURES = ['workers_planned', 'op_name']
-    FILTER_FEATURES = ['logical_operator', ]
+    FILTER_FEATURES = ['operator', ]
     COLUMN_FEATURES = ['avg_width', 'correlation', 'data_type', 'n_distinct', 'null_frac']
     OUTPUT_COLUMN_FEATURES = ['aggregation']
     TABLE_FEATURES = []
@@ -249,7 +248,7 @@ class PostgresTrueCardDecAblationOperatorFeats(Featurization):
 
 class PostgresTrueCardDecAblationTableFeats(Featurization):
     PLAN_FEATURES = ['workers_planned', 'op_name']
-    FILTER_FEATURES = ['logical_operator', ]
+    FILTER_FEATURES = ['operator', ]
     COLUMN_FEATURES = ['avg_width', 'correlation', 'data_type', 'n_distinct', 'null_frac']
     OUTPUT_COLUMN_FEATURES = ['aggregation']
     TABLE_FEATURES = ['reltuples', 'relpages']

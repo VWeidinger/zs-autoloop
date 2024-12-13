@@ -145,7 +145,7 @@ if __name__ == '__main__':
         Dataset('fhnk', scale=2)
     ]
 
-    seeds = [43]
+    seeds = [44]
     nodes = [
         # TrainingServers.NODE00,
         # TrainingServers.NODE02,
@@ -153,6 +153,8 @@ if __name__ == '__main__':
         # TrainingServers.NODE04,
         # TrainingServers.NODE05,
     ]
+    sockets = [1]
+    out_file_id_offset = 1
 
     # ===================
     # CONFIGS
@@ -201,7 +203,7 @@ if __name__ == '__main__':
     runner = ExpRunner(replicate=False,
                        node_names=[node["hostname"] for node in nodes],
                        python_version='rye',
-                       available_sockets=[0])
+                       available_sockets=sockets)
 
     # for dataset in datasets:
     eval_commands = generate_training_commands(datasets=datasets,
@@ -224,4 +226,4 @@ if __name__ == '__main__':
                    set_up_steps=setup_steps,
                    purge_steps=purge_steps,
                    pickup_steps=pickup_steps,
-                   offset=0)
+                   offset=out_file_id_offset)

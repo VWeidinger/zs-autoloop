@@ -16,11 +16,7 @@ def encode(column, plan_params, feature_statistics):
     if column == 'act_card' and column not in plan_params:
         value = 0
     else:
-        if column == 'literal' and column not in plan_params:
-            # with logical operators, we have no literal (only children and operator)
-            value = '0'
-        else:
-            value = plan_params[column]
+        value = plan_params[column]
     if feature_statistics[column].get('type') == str(FeatureType.numeric):
         enc_value = feature_statistics[column]['scaler'].transform(np.array([[value]])).item()
     elif feature_statistics[column].get('type') == str(FeatureType.categorical):
@@ -156,14 +152,17 @@ def plan_to_graph(node, database_id, plan_depths, plan_features, plan_to_plan_ed
     if filter is not None:
         db_column_features = db_statistics[database_id]["column_stats"]
 
-        # check if node already exists in the graph
-        # filter_node_id = fitler_node_idx.get((filter_column.operator, filter_column.column, database_id))
-
         parse_predicates(db_column_features, feature_statistics, filter, filter_to_plan_edges,
                          plan_featurization, predicate_col_features, predicate_depths, intra_predicate_edges,
                          logical_preds, plan_node_id=plan_node_id)
 
-    # TODO featurize join conditions
+    # featurize join conditions
+    join = plan_params.get('join')
+    if join is not None:
+        db_column_features = db_statistics[database_id]["column_stats"]
+        parse_predicates(db_column_features, feature_statistics, join, filter_to_plan_edges,
+                         plan_featurization, predicate_col_features, predicate_depths, intra_predicate_edges,
+                         logical_preds, plan_node_id=plan_node_id, is_join=True)
 
     # tables
     table_id = plan_params.get('table_id')
@@ -198,7 +197,7 @@ def plan_to_graph(node, database_id, plan_depths, plan_features, plan_to_plan_ed
 
 def parse_predicates(db_column_features, feature_statistics, filter, filter_to_plan_edges, plan_featurization,
                      predicate_col_features, predicate_depths, intra_predicate_edges, logical_preds, plan_node_id=None,
-                     parent_filter_node_id=None, depth=0):
+                     parent_filter_node_id=None, depth=0, is_join: bool = False):
     """
     Recursive parsing of predicate columns
 
@@ -214,14 +213,32 @@ def parse_predicates(db_column_features, feature_statistics, filter, filter_to_p
     filter_node_id = len(predicate_depths)
     predicate_depths.append(depth)
 
+    # unify filter operator naming
+    filter_op = []
+    if 'logical_operator' in filter:
+        filter_op.append(filter['logical_operator'])
+    if 'operator' in filter:
+        filter_op.append(filter['operator'])
+    if 'comparison_operator' in filter:
+        filter_op.append(filter['comparison_operator'])
+
+    assert len(filter_op) == 1, f'Multiple filter ops are annotated: {filter_op} / {filter}'
+    filter['operator'] = filter_op[0]
+
     # gather features
     if filter['operator'] in {str(op) for op in list(Operator)}:
         curr_filter_features = [encode(feature_name, filter, feature_statistics)
                                 for feature_name in plan_featurization.FILTER_FEATURES]
 
-        if 'column_id' in filter and filter['column_id'] is not None:
+        if is_join:
+            filter['col_id'] = filter['col_id1']
+
+        if 'col_name' in filter or 'column_name' in filter:
+            assert 'col_id' in filter, f'No col_id in filter: {filter}'
+
+        if 'col_id' in filter and filter['col_id'] is not None:
             curr_filter_col_feats = [
-                encode(column, vars(db_column_features[filter['column_id']]), feature_statistics)
+                encode(column, db_column_features[filter['col_id']], feature_statistics)
                 for column in plan_featurization.COLUMN_FEATURES]
         # hack for cases in which we have no base filter column (e.g., in a having clause where the column is some
         # result column of a subquery/groupby). In the future, this should be replaced by some graph model that also
@@ -253,7 +270,7 @@ def parse_predicates(db_column_features, feature_statistics, filter, filter_to_p
         for c in filter['children']:
             parse_predicates(db_column_features, feature_statistics, c, filter_to_plan_edges,
                          plan_featurization, predicate_col_features, predicate_depths, intra_predicate_edges,
-                         logical_preds, parent_filter_node_id=filter_node_id, depth=depth + 1)
+                             logical_preds, parent_filter_node_id=filter_node_id, depth=depth + 1, is_join=is_join)
 
 
 def postgres_plan_collator(plans: List[Tuple], feature_statistics: dict[dict] = None, db_statistics: dict = None,
