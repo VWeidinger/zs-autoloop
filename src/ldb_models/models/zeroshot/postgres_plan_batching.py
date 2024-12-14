@@ -214,17 +214,7 @@ def parse_predicates(db_column_features, feature_statistics, filter, filter_to_p
     filter_node_id = len(predicate_depths)
     predicate_depths.append(depth)
 
-    # unify filter operator naming
-    filter_op = []
-    assert not 'logical_operator' in filter, f'Logical operator is deprecated but found in filter: {filter}'
-    if 'operator' in filter:
-        filter_op.append(filter['operator'])
-    if 'comparison_operator' in filter:
-        # join comparison
-        filter_op.append(filter['comparison_operator'])
-
-    assert len(filter_op) == 1, f'Multiple filter ops are annotated: {filter_op} / {filter}'
-    filter['operator'] = filter_op[0]
+    assert 'operator' in filter, f'No operator in filter: {filter}'
 
     # gather features
     if filter['operator'] in {str(op) for op in list(Operator)}:
