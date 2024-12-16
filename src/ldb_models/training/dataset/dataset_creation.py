@@ -45,6 +45,7 @@ def read_workload_runs(workload_run_paths: List[Path],
         database_statistics[path_index] = run["database_stats"]
 
         if input_format == InputFormats.parsed:
+            assert "parsed_plans" in run, f"parsed_plans not in {path}, did you maybe used JSON query plans?"
             for p_id, plan in enumerate(run["parsed_plans"]):
 
                 if not include_timeout_queries and plan["timeout"]:
