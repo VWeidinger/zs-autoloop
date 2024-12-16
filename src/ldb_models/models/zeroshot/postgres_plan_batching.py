@@ -21,6 +21,7 @@ def encode(column, plan_params, feature_statistics):
         enc_value = feature_statistics[column]['scaler'].transform(np.array([[value]])).item()
     elif feature_statistics[column].get('type') == str(FeatureType.categorical):
         value_dict = feature_statistics[column]['value_dict']
+        assert len(list(value_dict.keys())) > 1, f'Value dict has only one key: {value_dict} for feature {column}'
         if isinstance(value, list) and len(value) == 1:
             value = value[0]
         assert str(value) in value_dict, f'{value} not in {value_dict.keys()}'
