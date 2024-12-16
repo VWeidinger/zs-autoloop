@@ -16,7 +16,8 @@ def generate_training_commands(datasets: List[Dataset], seeds: list[int], python
                                ft_with_ranking: bool = False, bound_predictions: bool = False,
                                eval_join_order: bool = False, eval_access_path: bool = False,
                                eval_physical_operator: bool = False,
-                               qo_eval_after_each_epoch: bool = False) -> List[str]:
+                               qo_eval_after_each_epoch: bool = False,
+                               use_romans_runs: bool = False) -> List[str]:
     if test_against:
         print(f'Testing the models against {test_against}')
 
@@ -29,24 +30,31 @@ def generate_training_commands(datasets: List[Dataset], seeds: list[int], python
             training_runs = " ".join(
                 target_model.get_training_workloads(training_datasets=datasets,
                                                     target_dataset=target_dataset,
-                                                    stratified_workload=target_model.stratified_workloads))
-            test_runs = target_model.get_test_workloads(target_dataset)
+                                                    stratified_workload=target_model.stratified_workloads,
+                                                    romans_runs=use_romans_runs))
+            test_runs = target_model.get_test_workloads(target_dataset, romans_runs=use_romans_runs)
             if eval_join_order:  # and target_dataset.db_name in ['imdb']:
                 test_runs += " " + target_model.assemble_wl_path(Dataset('imdb'), 'join_order',
-                                                                 stratified_workloads=False)
+                                                                 stratified_workloads=False,
+                                                                 romans_runs=use_romans_runs)
             if eval_access_path:  # and target_dataset.db_name in ['imdb', 'tpc_h', 'baseball']:
                 test_runs += " " + target_model.assemble_wl_path(Dataset('imdb'), "access_path_selection",
-                                                                 stratified_workloads=False)
+                                                                 stratified_workloads=False,
+                                                                 romans_runs=use_romans_runs)
             if eval_physical_operator:  # and target_dataset.db_name in ['imdb', 'tpc_h', 'baseball']:
                 test_runs += " " + target_model.assemble_wl_path(Dataset('imdb'), "physical_operator",
-                                                                 stratified_workloads=False)
+                                                                 stratified_workloads=False,
+                                                                 romans_runs=use_romans_runs)
                 test_runs += " " + target_model.assemble_wl_path(Dataset('imdb'), "physical_operator_w_idx",
-                                                                 stratified_workloads=False)
+                                                                 stratified_workloads=False,
+                                                                 romans_runs=use_romans_runs)
 
-            statistics_path = target_model.get_statistics(source_path=ClusterPaths(),
-                                                          dataset=target_dataset,
-                                                          format=target_model.input_format)
-            statistics_path = '/mnt/labstore/SIGs/ML/learned_db/runs_roman/parsed_plans/statistics_complex_workload_combined.json'
+            if use_romans_runs:
+                statistics_path = '/mnt/labstore/SIGs/ML/learned_db/runs_roman/parsed_plans/statistics_complex_workload_combined.json'
+            else:
+                statistics_path = target_model.get_statistics(source_path=ClusterPaths(),
+                                                              dataset=target_dataset,
+                                                              format=target_model.input_format)
 
             for seed in seeds:
                 model_suffix = ''
@@ -55,6 +63,8 @@ def generate_training_commands(datasets: List[Dataset], seeds: list[int], python
                     model_suffix += '_ft_rank'
                 if bound_predictions:
                     model_suffix += '_bound'
+                if use_romans_runs:
+                    model_suffix += '_romans'
 
                 wandb_name = f"{target_model.name.NAME}{model_suffix}/{target_dataset.db_name}/{seed}"
 
@@ -168,6 +178,7 @@ if __name__ == '__main__':
     eval_access_path = True  # evaluate access path selection (Idx Scan vs. SeqScan)
     eval_physical_operator = True  # evaluate physical operator selection
     qo_eval_after_each_epoch = True  # if True, will run a full QO evaluation after each epoch
+    use_romans_runs = False
     # ===================
 
     # Standard Models
@@ -220,7 +231,8 @@ if __name__ == '__main__':
                                                eval_join_order=eval_join_order,
                                                eval_access_path=eval_access_path,
                                                eval_physical_operator=eval_physical_operator,
-                                               qo_eval_after_each_epoch=qo_eval_after_each_epoch)
+                                               qo_eval_after_each_epoch=qo_eval_after_each_epoch,
+                                               use_romans_runs=use_romans_runs)
 
     runner.run_exp(commands=eval_commands,
                    set_up_steps=setup_steps,

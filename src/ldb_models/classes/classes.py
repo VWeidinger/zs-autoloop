@@ -112,13 +112,15 @@ class ModelConfig:
             return None
 
     def get_training_workloads(self, training_datasets: List[Dataset], target_dataset: Dataset,
-                               wl_name: str = "workload_200k_s1", stratified_workload: bool = False) -> List[str]:
+                               wl_name: str = "workload_200k_s1", stratified_workload: bool = False,
+                               romans_runs: bool = False) -> List[str]:
         if self.type == ModelType.WL_AGNOSTIC:
             training_workloads = []
             for db in training_datasets:
                 if db.db_name != target_dataset.db_name:
                     path = self.get_data_base_dir(
-                        stratified_workloads=stratified_workload) / f"{db.db_name}_scaled{db.scale}" / f"{wl_name}.json"
+                        stratified_workloads=stratified_workload,
+                        romans_runs=romans_runs) / f"{db.db_name}_scaled{db.scale}" / f"{wl_name}.json"
                     training_workloads.append(str(path))
 
             # assert len(training_workloads) == 19, f"Found {len(training_workloads)}, but it should be 19"
@@ -126,31 +128,35 @@ class ModelConfig:
 
         elif self.type == ModelType.WL_DRIVEN:
             path = self.get_data_base_dir(
-                stratified_workloads=stratified_workload) / f"{target_dataset.db_name}_scaled{target_dataset.scale}" / f"{wl_name}.json"
+                stratified_workloads=stratified_workload,
+                romans_runs=romans_runs) / f"{target_dataset.db_name}_scaled{target_dataset.scale}" / f"{wl_name}.json"
             return [str(path)]
 
-    def assemble_wl_path(self, target_db: Dataset, wl_name, stratified_workloads: bool = True):
+    def assemble_wl_path(self, target_db: Dataset, wl_name, stratified_workloads: bool = True,
+                         romans_runs: bool = False) -> str:
         return str(self.get_data_base_dir(
-            stratified_workloads=stratified_workloads) / f"{target_db.db_name}_scaled{target_db.scale}" / f"{wl_name}.json")
+            stratified_workloads=stratified_workloads,
+            romans_runs=romans_runs) / f"{target_db.db_name}_scaled{target_db.scale}" / f"{wl_name}.json")
 
-    def get_test_workloads(self, target_db: Dataset) -> str:
-        return self.assemble_wl_path(target_db, "workload_200k_s1", stratified_workloads=False)
+    def get_test_workloads(self, target_db: Dataset, romans_runs: bool) -> str:
+        return self.assemble_wl_path(target_db, "workload_200k_s1", stratified_workloads=True, romans_runs=romans_runs)
 
-    def get_data_base_dir(self, stratified_workloads: bool) -> Path:
-        if stratified_workloads:
+    def get_data_base_dir(self, stratified_workloads: bool, romans_runs: bool = False) -> Path:
+        if stratified_workloads and not romans_runs:  # we do not have roman's runs stratified
             if self.input_format == InputFormats.baseline_parsed:
                 raise NotImplementedError("ToDo")
             elif self.input_format == InputFormats.parsed:
                 return ClusterPaths().Data.parsed_plans_stratified
             elif self.input_format == InputFormats.json:
                 raise NotImplementedError("ToDo")
-
         else:
             if self.input_format == InputFormats.baseline_parsed:
                 return ClusterPaths().Data.augmented_plans
             elif self.input_format == InputFormats.parsed:
-                # return ClusterPaths().Data.parsed_plans
-                return ClusterPaths().Data.root / "runs_roman" / "parsed_plans"
+                if not romans_runs:
+                    return ClusterPaths().Data.parsed_plans
+                else:
+                    return ClusterPaths().Data.root / "runs_roman" / "parsed_plans"
             elif self.input_format == InputFormats.json:
                 return ClusterPaths().Data.json_plans
 
