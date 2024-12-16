@@ -421,7 +421,7 @@ if __name__ == '__main__':
                       num_workers=args.num_workers)
 
     if args.quick_run:
-        model_args.update(limit_queries=2000, limit_queries_affected_wl=1, epochs=3, batch_size=64)
+        model_args.update(limit_plans_per_file=2000, epochs=3, batch_size=64)
 
     # Create workload runs
     train_runs = [Path(raw_path) for raw_path in args.workload_runs]
