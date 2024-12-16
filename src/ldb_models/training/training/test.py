@@ -66,7 +66,8 @@ def test_model(config: ModelConfig,
                     else:
                         wandb_run.summary.update(prefix_dict(test_stats, f'{filename}.json/'))
 
-                save_csv([test_stats], str(test_path) + f"_test_stats{file_suffix}.csv")
+                if not is_per_epoch:
+                    save_csv([test_stats], str(test_path) + f"_test_stats{file_suffix}.csv")
 
                 if "join_order" in str(test_path):
                     evaluate_join_order(predictions=predictions_dict, is_per_epoch=is_per_epoch, epoch=epoch,

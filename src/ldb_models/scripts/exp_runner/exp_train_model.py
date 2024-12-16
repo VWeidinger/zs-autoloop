@@ -5,7 +5,7 @@ from ldb_schema.paths import ClusterPaths, LocalPaths
 from octopus.step import Rsync, KillAllScreens, SetupVenv, RsyncCurrentRepo, SetupRYEVenv
 
 from classes.classes import ModelConfig, ModelType, \
-    ZeroShotModelConfig
+    FlatModelConfig, ScaledPostgresModelConfig
 from scripts.exp_runner.exp_runner import ExpRunner, TrainingServers
 
 
@@ -155,16 +155,16 @@ if __name__ == '__main__':
         Dataset('fhnk', scale=2)
     ]
 
-    seeds = [44]
+    seeds = [0]
     nodes = [
         # TrainingServers.NODE00,
-        # TrainingServers.NODE02,
+        TrainingServers.NODE02,
         TrainingServers.NODE03,
         # TrainingServers.NODE04,
         # TrainingServers.NODE05,
     ]
     sockets = [1]
-    out_file_id_offset = 1
+    out_file_id_offset = 0
 
     # ===================
     # CONFIGS
@@ -183,14 +183,14 @@ if __name__ == '__main__':
 
     # Standard Models
     model_configs = [
-        # ScaledPostgresModelConfig(),  # --> Working
-        # FlatModelConfig(),  # --> Working
+        ScaledPostgresModelConfig(),  # --> Working
+        FlatModelConfig(),  # --> Working
         # E2EModelConfig(),                   # --> ToDo: Adapt to new codebase and generate sentences
         # QPPNetModelConfig(),                # --> Working?
         # MSCNModelConfig(),                  # --> ToDo: Adapt to new codebase and generate sentences
         # DACEModelConfig(),                  # --> Working
         # QueryFormerModelConfig(),           # --> ToDo: Generate Sentences
-        ZeroShotModelConfig(),  # --> Working
+        # ZeroShotModelConfig(),  # --> Working
         # ZSLearnFromTimeoutConfig(),         # --> Working
         # ZSRankLossConfig(),                 # --> Working
 

@@ -340,11 +340,10 @@ def evaluate_access_path_selection(predictions: dict, is_per_epoch: bool = False
         if wandb_run:
             # log to wandb
             if is_per_epoch:
-                pass
                 wandb_run.log({f'{prefix}/col_plots/{table_name}.{col_name}': wandb.Image(plt)}, step=epoch,
                               commit=False)
             else:
-                wandb_run.summary[f'{prefix}/col_plots/{table_name}.{col_name}'] = wandb.Image(plt)
+                wandb_run.log({f'{prefix}/col_plots/{table_name}.{col_name}': wandb.Image(plt)})
 
         # selection list
         pred_selection = []
@@ -409,4 +408,4 @@ def evaluate_access_path_selection(predictions: dict, is_per_epoch: bool = False
             wandb_run.log({f'{prefix}/seq_scan_ratio': wandb.Image(plt)}, step=epoch)
         else:
             print(f'Logging seq_scan_ratio to wandb summary',flush=True)
-            wandb_run.summary[f'{prefix}/seq_scan_ratio'] = wandb.Image(plt.figure())
+            wandb_run.log({f'{prefix}/seq_scan_ratio': wandb.Image(plt)})
