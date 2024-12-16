@@ -143,12 +143,6 @@ def validate_model(val_loader: DataLoader,
 
             save_csv(predictions, target_csv_path=str(target_path) + "_test_pred.csv")
 
-            # if run: # too large for wandb
-            #     wandb.run.summary[f"test_preds"] = predictions
-
-            # Add rows to epoch_stats to use them in other evaluation tasks later
-            epoch_stats[f'{log_prefix}_predictions'] = predictions
-
     return any_best_metric, predictions
 
 
