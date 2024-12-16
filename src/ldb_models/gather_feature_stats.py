@@ -40,3 +40,5 @@ if __name__ == '__main__':
         target_path = f'{args.target_folder}/{mode}_{args.file_name}.json'
         print(f"Saving feature statistics for {json_files} workload files to {target_path}")
         gather_feature_statistics(json_files, target_path)
+
+    print('Done')

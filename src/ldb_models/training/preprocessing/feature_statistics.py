@@ -18,8 +18,10 @@ def assemble_join_str(join_dict):
         return join_str
     else:
         # sort by alphabet
-        table_str = [f'{join_dict["table_name1"]}.{join_dict["column_name1"]}', f'{join_dict["table_name2"]}.{join_dict["column_name2"]}']
-        return f" {join_dict['comparison_operator']} ".join(sorted(table_str))
+        table_str = [f'{join_dict["table_name1"]}.{join_dict["column_name1"]}',
+                     f'{join_dict["table_name2"]}.{join_dict["column_name2"]}']
+        assert 'operator' in join_dict, f"Join dict does not contain operator: {join_dict}"
+        return f" {join_dict['operator']} ".join(sorted(table_str))
 
 
 def gather_values_recursively(json_dict, value_dict=None):
@@ -31,7 +33,7 @@ def gather_values_recursively(json_dict, value_dict=None):
             if k == 'join':
                 # manually construct join key
                 value_dict['join'].append(assemble_join_str(v))
-            elif k in ['hint_notices', 'sql', 'Index Cond', 'Filter','sql_string','Output']:
+            elif k in ['hint_notices', 'sql', 'Index Cond', 'Filter', 'sql_string', 'Output', 'hint']:
                 # skip these values
                 pass
             elif not (isinstance(v, list) or isinstance(v, tuple) or isinstance(v, dict)):
@@ -56,9 +58,10 @@ class FeatureType(Enum):
     def __str__(self):
         return self.value
 
+
 def gather_values_fn(run_path):
     with open(run_path) as json_file:
-        runs =orjson.loads(json_file.read())
+        runs = orjson.loads(json_file.read())
 
     value_dict = gather_values_recursively(runs)
     return value_dict
@@ -72,7 +75,8 @@ def gather_feature_statistics(workload_run_paths, target):
     """
 
     with multiprocessing.Pool() as pool:
-        value_dicts = list(tqdm(pool.imap(gather_values_fn, workload_run_paths), desc="Reading Runs", total=len(workload_run_paths)))
+        value_dicts = list(
+            tqdm(pool.imap(gather_values_fn, workload_run_paths), desc="Reading Runs", total=len(workload_run_paths)))
 
     # combine value dicts
     value_dict = collections.defaultdict(list)
@@ -80,7 +84,7 @@ def gather_feature_statistics(workload_run_paths, target):
         for k, v in vd.items():
             value_dict[k].extend(v)
 
-    print("Saving")
+    print("Saving", flush=True)
     # save unique values for categorical features and scale and center of RobustScaler for numerical ones
     statistics_dict = dict()
     for k, values in value_dict.items():
@@ -93,15 +97,21 @@ def gather_feature_statistics(workload_run_paths, target):
             np_values = np.array(values, dtype=np.float32).reshape(-1, 1)
             scaler.fit(np_values)
 
-            statistics_dict[k] = dict(max=float(np_values.max()),
-                                      scale=scaler.scale_.item(),
-                                      center=scaler.center_.item(),
-                                      type=str(FeatureType.numeric))
+            statistics_dict[k] = {
+                'max': float(np_values.max()),
+                'min': float(np_values.min()),
+                'avg': float(np_values.mean()),
+                'scale': scaler.scale_.item(),
+                'center': scaler.center_.item(),
+                'type': str(FeatureType.numeric)
+            }
         else:
             unique_values = set(values)
-            statistics_dict[k] = dict(value_dict={v: id for id, v in enumerate(unique_values)},
-                                      no_vals=len(unique_values),
-                                      type=str(FeatureType.categorical))
+            statistics_dict[k] = {
+                'no_vals': len(unique_values),
+                'type': str(FeatureType.categorical),
+                'value_dict': {v: id for id, v in enumerate(unique_values)},
+            }
 
     # save as json
     os.makedirs(os.path.dirname(target), exist_ok=True)

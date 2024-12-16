@@ -91,6 +91,8 @@ def assign_additional_plan_info(plan: dict, db_statistics: dict):
     plan["scan_op"] = scan_op_list
     plan["join_op"] = join_op_list
     return
+
+
 def plan_to_graph(node, database_id, plan_depths, plan_features, plan_to_plan_edges, db_statistics, feature_statistics,
                   filter_to_plan_edges, predicate_col_features, output_column_to_plan_edges, output_column_features,
                   column_to_output_column_edges, column_features, table_features, table_to_plan_edges,
