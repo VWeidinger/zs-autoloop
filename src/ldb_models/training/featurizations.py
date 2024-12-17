@@ -166,6 +166,9 @@ class PostgresEstSystemCardDetail(Featurization):
     TABLE_FEATURES = ['reltuples', 'relpages']
 
 
+class PostgresEstWithPGCost(PostgresEstSystemCardDetail):
+    PLAN_FEATURES = ['est_card', 'est_width', 'op_name', 'est_children_card', 'pg_cost']
+
 class PostgresEstSystemCardMedium(Featurization):
     PLAN_FEATURES = ['est_card', 'est_width', 'workers_planned', 'op_name', 'est_children_card']
     FILTER_FEATURES = ['operator']

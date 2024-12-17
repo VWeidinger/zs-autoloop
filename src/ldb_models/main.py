@@ -1,4 +1,5 @@
 import argparse
+import inspect
 from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
@@ -14,12 +15,10 @@ from torch.optim.optimizer import Optimizer
 from torch.utils.data import DataLoader
 from wandb.apis.public import Run
 
+import classes.classes as cls
 from classes.classes import ModelConfig, E2EModelConfig, ZeroShotModelConfig, MSCNModelConfig, DataLoaderOptions, \
-    TlstmModelConfig, ModelName, FlatModelConfig, ScaledPostgresModelConfig, TabularModelConfig, TPoolModelConfig, \
-    QPPNetModelConfig, DACEModelConfig, DACEModelNoCostsConfig, QPPModelNoCostsConfig, FlatModelActCardModelConfig, \
-    QPPModelActCardsConfig, ZeroShotModelActCardConfig, DACEModelActCardConfig, QueryFormerModelConfig, \
-    ZSLearnFromTimeoutConfig, ZSRankLossConfig, FlatStratifiedModelConfig, ZSStratifiedModelConfig, \
-    DACEStratifiedModelConfig, ScaledPostgresStratifiedModelConfig
+    TlstmModelConfig, FlatModelConfig, ScaledPostgresModelConfig, TabularModelConfig, QPPNetModelConfig, \
+    DACEModelConfig, QueryFormerModelConfig
 from classes.workload_runs import WorkloadRuns
 from models.dace.dace_dataset import create_dace_dataloader
 from models.dace.dace_model import DACELora
@@ -348,44 +347,18 @@ def use_model(mode: str,
 
 
 def get_model_config(model_type: str, m_args: dict) -> ModelConfig:
-    model_config_map = {
-        ModelName.POSTGRES.NAME: ScaledPostgresModelConfig,
-        ModelName.MSCN.NAME: MSCNModelConfig,
-        ModelName.ZEROSHOT.NAME: ZeroShotModelConfig,
-        ModelName.ZS_RANK_LOSS.NAME: ZSRankLossConfig,
-        ModelName.E2E.NAME: TPoolModelConfig,
-        ModelName.QPP_NET.NAME: QPPNetModelConfig,
-        ModelName.DACE.NAME: DACEModelConfig,
-        ModelName.FLAT.NAME: FlatModelConfig,
-        ModelName.FLAT_ACT_CARDS.NAME: FlatModelActCardModelConfig,
-        ModelName.QUERY_FORMER.NAME: QueryFormerModelConfig,
+    classes_dict = dict()
+    for name, obj in cls.__dict__.items():
+        if inspect.isclass(obj) and issubclass(obj, ModelConfig) and 'name' in obj.__annotations__:
+            instantiated_obj = obj()
+            if instantiated_obj.name is None:
+                continue
+            classes_dict[instantiated_obj.name.NAME] = obj
 
-        # Stratified Models
-        ModelName.FLAT_STRATIFIED.NAME: FlatStratifiedModelConfig,
-        ModelName.ZS_STRATIFIED.NAME: ZSStratifiedModelConfig,
-        ModelName.DACE_STRATIFIED.NAME: DACEStratifiedModelConfig,
-        ModelName.POSTGRES_STRATIFIED.NAME: ScaledPostgresStratifiedModelConfig,
+    if model_type not in classes_dict.keys():
+        raise Exception(f"Model type {model_type} not found in classes.py \n{classes_dict.keys()}")
 
-        # learn from timeout
-        ModelName.ZS_FROM_TIMEOUT.NAME: ZSLearnFromTimeoutConfig,
-
-        # Ablation models without PG costs
-        ModelName.DACE_NO_COSTS.NAME: DACEModelNoCostsConfig,
-        ModelName.QPP_NET_NO_COSTS.NAME: QPPModelNoCostsConfig,
-
-        # Act card models
-        ModelName.QPP_NET_ACT_CARDS.NAME: QPPModelActCardsConfig,
-        ModelName.ZEROSHOT_ACT_CARD.NAME: ZeroShotModelActCardConfig,
-        ModelName.DACE_ACT_CARDS.NAME: DACEModelActCardConfig,
-    }
-
-    if model_type in model_config_map:
-        config = model_config_map[model_type](**m_args)
-
-        return config
-
-    else:
-        raise Exception(f"Model name {model_type} not supported")
+    return classes_dict[model_type](**m_args)
 
 
 if __name__ == '__main__':

@@ -13,7 +13,8 @@ from models.zeroshot.postgres_plan_batching import postgres_plan_collator
 from training.batch_to_funcs import dace_batch_to, simple_batch_to, batch_to
 from training.featurizations import Featurization, DACEFeaturization, QPPNetFeaturization, \
     PostgresEstSystemCardDetail, DACEFeaturizationNoCosts, QPPNetNoCostsFeaturization, FlatModelFeaturization, \
-    FlatModelActCardFeaturization, QPPNetActCardsFeaturization, PostgresTrueCardDetail, DACEActCardFeaturization
+    FlatModelActCardFeaturization, QPPNetActCardsFeaturization, PostgresTrueCardDetail, DACEActCardFeaturization, \
+    PostgresEstWithPGCost
 
 
 class InputFormats:
@@ -43,6 +44,9 @@ class ModelName:
     ZS_FROM_TIMEOUT = Name('zeroshot_learn_from_timeout', 'Zero-Shot (learn from timeout)')
     ZS_RANK_LOSS = Name('zeroshot_rank_loss', 'Zero-Shot (Rank Loss)')
     ZS_STRATIFIED = Name("zeroshot_stratified", "Zero-Shot (stratified)")
+    ZS_PGCOST = Name("zeroshot_pgcost", "Zero-Shot (pgcost)")
+    ZS_WITH_HINTS = Name("zeroshot_with_hints", "Zero-Shot (with hints)")
+    ZS_ONLY_HINTS = Name("zeroshot_only_hints", "Zero-Shot (only hints)")
 
     QPP_NET = Name("qppnet", "QPP-Net")
     QPP_NET_NO_COSTS = Name("qppnet_no_costs", "QPP-Net\n(w/o PG costs)")
@@ -84,6 +88,8 @@ class ModelConfig:
     column_statistics: bool = False
     word_embeddings: bool = False
     stratified_workloads: bool = False
+    include_hint_workloads: bool = False
+    only_hint_workloads: bool = False
 
     def get_model_dir(self, source_path: Paths, database: Dataset) -> Path:
         return source_path.Data.models / self.name.NAME / database.db_name
@@ -114,23 +120,37 @@ class ModelConfig:
     def get_training_workloads(self, training_datasets: List[Dataset], target_dataset: Dataset,
                                wl_name: str = "workload_200k_s1", stratified_workload: bool = False,
                                romans_runs: bool = False) -> List[str]:
+
+        # select the workload to be used
+        if self.include_hint_workloads:
+            workload_names = [wl_name, 'workload_200k_s1_full_hints']
+        elif self.only_hint_workloads:
+            workload_names = ['workload_200k_s1_full_hints']
+        else:
+            workload_names = [wl_name]
+
         if self.type == ModelType.WL_AGNOSTIC:
             training_workloads = []
             for db in training_datasets:
                 if db.db_name != target_dataset.db_name:
-                    path = self.get_data_base_dir(
-                        stratified_workloads=stratified_workload,
-                        romans_runs=romans_runs) / f"{db.db_name}_scaled{db.scale}" / f"{wl_name}.json"
-                    training_workloads.append(str(path))
+
+                    for wl in workload_names:
+                        path = self.get_data_base_dir(
+                            stratified_workloads=stratified_workload,
+                            romans_runs=romans_runs) / f"{db.db_name}_scaled{db.scale}" / f"{wl}.json"
+                        training_workloads.append(str(path))
 
             # assert len(training_workloads) == 19, f"Found {len(training_workloads)}, but it should be 19"
             return training_workloads
 
         elif self.type == ModelType.WL_DRIVEN:
-            path = self.get_data_base_dir(
-                stratified_workloads=stratified_workload,
-                romans_runs=romans_runs) / f"{target_dataset.db_name}_scaled{target_dataset.scale}" / f"{wl_name}.json"
-            return [str(path)]
+            training_workloads = []
+            for wl in workload_names:
+                path = self.get_data_base_dir(
+                    stratified_workloads=stratified_workload,
+                    romans_runs=romans_runs) / f"{target_dataset.db_name}_scaled{target_dataset.scale}" / f"{wl}.json"
+                training_workloads.append(str(path))
+            return training_workloads
 
     def assemble_wl_path(self, target_db: Dataset, wl_name, stratified_workloads: bool = True,
                          romans_runs: bool = False) -> str:
@@ -173,6 +193,7 @@ class FlatModelConfig(TabularModelConfig):
     device: str = "cpu"
     input_format: str = InputFormats.parsed
     featurization: Featurization = FlatModelFeaturization
+
 
 @attrs.define(frozen=True, slots=False)
 class FlatStratifiedModelConfig(FlatModelConfig):
@@ -311,6 +332,7 @@ class ZSStratifiedModelConfig(ZeroShotModelConfig):
     name: Name = ModelName.ZS_STRATIFIED
     stratified_workloads: bool = True
 
+
 @attrs.define(frozen=True, slots=False)
 class ZSRankLossConfig(ZeroShotModelConfig):
     name: Name = ModelName.ZS_RANK_LOSS
@@ -330,6 +352,23 @@ class ZeroShotModelActCardConfig(ZeroShotModelConfig):
     featurization: Featurization = PostgresTrueCardDetail
     hyperparameter: Path = Path(f'conf/tuned_hyperparameters/tune_best_config.json')
 
+
+@attrs.define(frozen=True, slots=False)
+class ZeroShotWithPostgresConfig(ZeroShotModelConfig):
+    name: Name = ModelName.ZS_PGCOST
+    featurization: Featurization = PostgresEstWithPGCost
+
+
+@attrs.define(frozen=True, slots=False)
+class ZeroShotModelWHintsConfig(ZeroShotModelConfig):
+    name: Name = ModelName.ZS_WITH_HINTS
+    include_hint_workloads: bool = True
+
+
+@attrs.define(frozen=True, slots=False)
+class ZeroShotModelOnlyHints(ZeroShotModelConfig):
+    name: Name = ModelName.ZS_ONLY_HINTS
+    only_hint_workloads: bool = True
 
 @attrs.define(frozen=True, slots=False)
 class MSCNModelConfig(ModelConfig):
@@ -366,6 +405,7 @@ class DACEModelConfig(ModelConfig):
     optimizer_class_name: str = "Adam"
     optimizer_kwargs: dict = dict(lr=1e-3)
     device: str = "cuda:[socket]"  # ToDo: Device selection should be handled by octopus - but how?
+
 
 @attrs.define(frozen=True, slots=False)
 class DACEStratifiedModelConfig(DACEModelConfig):

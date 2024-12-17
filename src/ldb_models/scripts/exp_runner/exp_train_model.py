@@ -5,7 +5,7 @@ from ldb_schema.paths import ClusterPaths, LocalPaths
 from octopus.step import Rsync, KillAllScreens, SetupVenv, RsyncCurrentRepo, SetupRYEVenv
 
 from classes.classes import ModelConfig, ModelType, \
-    FlatModelConfig, ScaledPostgresModelConfig
+    ZeroShotModelOnlyHints
 from scripts.exp_runner.exp_runner import ExpRunner, TrainingServers
 
 
@@ -32,6 +32,7 @@ def generate_training_commands(datasets: List[Dataset], seeds: list[int], python
                                                     target_dataset=target_dataset,
                                                     stratified_workload=target_model.stratified_workloads,
                                                     romans_runs=use_romans_runs))
+
             test_runs = target_model.get_test_workloads(target_dataset, romans_runs=use_romans_runs)
             if eval_join_order:  # and target_dataset.db_name in ['imdb']:
                 test_runs += " " + target_model.assemble_wl_path(Dataset('imdb'), 'join_order',
@@ -157,13 +158,13 @@ if __name__ == '__main__':
 
     seeds = [0]
     nodes = [
-        # TrainingServers.NODE00,
-        TrainingServers.NODE02,
-        TrainingServers.NODE03,
+        TrainingServers.NODE00,
+        # TrainingServers.NODE02,
+        # TrainingServers.NODE03,
         # TrainingServers.NODE04,
         # TrainingServers.NODE05,
     ]
-    sockets = [1]
+    sockets = [0]
     out_file_id_offset = 0
 
     # ===================
@@ -183,8 +184,8 @@ if __name__ == '__main__':
 
     # Standard Models
     model_configs = [
-        ScaledPostgresModelConfig(),  # --> Working
-        FlatModelConfig(),  # --> Working
+        # ScaledPostgresModelConfig(),  # --> Working
+        # FlatModelConfig(),  # --> Working
         # E2EModelConfig(),                   # --> ToDo: Adapt to new codebase and generate sentences
         # QPPNetModelConfig(),                # --> Working?
         # MSCNModelConfig(),                  # --> ToDo: Adapt to new codebase and generate sentences
@@ -197,8 +198,12 @@ if __name__ == '__main__':
         # Stratified Models
         # FlatStratifiedModelConfig(),  # --> Working
         # ZSStratifiedModelConfig(),  # --> Working
-        # DACEStratifiedModelConfig(),        # --> Not yet working
+        # DACEStratifiedModelConfig(),        # --> Working
         # ScaledPostgresStratifiedModelConfig(),  # --> Working
+
+        # ZeroShotWithPostgresConfig(),  # --> Working
+        # ZeroShotModelWHintsConfig(),  # --> Working
+        ZeroShotModelOnlyHints(),
 
         # Ablation Models (without postgres Estimates)
         # DACEModelNoCostsConfig(),
@@ -214,7 +219,8 @@ if __name__ == '__main__':
     runner = ExpRunner(replicate=False,
                        node_names=[node["hostname"] for node in nodes],
                        python_version='rye',
-                       available_sockets=sockets)
+                       available_sockets=sockets,
+                       )
 
     # for dataset in datasets:
     eval_commands = generate_training_commands(datasets=datasets,
