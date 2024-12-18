@@ -30,6 +30,7 @@ class Name:
 
 
 class ModelName:
+
     POSTGRES: Name = Name("postgres", "Sc. Postgres")
     POSTGRES_STRATIFIED = Name("postgres_stratified", "Sc. Postgres (stratified)")
 
@@ -47,6 +48,11 @@ class ModelName:
     ZS_PGCOST = Name("zeroshot_pgcost", "Zero-Shot (pgcost)")
     ZS_WITH_HINTS = Name("zeroshot_with_hints", "Zero-Shot (with hints)")
     ZS_ONLY_HINTS = Name("zeroshot_only_hints", "Zero-Shot (only hints)")
+    ZS_2DIM = Name("zeroshot_2dim", "Zero-Shot (2dim)")
+    ZS_STRATIFIED_PG_COST_WITH_HINT_PLAN = Name("zeroshot_stratified_pg_cost_with_hint_plan",
+                                                "Zero-Shot (stratified, PG cost, with hint plan)")
+    ZS_PG_COST_WITH_HINT_PLAN = Name("zeroshot_pg_cost_with_hint_plan",
+                                     "Zero-Shot (PG cost, with hint plan)")
 
     QPP_NET = Name("qppnet", "QPP-Net")
     QPP_NET_NO_COSTS = Name("qppnet_no_costs", "QPP-Net\n(w/o PG costs)")
@@ -55,6 +61,8 @@ class ModelName:
     DACE_ACT_CARDS = Name("dace_act_cards", "DACE (act. card.)")
     DACE_NO_COSTS = Name("dace_no_costs", "DACE\n(w/o PG costs)")
     DACE_STRATIFIED = Name("dace_stratified", "DACE (stratified)")
+    DACE_WITH_HINTS = Name("dace_with_hints", "DACE (with hints)")
+    DACE_ONLY_HINTS = Name("dace_only_hints", "DACE (only hints)")
 
     QUERY_FORMER = Name("query_former", "QueryFormer")
 
@@ -347,10 +355,29 @@ class ZSLearnFromTimeoutConfig(ZeroShotModelConfig):
 
 
 @attrs.define(frozen=True, slots=False)
+class ZeroShotModel2Dim(ZeroShotModelConfig):
+    name: Name = ModelName.ZS_2DIM
+    hidden_dim: int = 2
+
+
+@attrs.define(frozen=True, slots=False)
+class ZSStratifiedPGCostWithHintPlan(ZeroShotModelConfig):
+    name: Name = ModelName.ZS_STRATIFIED_PG_COST_WITH_HINT_PLAN
+    stratified_workloads: bool = True
+    include_hint_workloads: bool = True
+    featurization: Featurization = PostgresEstWithPGCost
+
+
+@attrs.define(frozen=True, slots=False)
+class ZSPGCostWithHintPlan(ZeroShotModelConfig):
+    name: Name = ModelName.ZS_PG_COST_WITH_HINT_PLAN
+    include_hint_workloads: bool = True
+    featurization: Featurization = PostgresEstWithPGCost
+
+@attrs.define(frozen=True, slots=False)
 class ZeroShotModelActCardConfig(ZeroShotModelConfig):
     name: Name = ModelName.ZEROSHOT_ACT_CARD
     featurization: Featurization = PostgresTrueCardDetail
-    hyperparameter: Path = Path(f'conf/tuned_hyperparameters/tune_best_config.json')
 
 
 @attrs.define(frozen=True, slots=False)
@@ -395,7 +422,7 @@ class DACEModelConfig(ModelConfig):
     mlp_dropout: float = 0.3
     transformer_dropout: float = 0.2
     max_runtime: int = 30000
-    pad_length: int = 22
+    pad_length: int = 30
     loss_weight: float = 0.5
     batch_to_func: Callable = dace_batch_to
     loss_class_name: str = "DaceLoss"
@@ -425,6 +452,18 @@ class DACEModelActCardConfig(DACEModelConfig):
     name: Name = ModelName.DACE_ACT_CARDS
     node_length: int = 22
     featurization: Featurization = DACEActCardFeaturization
+
+
+@attrs.define(frozen=True, slots=False)
+class DACEModelWHintsConfig(DACEModelConfig):
+    name: Name = ModelName.DACE_WITH_HINTS
+    include_hint_workloads: bool = True
+
+
+@attrs.define(frozen=True, slots=False)
+class DACEModelOnlyHints(DACEModelConfig):
+    name: Name = ModelName.DACE_ONLY_HINTS
+    only_hint_workloads: bool = True
 
 
 @attrs.define(frozen=True, slots=False)

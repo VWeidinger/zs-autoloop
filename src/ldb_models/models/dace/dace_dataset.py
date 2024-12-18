@@ -133,11 +133,15 @@ def dace_collator(batch: Tuple, feature_statistics: dict, config: DACEModelConfi
         all_scan_ops += p["scan_op"]
         all_join_ops += p["join_op"]
 
-        seq_encoding, attention_mask, loss_mask, run_times = get_plan_encoding(query_plan=p,
+        try:
+            seq_encoding, attention_mask, loss_mask, run_times = get_plan_encoding(query_plan=p,
                                                                                model_config=config,
                                                                                op_name_to_one_hot=op_name_to_one_hot,
                                                                                plan_parameters=config.featurization.PLAN_FEATURES,
                                                                                feature_statistics=feature_statistics)
+        except Exception as e:
+            print(p, flush=True)
+            raise Exception(f"Error in get_plan_encoding: {e} \n {p}")
 
         #labels.append(run_times[0] * config.max_runtime)
         labels.append(torch.tensor(p["plan_runtime_ms"]) / 1000)

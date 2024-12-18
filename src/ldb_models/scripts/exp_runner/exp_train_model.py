@@ -5,7 +5,8 @@ from ldb_schema.paths import ClusterPaths, LocalPaths
 from octopus.step import Rsync, KillAllScreens, SetupVenv, RsyncCurrentRepo, SetupRYEVenv
 
 from classes.classes import ModelConfig, ModelType, \
-    ZeroShotModelOnlyHints
+    ZSPGCostWithHintPlan, \
+    ZSStratifiedPGCostWithHintPlan
 from scripts.exp_runner.exp_runner import ExpRunner, TrainingServers
 
 
@@ -165,7 +166,8 @@ if __name__ == '__main__':
         # TrainingServers.NODE05,
     ]
     sockets = [0]
-    out_file_id_offset = 0
+    out_file_id_offset = 3
+    num_parallel_screens_or_jobs = 2  # in general set this to None - is determined by number of sockets
 
     # ===================
     # CONFIGS
@@ -203,11 +205,17 @@ if __name__ == '__main__':
 
         # ZeroShotWithPostgresConfig(),  # --> Working
         # ZeroShotModelWHintsConfig(),  # --> Working
-        ZeroShotModelOnlyHints(),
+        # ZeroShotModelOnlyHints(),
+        # ZeroShotModel2Dim(),
+        ZSStratifiedPGCostWithHintPlan(),
+        ZSPGCostWithHintPlan(),
 
         # Ablation Models (without postgres Estimates)
-        # DACEModelNoCostsConfig(),
         # QPPModelNoCostsConfig(),
+
+        # DACEModelNoCostsConfig(),
+        # DACEModelWHintsConfig(),
+        # DACEModelOnlyHints(),
 
         # Ablation Models (actual cardinalities)
         # FlatModelActCardModelConfig(),
@@ -220,6 +228,7 @@ if __name__ == '__main__':
                        node_names=[node["hostname"] for node in nodes],
                        python_version='rye',
                        available_sockets=sockets,
+                       num_parallel_screens_or_jobs=num_parallel_screens_or_jobs
                        )
 
     # for dataset in datasets:

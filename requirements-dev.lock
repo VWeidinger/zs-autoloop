@@ -193,7 +193,7 @@ jupyterlab-widgets==3.0.13
     # via ipywidgets
 kiwisolver==1.4.7
     # via matplotlib
-ldb-schema @ git+https://github.com/DataManagementLab/ldb_schema.git@1873cbdb20fca50ff1780b5f7f3d1b9cde6ed1b4
+ldb-schema @ git+https://github.com/DataManagementLab/ldb_schema.git@acef502d3777ae9ad5e81e4e4cf5a356447f0e3b
     # via ldb-models
 lightgbm==4.5.0
     # via ldb-models
@@ -288,7 +288,7 @@ nvidia-nvjitlink-cu12==12.6.85
     # via nvidia-cusparse-cu12
 nvidia-nvtx-cu12==12.1.105
     # via torch
-octopus @ git+https://github.com/DataManagementLab/octopus.git@1ba4ce673e2567c814578f39cab9239927a7567b
+octopus @ git+https://github.com/DataManagementLab/octopus.git@68851f2b712abee2d8b11a4c7015fcdf4f0c1111
 orjson==3.10.12
     # via ldb-models
 osfclient==0.0.5

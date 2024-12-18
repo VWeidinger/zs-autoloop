@@ -185,7 +185,7 @@ jupyterlab-widgets==3.0.13
     # via ipywidgets
 kiwisolver==1.4.7
     # via matplotlib
-ldb-schema @ git+https://github.com/DataManagementLab/ldb_schema.git@1873cbdb20fca50ff1780b5f7f3d1b9cde6ed1b4
+ldb-schema @ git+https://github.com/DataManagementLab/ldb_schema.git@acef502d3777ae9ad5e81e4e4cf5a356447f0e3b
     # via ldb-models
 lightgbm==4.5.0
     # via ldb-models

@@ -36,6 +36,7 @@ class ExpRunner:
                  node_names: List[str],
                  python_version: str = "3.9",
                  available_sockets: List[int] = [0, 1],
+                 num_parallel_screens_or_jobs: int = None,
                  ):
 
         # Read environments variable and arguments
@@ -73,7 +74,8 @@ class ExpRunner:
 
         # Create nodes
         self.nodes = self.create_nodes(node_names, self.ssh_username, self.private_key_path, self.ssh_passphrase,
-                                       available_sockets=available_sockets)
+                                       available_sockets=available_sockets,
+                                       num_parallel_screens_or_jobs=num_parallel_screens_or_jobs)
 
         # Define script distribution
         self.exp_script_gen = functools.partial(distribute_exp_scripts, shuffle=False, replicate=replicate)
@@ -112,7 +114,8 @@ class ExpRunner:
             e.run_task(task)
 
     def create_nodes(self, names: List[str], username: str, key_path: str, passphrase: str,
-                     available_sockets: List[int] = [0, 1]) -> List[Node]:
+                     available_sockets: List[int] = [0, 1],
+                     num_parallel_screens_or_jobs: int = None) -> List[Node]:
         # Create nodes
         nodes = []
         nodes += [Node(ssh_hostname=ssh_hostname,
@@ -126,7 +129,8 @@ class ExpRunner:
                        use_run_exp="dgx" not in ssh_hostname and "cloudlab" not in ssh_hostname,
                        python_version=self.python_version,
                        test_connection=False,
-                       available_sockets=available_sockets) for ssh_hostname in names]
+                       available_sockets=available_sockets,
+                       num_parallel_screens_or_jobs=num_parallel_screens_or_jobs) for ssh_hostname in names]
         return nodes
 
     @staticmethod
