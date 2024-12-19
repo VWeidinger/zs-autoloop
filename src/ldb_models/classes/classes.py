@@ -30,7 +30,6 @@ class Name:
 
 
 class ModelName:
-
     POSTGRES: Name = Name("postgres", "Sc. Postgres")
     POSTGRES_STRATIFIED = Name("postgres_stratified", "Sc. Postgres (stratified)")
 
@@ -98,6 +97,8 @@ class ModelConfig:
     stratified_workloads: bool = False
     include_hint_workloads: bool = False
     only_hint_workloads: bool = False
+    include_gt30_hints: bool = False
+    wandb_group: str = field(default=None)
 
     def get_model_dir(self, source_path: Paths, database: Dataset) -> Path:
         return source_path.Data.models / self.name.NAME / database.db_name
@@ -131,11 +132,14 @@ class ModelConfig:
 
         # select the workload to be used
         if self.include_hint_workloads:
-            workload_names = [wl_name, 'workload_200k_s1_full_hints']
+            workload_names = [wl_name, 'workload_200k_s1_full_hints_lt30']
         elif self.only_hint_workloads:
-            workload_names = ['workload_200k_s1_full_hints']
+            workload_names = ['workload_200k_s1_full_hints_lt30']
         else:
             workload_names = [wl_name]
+
+        if (self.include_hint_workloads or self.only_hint_workloads) and self.include_gt30_hints:
+            workload_names.append('workload_200k_s1_full_hints_gt30')
 
         if self.type == ModelType.WL_AGNOSTIC:
             training_workloads = []
@@ -374,6 +378,7 @@ class ZSPGCostWithHintPlan(ZeroShotModelConfig):
     include_hint_workloads: bool = True
     featurization: Featurization = PostgresEstWithPGCost
 
+
 @attrs.define(frozen=True, slots=False)
 class ZeroShotModelActCardConfig(ZeroShotModelConfig):
     name: Name = ModelName.ZEROSHOT_ACT_CARD
@@ -396,6 +401,7 @@ class ZeroShotModelWHintsConfig(ZeroShotModelConfig):
 class ZeroShotModelOnlyHints(ZeroShotModelConfig):
     name: Name = ModelName.ZS_ONLY_HINTS
     only_hint_workloads: bool = True
+
 
 @attrs.define(frozen=True, slots=False)
 class MSCNModelConfig(ModelConfig):
@@ -431,7 +437,7 @@ class DACEModelConfig(ModelConfig):
     input_format: InputFormats = InputFormats.parsed
     optimizer_class_name: str = "Adam"
     optimizer_kwargs: dict = dict(lr=1e-3)
-    device: str = "cuda:[socket]"  # ToDo: Device selection should be handled by octopus - but how?
+    device: str = "cuda:[socket]"
 
 
 @attrs.define(frozen=True, slots=False)

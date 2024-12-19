@@ -1,5 +1,4 @@
 import argparse
-import inspect
 from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
@@ -15,10 +14,10 @@ from torch.optim.optimizer import Optimizer
 from torch.utils.data import DataLoader
 from wandb.apis.public import Run
 
-import classes.classes as cls
 from classes.classes import ModelConfig, E2EModelConfig, ZeroShotModelConfig, MSCNModelConfig, DataLoaderOptions, \
     TlstmModelConfig, FlatModelConfig, ScaledPostgresModelConfig, TabularModelConfig, QPPNetModelConfig, \
     DACEModelConfig, QueryFormerModelConfig
+from classes.model_config_helper import get_model_config
 from classes.workload_runs import WorkloadRuns
 from models.dace.dace_dataset import create_dace_dataloader
 from models.dace.dace_model import DACELora
@@ -346,21 +345,6 @@ def use_model(mode: str,
                        )
 
 
-def get_model_config(model_type: str, m_args: dict) -> ModelConfig:
-    classes_dict = dict()
-    for name, obj in cls.__dict__.items():
-        if inspect.isclass(obj) and issubclass(obj, ModelConfig) and 'name' in obj.__annotations__:
-            instantiated_obj = obj()
-            if instantiated_obj.name is None:
-                continue
-            classes_dict[instantiated_obj.name.NAME] = obj
-
-    if model_type not in classes_dict.keys():
-        raise Exception(f"Model type {model_type} not found in classes.py \n{classes_dict.keys()}")
-
-    return classes_dict[model_type](**m_args)
-
-
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--mode', choices=["train", "predict", "explain", "retrain"], required=True)
@@ -379,6 +363,7 @@ if __name__ == '__main__':
     parser.add_argument('--wandb_entity', default=None)
     parser.add_argument('--cap_training_samples', type=int, default=None)
     parser.add_argument('--wandb_name', default=None)
+    parser.add_argument('--wandb_group', default=None)
     parser.add_argument('--seed', type=int, default=0)
     parser.add_argument('--num_workers', type=int, default=20)
     parser.add_argument('--quick_run', action='store_true')
@@ -386,6 +371,9 @@ if __name__ == '__main__':
     parser.add_argument('--bound_predictions', action='store_true')
     parser.add_argument('--qo_eval_after_each_epoch', action='store_true')
     args = parser.parse_args()
+
+    assert args.device == 'cpu' or args.device.startswith('cuda'), "Device must be either 'cpu' or 'cuda'"
+    assert not '[socket]' in args.device  # make the sure the socket placeholder was correctly replaced during cmd generation
 
     # Init model configuration by either reading out hyperparameters or using standard config
     model_args = dict(device=args.device,
@@ -424,10 +412,14 @@ if __name__ == '__main__':
     # initialize wandb
     wandb_run: Optional[Run] = None
     if args.wandb_project:
+        wandb_name = args.wandb_name
+        if wandb_name.startswith('pm-'):  # remove the pm- prefix
+            wandb_name = wandb_name[3:]
         wandb_run = wandb.init(entity=args.wandb_entity,
-                         project=args.wandb_project,
-                         name=args.wandb_name,
-                         config=attrs.asdict(model_config))
+                               project=args.wandb_project,
+                               name=args.wandb_name,
+                               config=attrs.asdict(model_config),
+                               group=args.wandb_group)
 
     args = dict(
         mode=args.mode,

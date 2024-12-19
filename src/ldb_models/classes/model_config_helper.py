@@ -1,0 +1,84 @@
+import inspect
+import re
+from typing import Dict
+
+import classes.classes as cls
+from classes.classes import ModelConfig, Name
+
+
+def parameterized_config(base_config_name: str, **args):
+    assert '-' not in base_config_name, "Model type should not contain underscores. This is not supported on the receiver side!"
+
+    # encode all input arguments as list
+    arg_string_list = []
+    for key, value in args.items():
+        if key == 'wandb_group':
+            continue
+
+        assert '-' not in key, "Arguments should not contain underscores. This is not supported on the receiver side!"
+        if value is True:
+            arg_string_list.append(key)
+        else:
+            arg_string_list.append(f"{key}{value}")
+    model_name = f'pm-{base_config_name}-{"-".join(arg_string_list)}'
+    name = Name(model_name, model_name)
+
+    # add a custom name in the args
+    args['name'] = name
+
+    # get the basic model configuration
+    base_configuration = get_model_config(base_config_name, args)
+
+    return base_configuration
+
+
+def get_model_config(model_type: str, m_args: dict) -> ModelConfig:
+    if model_type.startswith('pm-'):
+        # this is a model string which is parameterized (i.e. in the string the arguments are encoded)
+        return get_parameterized_model_config(model_type, m_args)
+
+    classes_dict = dict()
+    for name, obj in cls.__dict__.items():
+        if inspect.isclass(obj) and issubclass(obj, ModelConfig) and 'name' in obj.__annotations__:
+            instantiated_obj = obj()
+            if instantiated_obj.name is None:
+                continue
+            classes_dict[instantiated_obj.name.NAME] = obj
+
+    if model_type not in classes_dict.keys():
+        raise Exception(f"Model type {model_type} not found in classes.py \n{classes_dict.keys()}")
+
+    return classes_dict[model_type](**m_args)
+
+
+def split_if_ends_with_digits(input_string):
+    # Match groups of non-digits and digits at the end of the string
+    match = re.match(r"^(.*?)(\d+)$", input_string)
+    if match:
+        non_digit_part = match.group(1)
+        digit_part = match.group(2)
+        return non_digit_part, digit_part
+    return input_string, None  # Return the original string and None if no digits at the end
+
+
+def get_parameterized_model_config(model_name: str, m_args: Dict) -> ModelConfig:
+    assert model_name.startswith('pm-')
+
+    args = model_name[3:].split('-')
+    model_type = args[0]
+
+    args = args[1:]
+    args_dict = m_args.copy()
+    for arg in args:
+        # check if arg ends with number and if so, split it
+        param_name, number = split_if_ends_with_digits(arg)
+
+        if number is not None:
+            args_dict[param_name] = int(number)
+        else:
+            # it is a flag - make it a boolean
+            args_dict[param_name] = True
+
+    args_dict['name'] = Name(model_name, model_name)
+
+    return get_model_config(model_type, args_dict)

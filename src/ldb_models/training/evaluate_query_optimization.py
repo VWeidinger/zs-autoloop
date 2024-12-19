@@ -20,6 +20,7 @@ def evaluate_join_order(predictions, is_per_epoch: bool = False, epoch: int = No
     metrics = {
         "spearman_corr": SpearmanRank(),
         "selected_runtime": SelectedRuntime(),
+        'optimal_runtime': OptimalRuntime(),
         "surpassed_plans": SurpassedPlans(),
         "q_error": QError(),
         "max_overestimation": MaxOverestimation(),
@@ -70,6 +71,7 @@ def evaluate_join_order(predictions, is_per_epoch: bool = False, epoch: int = No
 
     avg_spearman_corr = np.mean(aggregated_results['spearman_corr'])
     total_selected_runtime = np.sum(aggregated_results['selected_runtime'])
+    total_optimal_runtime = np.sum(aggregated_results['optimal_runtime'])
     avg_surpassed_plans = np.mean(aggregated_results['surpassed_plans'])
     avg_q_error = np.mean(aggregated_results['q_error'])
     avg_max_overestimation = np.mean(aggregated_results['max_overestimation'])
@@ -88,6 +90,7 @@ def evaluate_join_order(predictions, is_per_epoch: bool = False, epoch: int = No
             wandb_run.log({
                 f'{prefix}/avg_spearman_corr': avg_spearman_corr,
                 f'{prefix}/total_selected_runtime': total_selected_runtime,
+                f'{prefix}/total_optimal_runtime': total_optimal_runtime,
                 f'{prefix}/avg_surpassed_plans': avg_surpassed_plans,
                 f'{prefix}/avg_q_error': avg_q_error,
                 f'{prefix}/avg_max_overestimation': avg_max_overestimation,
@@ -96,6 +99,7 @@ def evaluate_join_order(predictions, is_per_epoch: bool = False, epoch: int = No
         else:
             wandb_run.summary[f'{prefix}/avg_spearman_corr'] = avg_spearman_corr
             wandb_run.summary[f'{prefix}/total_selected_runtime'] = total_selected_runtime
+            wandb_run.summary[f'{prefix}/total_optimal_runtime'] = total_optimal_runtime
             wandb_run.summary[f'{prefix}/avg_surpassed_plans'] = avg_surpassed_plans
             wandb_run.summary[f'{prefix}/avg_q_error'] = avg_q_error
             wandb_run.summary[f'{prefix}/avg_max_overestimation'] = avg_max_overestimation

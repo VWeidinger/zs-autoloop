@@ -4,9 +4,7 @@ from ldb_schema.datasets import Dataset
 from ldb_schema.paths import ClusterPaths, LocalPaths
 from octopus.step import Rsync, KillAllScreens, SetupVenv, RsyncCurrentRepo, SetupRYEVenv
 
-from classes.classes import ModelConfig, ModelType, \
-    ZSPGCostWithHintPlan, \
-    ZSStratifiedPGCostWithHintPlan
+from classes.classes import ModelConfig, ModelType, ScaledPostgresModelConfig
 from scripts.exp_runner.exp_runner import ExpRunner, TrainingServers
 
 
@@ -58,6 +56,25 @@ def generate_training_commands(datasets: List[Dataset], seeds: list[int], python
                                                               dataset=target_dataset,
                                                               format=target_model.input_format)
 
+            # model name
+            name = target_model.name.NAME
+
+            # extract model_type information
+            if name.startswith('pm-'):
+                model_type = name[3:].split('-')[0]
+            else:
+                model_type = name.split('-')[0]
+            if model_type.startswith('postgres'):
+                model_type = 'postgres'
+            elif model_type.startswith('zeroshot'):
+                model_type = 'zeroshot'
+            elif model_type.startswith('dace'):
+                model_type = 'dace'
+            elif model_type.startswith('flat'):
+                model_type = 'flat'
+            else:
+                raise ValueError(f"Model type {model_type} not recognized")
+
             for seed in seeds:
                 model_suffix = ''
 
@@ -68,13 +85,14 @@ def generate_training_commands(datasets: List[Dataset], seeds: list[int], python
                 if use_romans_runs:
                     model_suffix += '_romans'
 
-                wandb_name = f"{target_model.name.NAME}{model_suffix}/{target_dataset.db_name}/{seed}"
+                wandb_name = f"{name}{model_suffix}/{target_dataset.db_name}/{seed}"
 
                 command = (f"python{python_version} main.py "
                            f"--mode train "
                            f"--wandb_project {wandb_project} "
                            f"--wandb_entity {wandb_entity} "
-                           f"--model_type {target_model.name.NAME} "
+                           f"--wandb_group {target_model.wandb_group} "
+                           f"--model_type {name} "
                            f"--device {target_model.device} "
                            f"--model_dir {target_model.get_model_dir(ClusterPaths(), target_dataset)} "
                            f"--target_dir {target_model.get_eval_dir(ClusterPaths(), target_dataset)} "
@@ -157,7 +175,7 @@ if __name__ == '__main__':
         Dataset('fhnk', scale=2)
     ]
 
-    seeds = [0]
+    seeds = [1]
     nodes = [
         TrainingServers.NODE00,
         # TrainingServers.NODE02,
@@ -165,9 +183,13 @@ if __name__ == '__main__':
         # TrainingServers.NODE04,
         # TrainingServers.NODE05,
     ]
-    sockets = [0]
-    out_file_id_offset = 3
-    num_parallel_screens_or_jobs = 2  # in general set this to None - is determined by number of sockets
+    sockets = [0, 1]
+    out_file_id_offset = 6
+
+    num_parallel_screens_or_jobs = None
+    # num_parallel_screens_or_jobs = 2  # in general set this to None - is determined by number of sockets
+
+    num_parallel_screens_or_jobs_dgx = 1
 
     # ===================
     # CONFIGS
@@ -184,51 +206,69 @@ if __name__ == '__main__':
     use_romans_runs = False
     # ===================
 
-    # Standard Models
+    # generate model configs
     model_configs = [
-        # ScaledPostgresModelConfig(),  # --> Working
-        # FlatModelConfig(),  # --> Working
-        # E2EModelConfig(),                   # --> ToDo: Adapt to new codebase and generate sentences
-        # QPPNetModelConfig(),                # --> Working?
-        # MSCNModelConfig(),                  # --> ToDo: Adapt to new codebase and generate sentences
-        # DACEModelConfig(),                  # --> Working
-        # QueryFormerModelConfig(),           # --> ToDo: Generate Sentences
-        # ZeroShotModelConfig(),  # --> Working
-        # ZSLearnFromTimeoutConfig(),         # --> Working
-        # ZSRankLossConfig(),                 # --> Working
-
-        # Stratified Models
-        # FlatStratifiedModelConfig(),  # --> Working
-        # ZSStratifiedModelConfig(),  # --> Working
-        # DACEStratifiedModelConfig(),        # --> Working
-        # ScaledPostgresStratifiedModelConfig(),  # --> Working
-
-        # ZeroShotWithPostgresConfig(),  # --> Working
-        # ZeroShotModelWHintsConfig(),  # --> Working
-        # ZeroShotModelOnlyHints(),
-        # ZeroShotModel2Dim(),
-        ZSStratifiedPGCostWithHintPlan(),
-        ZSPGCostWithHintPlan(),
-
-        # Ablation Models (without postgres Estimates)
-        # QPPModelNoCostsConfig(),
-
-        # DACEModelNoCostsConfig(),
-        # DACEModelWHintsConfig(),
-        # DACEModelOnlyHints(),
-
-        # Ablation Models (actual cardinalities)
-        # FlatModelActCardModelConfig(),
-        # QPPModelActCardsConfig(),
-        # DACEModelActCardConfig(),
-        # ZeroShotModelActCardConfig(),
+        ScaledPostgresModelConfig(),
     ]
+    # for model_type in ['postgres', 'zeroshot', 'dace', 'flat']:
+    #     model_configs.extend([
+    #         parameterized_config(model_type, wandb_group='baselines'),  # std
+    #         parameterized_config(model_type, wandb_group='strat', stratified_workloads=True),  # strat
+    #         parameterized_config(model_type, wandb_group='whintwl', include_hint_workloads=True),  # hint
+    #         parameterized_config(model_type, wandb_group='whintwl_strat', include_hint_workloads=True,
+    #                              stratified_workloads=True),  # hint_strat
+    #         parameterized_config(model_type, wandb_group='onlyhint', only_hint_workloads=True),  # hint_only
+    #         parameterized_config(model_type, wandb_group='onlyhint_strat', only_hint_workloads=True,
+    #                              stratified_workloads=True),  # hint_only_strat
+    #     ])
+
+    # # Standard Models
+    # model_configs = [
+    #     # ScaledPostgresModelConfig(),  # --> Working
+    #     # FlatModelConfig(),  # --> Working
+    #     # E2EModelConfig(),                   # --> ToDo: Adapt to new codebase and generate sentences
+    #     # QPPNetModelConfig(),                # --> Working?
+    #     # MSCNModelConfig(),                  # --> ToDo: Adapt to new codebase and generate sentences
+    #     # DACEModelConfig(),                  # --> Working
+    #     # QueryFormerModelConfig(),           # --> ToDo: Generate Sentences
+    #     # ZeroShotModelConfig(),  # --> Working
+    #     # ZSLearnFromTimeoutConfig(),         # --> Working
+    #     # ZSRankLossConfig(),                 # --> Working
+    #
+    #     # Stratified Models
+    #     # FlatStratifiedModelConfig(),  # --> Working
+    #     # ZSStratifiedModelConfig(),  # --> Working
+    #     # DACEStratifiedModelConfig(),        # --> Working
+    #     # ScaledPostgresStratifiedModelConfig(),  # --> Working
+    #
+    #     # ZeroShotWithPostgresConfig(),  # --> Working
+    #     # ZeroShotModelWHintsConfig(),  # --> Working
+    #     # ZeroShotModelOnlyHints(),
+    #     # ZeroShotModel2Dim(),
+    #     # ZSStratifiedPGCostWithHintPlan(),
+    #     # ZSPGCostWithHintPlan(),
+    #     parameterized_config('zeroshot', include_hint_workloads=True, stratified_workloads=True),
+    #
+    #     # Ablation Models (without postgres Estimates)
+    #     # QPPModelNoCostsConfig(),
+    #
+    #     # DACEModelNoCostsConfig(),
+    #     # DACEModelWHintsConfig(),
+    #     # DACEModelOnlyHints(),
+    #
+    #     # Ablation Models (actual cardinalities)
+    #     # FlatModelActCardModelConfig(),
+    #     # QPPModelActCardsConfig(),
+    #     # DACEModelActCardConfig(),
+    #     # ZeroShotModelActCardConfig(),
+    # ]
 
     runner = ExpRunner(replicate=False,
                        node_names=[node["hostname"] for node in nodes],
                        python_version='rye',
                        available_sockets=sockets,
-                       num_parallel_screens_or_jobs=num_parallel_screens_or_jobs
+                       num_parallel_screens_or_jobs=num_parallel_screens_or_jobs,
+                       dgx_num_parallel_screens_or_jobs=num_parallel_screens_or_jobs_dgx,
                        )
 
     # for dataset in datasets:
