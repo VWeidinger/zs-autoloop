@@ -344,6 +344,7 @@ pycparser==2.22
 pydantic==2.10.2
     # via dgl
     # via ldb-models
+    # via wandb-workspaces
 pydantic-core==2.27.1
     # via pydantic
 pygments==2.18.0
@@ -498,6 +499,9 @@ urllib3==2.2.3
     # via requests
     # via sentry-sdk
 wandb==0.18.7
+    # via ldb-models
+    # via wandb-workspaces
+wandb-workspaces==0.1.8
     # via ldb-models
 wcwidth==0.2.13
     # via prompt-toolkit

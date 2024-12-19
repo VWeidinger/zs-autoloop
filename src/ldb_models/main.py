@@ -417,7 +417,7 @@ if __name__ == '__main__':
             wandb_name = wandb_name[3:]
         wandb_run = wandb.init(entity=args.wandb_entity,
                                project=args.wandb_project,
-                               name=args.wandb_name,
+                               name=wandb_name,
                                config=attrs.asdict(model_config),
                                group=args.wandb_group)
 
