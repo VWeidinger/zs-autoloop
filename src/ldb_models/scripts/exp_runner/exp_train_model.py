@@ -4,7 +4,8 @@ from ldb_schema.datasets import Dataset
 from ldb_schema.paths import ClusterPaths, LocalPaths
 from octopus.step import Rsync, KillAllScreens, SetupVenv, RsyncCurrentRepo, SetupRYEVenv
 
-from classes.classes import ModelConfig, ModelType, ScaledPostgresModelConfig
+from classes.classes import ModelConfig, ModelType
+from classes.model_config_helper import parameterized_config
 from scripts.exp_runner.exp_runner import ExpRunner, TrainingServers
 
 
@@ -175,21 +176,17 @@ if __name__ == '__main__':
         Dataset('fhnk', scale=2)
     ]
 
-    seeds = [1]
+    seeds = [2]
     nodes = [
-        TrainingServers.NODE00,
-        # TrainingServers.NODE02,
+        # TrainingServers.NODE00,
+        TrainingServers.NODE02,
         # TrainingServers.NODE03,
         # TrainingServers.NODE04,
         # TrainingServers.NODE05,
     ]
     sockets = [0, 1]
-    out_file_id_offset = 6
-
-    num_parallel_screens_or_jobs = None
-    # num_parallel_screens_or_jobs = 2  # in general set this to None - is determined by number of sockets
-
-    num_parallel_screens_or_jobs_dgx = 1
+    out_file_id_offset = 0
+    num_parallel_screens_or_jobs_dgx = 4
 
     # ===================
     # CONFIGS
@@ -208,19 +205,21 @@ if __name__ == '__main__':
 
     # generate model configs
     model_configs = [
-        ScaledPostgresModelConfig(),
+        # ScaledPostgresModelConfig(),
     ]
-    # for model_type in ['postgres', 'zeroshot', 'dace', 'flat']:
-    #     model_configs.extend([
-    #         parameterized_config(model_type, wandb_group='baselines'),  # std
-    #         parameterized_config(model_type, wandb_group='strat', stratified_workloads=True),  # strat
-    #         parameterized_config(model_type, wandb_group='whintwl', include_hint_workloads=True),  # hint
-    #         parameterized_config(model_type, wandb_group='whintwl_strat', include_hint_workloads=True,
-    #                              stratified_workloads=True),  # hint_strat
-    #         parameterized_config(model_type, wandb_group='onlyhint', only_hint_workloads=True),  # hint_only
-    #         parameterized_config(model_type, wandb_group='onlyhint_strat', only_hint_workloads=True,
-    #                              stratified_workloads=True),  # hint_only_strat
-    #     ])
+    for model_type in ['postgres', 'zeroshot', 'dace', 'flat']:
+        model_configs.extend([
+            parameterized_config(model_type, wandb_group='baselines'),  # std
+            parameterized_config(model_type, wandb_group='strat', stratified_workloads=True),  # strat
+            parameterized_config(model_type, wandb_group='whintwl', include_hint_workloads=True),  # hint
+            parameterized_config(model_type, wandb_group='whintwl_strat', include_hint_workloads=True,
+                                 stratified_workloads=True),  # hint_strat
+            parameterized_config(model_type, wandb_group='onlyhint', only_hint_workloads=True),  # hint_only
+            parameterized_config(model_type, wandb_group='onlyhint_strat', only_hint_workloads=True,
+                                 stratified_workloads=True),  # hint_only_strat
+        ])
+
+    model_configs = [model for model in model_configs if model is not None]
 
     # # Standard Models
     # model_configs = [
@@ -267,7 +266,6 @@ if __name__ == '__main__':
                        node_names=[node["hostname"] for node in nodes],
                        python_version='rye',
                        available_sockets=sockets,
-                       num_parallel_screens_or_jobs=num_parallel_screens_or_jobs,
                        dgx_num_parallel_screens_or_jobs=num_parallel_screens_or_jobs_dgx,
                        )
 

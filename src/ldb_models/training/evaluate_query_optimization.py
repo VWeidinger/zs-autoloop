@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 import wandb
 from matplotlib import pyplot as plt
-from sklearn.metrics import balanced_accuracy_score
+from sklearn.metrics import balanced_accuracy_score, confusion_matrix, ConfusionMatrixDisplay
 from wandb.sdk.wandb_run import Run
 
 from training.training.metrics import SpearmanRank, SelectedRuntime, SurpassedPlans, QError, MaxOverestimation, \
@@ -94,7 +94,10 @@ def evaluate_join_order(predictions, is_per_epoch: bool = False, epoch: int = No
                 f'{prefix}/avg_surpassed_plans': avg_surpassed_plans,
                 f'{prefix}/avg_q_error': avg_q_error,
                 f'{prefix}/avg_max_overestimation': avg_max_overestimation,
-                f'{prefix}/avg_max_underestimation': avg_max_underestimation
+                f'{prefix}/avg_max_underestimation': avg_max_underestimation,
+                f'{prefix}/num_queries': len(aggregated_results['spearman_corr']),
+                f'{prefix}/num_plans': len(predictions),
+
             }, step=epoch)
         else:
             wandb_run.summary[f'{prefix}/avg_spearman_corr'] = avg_spearman_corr
@@ -104,6 +107,8 @@ def evaluate_join_order(predictions, is_per_epoch: bool = False, epoch: int = No
             wandb_run.summary[f'{prefix}/avg_q_error'] = avg_q_error
             wandb_run.summary[f'{prefix}/avg_max_overestimation'] = avg_max_overestimation
             wandb_run.summary[f'{prefix}/avg_max_underestimation'] = avg_max_underestimation
+            wandb_run.summary[f'{prefix}/num_queries'] = len(aggregated_results['spearman_corr'])
+            wandb_run.summary[f'{prefix}/num_plans'] = len(predictions)
 
     return
 
@@ -141,6 +146,9 @@ def evaluate_physical_plan_selection(predictions: dict, with_idxs: bool = False,
         'Nested Loop': 0,
     }
 
+    selected_op_list = []
+    optimal_op_list = []
+
     # Group dataframe by SQL and iterate over each group
     for sql, group_df in prediction_dataframe.groupby("sql"):
         preds = group_df["prediction"].astype(float)
@@ -163,6 +171,9 @@ def evaluate_physical_plan_selection(predictions: dict, with_idxs: bool = False,
         selected_row_id = preds.idxmin()
         selected_join_op = group_df.loc[selected_row_id, 'join_op']
         selected_join_op_ctr[selected_join_op] += 1
+
+        selected_op_list.append(selected_join_op)
+        optimal_op_list.append(optimal_join_op)
 
     total_selected_runtime = np.sum(aggregated_results['selected_runtime'])
     total_optimal_runtime = np.sum(aggregated_results['optimal_runtime'])
@@ -216,7 +227,41 @@ def evaluate_physical_plan_selection(predictions: dict, with_idxs: bool = False,
         else:
             wandb_run.log({f'{log_prefix}/join_op_distribution': wandb.Image(plt)})
 
+    ###
+    # create confusion matrix
+    ###
+    disp = create_confusion_matrix_from_str_list(optimal_op_list, selected_op_list)
+    disp.plot(cmap=plt.cm.Blues)
+    plt.title('Confusion Matrix')
+    plt.show()
+
+    # log to wandb
+    if wandb_run:
+        if is_per_epoch:
+            wandb_run.log({f'{log_prefix}/join_op_confusion': wandb.Image(plt)}, step=epoch)
+        else:
+            wandb_run.log({f'{log_prefix}/join_op_confusion': wandb.Image(plt)})
+
     return
+
+
+def create_confusion_matrix_from_str_list(labels, predictions):
+    # translate classes to integers
+    classes = list(set(labels + predictions))
+    classes_lookup_dict = {c: i for i, c in enumerate(classes)}
+
+    # convert str classes to ints
+    labels = [classes_lookup_dict[l] for l in labels]
+    predictions = [classes_lookup_dict[p] for p in predictions]
+
+    # Compute the confusion matrix
+    cm = confusion_matrix(labels, predictions)
+
+    # Plot the confusion matrix
+    plt.close()
+    disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=classes)
+
+    return disp
 
 
 def evaluate_access_path_selection(predictions: dict, is_per_epoch: bool = False, epoch: int = None,
@@ -391,12 +436,17 @@ def evaluate_access_path_selection(predictions: dict, is_per_epoch: bool = False
     x_sel_list = sorted([float(s) for s in bucketized_predicted_scan_op_list_dict.keys()])
     y_seq_ratio_pred = []
     y_seq_ratio_labels = []
+    optimal_op_list = []
+    selected_op_list = []
 
     for sel in x_sel_list:
         y_seq_ratio_pred.append(
             np.mean([1 if op == 'SeqScan' else 0 for op in bucketized_predicted_scan_op_list_dict[sel]]))
         y_seq_ratio_labels.append(
             np.mean([1 if op == 'SeqScan' else 0 for op in bucketized_optimal_scan_op_list_dict[sel]]))
+
+        optimal_op_list.extend(bucketized_optimal_scan_op_list_dict[sel])
+        selected_op_list.extend(bucketized_predicted_scan_op_list_dict[sel])
 
     plt.close()
     plt.plot(x_sel_list, y_seq_ratio_labels, label='Optimal')
@@ -411,5 +461,20 @@ def evaluate_access_path_selection(predictions: dict, is_per_epoch: bool = False
         if is_per_epoch:
             wandb_run.log({f'{prefix}/seq_scan_ratio': wandb.Image(plt)}, step=epoch)
         else:
-            print(f'Logging seq_scan_ratio to wandb summary',flush=True)
+            print(f'Logging seq_scan_ratio to wandb summary', flush=True)
             wandb_run.log({f'{prefix}/seq_scan_ratio': wandb.Image(plt)})
+
+    ###
+    # create confusion matrix
+    ###
+    disp = create_confusion_matrix_from_str_list(optimal_op_list, selected_op_list)
+    disp.plot(cmap=plt.cm.Blues)
+    plt.title('Scan Op Confusion Matrix')
+    plt.show()
+
+    # log to wandb
+    if wandb_run:
+        if is_per_epoch:
+            wandb_run.log({f'{prefix}/scan_op_confusion': wandb.Image(plt)}, step=epoch)
+        else:
+            wandb_run.log({f'{prefix}/scan_op_confusion': wandb.Image(plt)})
