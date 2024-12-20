@@ -21,6 +21,9 @@ def parameterized_config(base_config_name: str, **args):
         else:
             arg_string_list.append(f"{key}{value}")
     model_name = f'pm-{base_config_name}-{"-".join(arg_string_list)}'
+    if model_name.endswith('-'):
+        model_name = model_name[:-1]
+
     name = Name(model_name, model_name)
 
     # add a custom name in the args
@@ -47,6 +50,15 @@ def get_model_config(model_type: str, m_args: dict) -> ModelConfig:
 
     if model_type not in classes_dict.keys():
         raise Exception(f"Model type {model_type} not found in classes.py \n{classes_dict.keys()}")
+
+    print(f'Got the following args: {m_args} for model type {model_type}')
+
+    # filter out empty strings
+    m_args = {k: v for k, v in m_args.items() if v != '' and k != ''}
+
+    if len(m_args) == 0:
+        return classes_dict[model_type]()
+
 
     return classes_dict[model_type](**m_args)
 

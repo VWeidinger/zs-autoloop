@@ -266,6 +266,7 @@ def gen_postgres_cost_dataset(workload_runs: List[Path],
     for plan in plans:
         # append to all feature vectors and runtime labels
         feature_vecs.append([plan["plan_parameters"]["pg_cost"]])
+        assert plan['plan_runtime_ms'] is not None, f"Plan runtime is None for {plan}"
         labels.append(plan["plan_runtime_ms"] / 1000)
         sqls.append(plan["sql"])
         hints.append(plan["hint"])
