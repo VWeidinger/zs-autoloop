@@ -1,3 +1,4 @@
+import os
 from typing import List
 
 from ldb_schema.datasets import Dataset
@@ -55,7 +56,7 @@ def generate_training_commands(datasets: List[Dataset], seeds: list[int], python
             else:
                 statistics_path = target_model.get_statistics(source_path=ClusterPaths(),
                                                               dataset=target_dataset,
-                                                              format=target_model.input_format)
+                                                              format=target_model.input_format).as_posix()
 
             # model name
             name = target_model.name.NAME
@@ -95,8 +96,8 @@ def generate_training_commands(datasets: List[Dataset], seeds: list[int], python
                            f"--wandb_group {target_model.wandb_group} "
                            f"--model_type {name} "
                            f"--device {target_model.device} "
-                           f"--model_dir {target_model.get_model_dir(ClusterPaths(), target_dataset)} "
-                           f"--target_dir {target_model.get_eval_dir(ClusterPaths(), target_dataset)} "
+                           f"--model_dir {target_model.get_model_dir(ClusterPaths(), target_dataset).as_posix()} "
+                           f"--target_dir {target_model.get_eval_dir(ClusterPaths(), target_dataset).as_posix()} "
                            f"--workload_runs {training_runs} "
                            f"--statistics_file {statistics_path} "
                            f"--seed {seed} "
@@ -106,13 +107,13 @@ def generate_training_commands(datasets: List[Dataset], seeds: list[int], python
                     command += f" --test_workload_runs {test_runs} "
 
                 if target_model.column_statistics:
-                    command += f" --column_statistics {target_model.get_column_stats(target_dataset)} "
+                    command += f" --column_statistics {target_model.get_column_stats(target_dataset).as_posix()} "
 
                 if target_model.word_embeddings:
-                    command += f" --word_embeddings {target_model.get_word_embeddings(source_path=ClusterPaths(), database=target_dataset)} "
+                    command += f" --word_embeddings {target_model.get_word_embeddings(source_path=ClusterPaths(), database=target_dataset).as_posix()} "
 
                 if target_model.hyperparameter:
-                    command += f" --hyperparameter_path {target_model.hyperparameter} "
+                    command += f" --hyperparameter_path {target_model.hyperparameter.as_posix()} "
 
                 if quick_run:
                     command += " --quick_run"
@@ -138,8 +139,14 @@ if __name__ == '__main__':
     install_venv = False
     install_rye = True
 
+    if os.getenv('SSH_PATH') is not None:
+        ssh_path = os.getenv('SSH_PATH')
+    else:
+        ssh_path = None
+
     setup_steps = [
-        RsyncCurrentRepo(gitignore_path='.gitignore'),
+        RsyncCurrentRepo(gitignore_path='.gitignore', local_folder_path=LocalPaths().Models.root.as_posix(),
+                         ssh_path=ssh_path),
     ]
 
     if install_venv:
@@ -150,8 +157,10 @@ if __name__ == '__main__':
     if install_rye:
         setup_steps.append(SetupRYEVenv())
 
+
+
     purge_steps = [KillAllScreens()]
-    pickup_steps = [Rsync(src=[ClusterPaths().Data.runs], dest=[LocalPaths().data], put=False, update=True)]
+    pickup_steps = [Rsync(src=[ClusterPaths().Data.runs.as_posix()], dest=[LocalPaths().data], put=False, update=True, ssh_path=ssh_path)]
 
     datasets = [
         Dataset('airline', max_no_joins=5),
@@ -178,15 +187,15 @@ if __name__ == '__main__':
 
     seeds = [2]
     nodes = [
-        # TrainingServers.NODE00,
-        TrainingServers.NODE02,
+        TrainingServers.NODE00,
+        # TrainingServers.NODE02,
         # TrainingServers.NODE03,
         # TrainingServers.NODE04,
         # TrainingServers.NODE05,
     ]
     sockets = [0, 1]
     out_file_id_offset = 0
-    num_parallel_screens_or_jobs_dgx = 4
+    num_parallel_screens_or_jobs_dgx = 6
 
     # ===================
     # CONFIGS
@@ -209,14 +218,16 @@ if __name__ == '__main__':
     ]
     for model_type in ['postgres', 'zeroshot', 'dace', 'flat']:
         model_configs.extend([
-            parameterized_config(model_type, wandb_group='baselines'),  # std
-            parameterized_config(model_type, wandb_group='strat', stratified_workloads=True),  # strat
-            parameterized_config(model_type, wandb_group='whintwl', include_hint_workloads=True),  # hint
-            parameterized_config(model_type, wandb_group='whintwl_strat', include_hint_workloads=True,
-                                 stratified_workloads=True),  # hint_strat
-            parameterized_config(model_type, wandb_group='onlyhint', only_hint_workloads=True),  # hint_only
-            parameterized_config(model_type, wandb_group='onlyhint_strat', only_hint_workloads=True,
-                                 stratified_workloads=True),  # hint_only_strat
+            # parameterized_config(model_type, wandb_group='baselines'),  # std
+            # parameterized_config(model_type, wandb_group='strat', stratified_workloads=True),  # strat
+            # parameterized_config(model_type, wandb_group='whintwl', include_hint_workloads=True),  # hint
+            # parameterized_config(model_type, wandb_group='whintwl_strat', include_hint_workloads=True,
+            #                      stratified_workloads=True),  # hint_strat
+            parameterized_config(model_type, wandb_group='whint_hintidx', include_hint_workloads=True, include_hint_idx_workloads=True),  # hint + idx
+            parameterized_config(model_type, wandb_group='whintidx', include_hint_idx_workloads=True),  # hint-idx
+            # parameterized_config(model_type, wandb_group='onlyhint', only_hint_workloads=True),  # hint_only
+            # parameterized_config(model_type, wandb_group='onlyhint_strat', only_hint_workloads=True,
+            #                      stratified_workloads=True),  # hint_only_strat
         ])
 
     model_configs = [model for model in model_configs if model is not None]
@@ -267,6 +278,7 @@ if __name__ == '__main__':
                        python_version='rye',
                        available_sockets=sockets,
                        dgx_num_parallel_screens_or_jobs=num_parallel_screens_or_jobs_dgx,
+                       ssh_path=ssh_path,
                        )
 
     # for dataset in datasets:

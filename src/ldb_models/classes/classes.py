@@ -97,6 +97,7 @@ class ModelConfig:
     stratified_workloads: bool = False
     include_hint_workloads: bool = False
     only_hint_workloads: bool = False
+    include_hint_idx_workloads: bool = False
     include_gt30_hints: bool = False
     wandb_group: str = field(default=None)
 
@@ -138,6 +139,9 @@ class ModelConfig:
         else:
             workload_names = [wl_name]
 
+        if self.include_hint_idx_workloads:
+            workload_names.append('workload_200k_s1_full_hints_idx')
+
         if (self.include_hint_workloads or self.only_hint_workloads) and self.include_gt30_hints:
             workload_names.append('workload_200k_s1_full_hints_gt30')
 
@@ -150,7 +154,7 @@ class ModelConfig:
                         path = self.get_data_base_dir(
                             stratified_workloads=stratified_workload,
                             romans_runs=romans_runs) / f"{db.db_name}_scaled{db.scale}" / f"{wl}.json"
-                        training_workloads.append(str(path))
+                        training_workloads.append(path.as_posix())
 
             # assert len(training_workloads) == 19, f"Found {len(training_workloads)}, but it should be 19"
             return training_workloads
@@ -161,14 +165,14 @@ class ModelConfig:
                 path = self.get_data_base_dir(
                     stratified_workloads=stratified_workload,
                     romans_runs=romans_runs) / f"{target_dataset.db_name}_scaled{target_dataset.scale}" / f"{wl}.json"
-                training_workloads.append(str(path))
+                training_workloads.append(path.as_posix())
             return training_workloads
 
     def assemble_wl_path(self, target_db: Dataset, wl_name, stratified_workloads: bool = True,
                          romans_runs: bool = False) -> str:
-        return str(self.get_data_base_dir(
+        return f'{self.get_data_base_dir(
             stratified_workloads=stratified_workloads,
-            romans_runs=romans_runs) / f"{target_db.db_name}_scaled{target_db.scale}" / f"{wl_name}.json")
+            romans_runs=romans_runs).as_posix()}/{target_db.db_name}_scaled{target_db.scale}/{wl_name}.json'
 
     def get_test_workloads(self, target_db: Dataset, romans_runs: bool) -> str:
         return self.assemble_wl_path(target_db, "workload_200k_s1", stratified_workloads=True, romans_runs=romans_runs)

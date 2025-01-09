@@ -8,14 +8,14 @@
       <env name="PYTHONUNBUFFERED" value="1" />
     </envs>
     <option name="SDK_HOME" value="" />
-      <option name="SDK_NAME" value="Python 3.12.7 WSL (Ubuntu): (/home/johannes/ldb/ldb_models/.venv/bin/python3.12)"/>
+    <option name="SDK_NAME" value="Python 3.12 virtualenv at C:\PhD\ldb\ldb_models\.venv" />
     <option name="WORKING_DIRECTORY" value="" />
     <option name="IS_MODULE_SDK" value="false" />
     <option name="ADD_CONTENT_ROOTS" value="true" />
     <option name="ADD_SOURCE_ROOTS" value="true" />
     <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
-      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/src/ldb_models/scripts/exp_runner/exp_train_model.py"/>
-      <option name="PARAMETERS" value="--task setup deliver start monitor"/>
+    <option name="SCRIPT_NAME" value="$PROJECT_DIR$/src/ldb_models/scripts/exp_runner/exp_train_model.py" />
+    <option name="PARAMETERS" value="--task setup deliver start monitor" />
     <option name="SHOW_COMMAND_LINE" value="false" />
     <option name="EMULATE_TERMINAL" value="false" />
     <option name="MODULE_MODE" value="false" />

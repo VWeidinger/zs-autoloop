@@ -38,6 +38,7 @@ class ExpRunner:
                  available_sockets: List[int] = [0, 1],  # this does not apply to dgx: dgx automatically select socket 0
                  num_parallel_screens_or_jobs: int = None,
                  dgx_num_parallel_screens_or_jobs: int = None,
+                 ssh_path: str = 'ssh'
                  ):
 
         # Read environments variable and arguments
@@ -50,12 +51,12 @@ class ExpRunner:
             self.ssh_username = os.getenv('CLOUDLAB_SSH_USERNAME')
             self.ssh_passphrase = os.getenv('CLOUDLAB_SSH_PASSPHRASE')
             self.private_key_path = os.getenv('CLOUDLAB_SSH_KEY_PATH')
-            self.root_path = CloudlabPaths().Models.root
+            self.root_path = CloudlabPaths().Models.root.as_posix()
         else:
             self.ssh_username = os.getenv('CLUSTER_SSH_USERNAME')
             self.ssh_passphrase = os.getenv('CLUSTER_SSH_PASSPHRASE')
             self.private_key_path = os.getenv('CLUSTER_SSH_KEY_PATH')
-            self.root_path = ClusterPaths().Models.root
+            self.root_path = ClusterPaths().Models.root.as_posix()
         self.python_version = python_version
 
         assert self.ssh_username is not None, "Please set environment variable SSH_USERNAME "
@@ -82,6 +83,7 @@ class ExpRunner:
         # Define script distribution
         self.exp_script_gen = functools.partial(distribute_exp_scripts, shuffle=False, replicate=replicate)
         self.shuffle_seed = randint(0, 8192)
+        self.ssh_path = ssh_path
 
     def run_exp(self,
                 commands: List[str],
@@ -101,7 +103,7 @@ class ExpRunner:
             monitor_steps=[CheckActiveScreens()],
             check_error_steps=[CheckOutput([f'grep -B 5 Error output_screen*'])],
             pickup_steps=pickup_steps,
-            exp_folder_path=str(self.root_path),
+            exp_folder_path=self.root_path,
             exp_script_gen=self.exp_script_gen,
             slurm_num_cpus_per_task=20,
             slurm_num_gpus_per_job=1,
@@ -109,7 +111,8 @@ class ExpRunner:
             run_exp_expected_runtime="05:00",
             use_run_exp_pin=True,
             screen_or_job_id_offset=offset,
-            python_version=self.python_version, )
+            python_version=self.python_version,
+            ssh_path=self.ssh_path)
 
         print(f'Execute Tasks: {self.tasks}')
         for task in self.tasks:
