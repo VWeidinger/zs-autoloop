@@ -6,7 +6,7 @@ from models.zeroshot.utils.fc_out_model import FcOutModel
 from models.zeroshot.utils.node_type_encoder import NodeTypeEncoder
 
 
-class ZeroShotModel(FcOutModel):
+class ZeroShotModelEncoder(nn.Module):
     """
     A zero-shot cost model that predicts query runtimes on unseen databases out-of-the-box without retraining.
     """
@@ -130,10 +130,7 @@ class ZeroShotModel(FcOutModel):
         # compute top nodes of dags
         out = feat_dict['plan0']
 
-        # feed them into final feed forward network
-        if not self.test:
-            out = self.fcout(out)
-
+        # return graph representation
         return out
 
 

@@ -1,10 +1,19 @@
 from classes.classes import ZeroShotModelConfig
-from models.zeroshot.zero_shot_model import ZeroShotModel
+from models.zeroshot.utils.fc_out_model import FcOutModel
+from models.zeroshot.zero_shot_model import ZeroShotModelEncoder
 
+class PostgresZeroShotModel:
+    def __init__(self, model_config: ZeroShotModelConfig, feature_statistics: dict, **zero_shot_kwargs):
+        self.encoder = PostgresZeroShotModelEncoder(model_config, feature_statistics, **zero_shot_kwargs)
+        self.decoder = FcOutModel(output_dim=model_config.output_dim, input_dim=model_config.hidden_dim, **model_config.final_mlp_kwargs)
 
-class PostgresZeroShotModel(ZeroShotModel):
+    def forward(self, g, features):
+        hidden_states = self.encoder(g, features)
+        return self.decoder(hidden_states)
+
+class PostgresZeroShotModelEncoder(ZeroShotModelEncoder):
     """
-    Zero-shot cost estimation model for postgres.
+    Zero-shot cost estimation model encoder for postgres.
     """
     def __init__(self, model_config: ZeroShotModelConfig, feature_statistics: dict, **zero_shot_kwargs):
         plan_featurization, encoders = None, None
