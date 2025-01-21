@@ -6,7 +6,7 @@ from models.zeroshot.utils.fc_out_model import FcOutModel
 from models.zeroshot.utils.node_type_encoder import NodeTypeEncoder
 
 
-class ZeroShotModelEncoder(nn.Module):
+class ZeroShotModelEncoder(FcOutModel):
     """
     A zero-shot cost model that predicts query runtimes on unseen databases out-of-the-box without retraining.
     """

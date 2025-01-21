@@ -323,11 +323,9 @@ def use_model(mode: str,
                                   workload_runs=wl_runs,
                                   statistics_file=statistics_file,
                                   model_dir=model_dir,
-                                  target_path=target_dir,
                                   wandb_run=wandb_run,
                                   bound_predictions=bound_predictions,
                                   prediction_bounder=prediction_bounder,
-                                  dataloader_options=DataLoaderOptions()
                                   )
         else:
             test_model(config=config,
@@ -349,7 +347,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--mode', choices=["train", "predict", "explain", "retrain"], required=True)
     parser.add_argument('--model_type', required=True)
-    parser.add_argument('--workload_runs', default=None, nargs='+', required=True)
+    parser.add_argument('--workload_runs', default=None, nargs='+')
     parser.add_argument('--test_workload_runs', default=None, nargs='+')
     parser.add_argument('--statistics_file', default=None, required=True)
     parser.add_argument('--column_statistics', default=None)
@@ -385,7 +383,10 @@ if __name__ == '__main__':
         model_args.update(limit_plans_per_file=2000, epochs=3, batch_size=64)
 
     # Create workload runs
-    train_runs = [Path(raw_path) for raw_path in args.workload_runs]
+    if args.workload_runs:
+        train_runs = [Path(raw_path) for raw_path in args.workload_runs]
+    else:
+        train_runs = []
     if args.test_workload_runs:
         test_runs = [Path(raw_path) for raw_path in args.test_workload_runs]
     else:

@@ -39,6 +39,7 @@ def generate_commands(dataset: Dataset,
                    f"--statistics_file {model.get_statistics(ClusterPaths(), dataset, model.input_format)} "
                    f"--model_dir {model.get_model_dir(ClusterPaths(), dataset)} "
                    f"--target_dir {model.get_eval_dir(ClusterPaths(), dataset)} "
+                   f"--device {model.device} "
                    f"--seed {seed} ")
 
         if model.column_statistics:
@@ -59,23 +60,11 @@ if __name__ == '__main__':
     purge_steps = [KillAllScreens()]
     pickup_steps = [Rsync(src=[ClusterPaths().Data.evaluation], dest=[LocalPaths().data], put=False, update=True)]
 
-
-    model_configs = [
-    ]
-
+    model_configs = []
     for model_type in ['postgres', 'zeroshot', 'dace', 'flat']:
-        model_configs.extend([
-            parameterized_config(model_type, wandb_group='baselines'),  # std
-            # parameterized_config(model_type, wandb_group='strat', stratified_workloads=True),  # strat
-            # parameterized_config(model_type, wandb_group='whintwl', include_hint_workloads=True),  # hint
-            # parameterized_config(model_type, wandb_group='whintwl_strat', include_hint_workloads=True, stratified_workloads=True),  # hint_strat
-            # parameterized_config(model_type, wandb_group='whint_hintidx', include_hint_workloads=True, include_hint_idx_workloads=True),  # hint + idx
-            # parameterized_config(model_type, wandb_group='whintidx', include_hint_idx_workloads=True),  # hint-idx
-            # parameterized_config(model_type, wandb_group='onlyhint', only_hint_workloads=True),  # hint_only
-            # parameterized_config(model_type, wandb_group='onlyhint_strat', only_hint_workloads=True, stratified_workloads=True),  # hint_only_strat
-        ])
+        model_configs.extend([parameterized_config(model_type, wandb_group='baselines')])
 
-    node = TrainingServers.NODE07
+    node = TrainingServers.NODE04
     seeds = [0]
 
     runner = ExpRunner(replicate=False,
@@ -84,9 +73,8 @@ if __name__ == '__main__':
 
     commands = generate_commands(dataset=Dataset('imdb'),
                                  model=model_configs[2],
-                                 workloads=["join_order_job_0.json"],
+                                 workloads=["join_order_job_0"],
                                  seeds=seeds)
-
 
     runner.run_exp(commands=commands,
                     set_up_steps=setup_steps,

@@ -49,6 +49,9 @@ def create_dace_dataloader(statistics_file: Path,
         train_loader: DataLoader = DataLoader(train_dataset, **dataloader_args)
         val_loader: DataLoader = DataLoader(val_dataset, **dataloader_args)
 
+    else:
+        train_loader, val_loader = None, None
+
     test_loaders = []
     if workload_runs.test_workload_runs:
         dataloader_args.update(shuffle=False)
