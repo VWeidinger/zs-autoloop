@@ -242,6 +242,12 @@ def create_zeroshot_dataloader(workload_runs: WorkloadRuns,
         train_loader: DataLoader = DataLoader(train_dataset, **dataloader_args)
         val_loader: DataLoader = DataLoader(val_dataset, **dataloader_args)
 
+        print(f"Created datasets of size: "
+              f"train {len(train_dataset)}, "
+              f"validation: {len(val_dataset)}")
+    else:
+        train_loader, val_loader = None, None
+
     if workload_runs.test_workload_runs:
         # For each test workload run create a distinct test loader
         print("Creating dataloader for test data")
@@ -264,9 +270,7 @@ def create_zeroshot_dataloader(workload_runs: WorkloadRuns,
             test_loader = DataLoader(test_dataset, **dataloader_args)
             test_loaders.append(test_loader)
 
-    print(f"Created datasets of size: "
-          f"train {len(train_dataset)}, "
-          f"validation: {len(val_dataset)}, t"
-          f"est: {len(test_dataset)}")
+            print(f"Created datasets of size: "
+                  f"test: {len(test_dataset)}")
 
     return label_norm, feature_statistics, train_loader, val_loader, test_loaders

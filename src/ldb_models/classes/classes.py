@@ -170,9 +170,7 @@ class ModelConfig:
 
     def assemble_wl_path(self, target_db: Dataset, wl_name, stratified_workloads: bool = True,
                          romans_runs: bool = False) -> str:
-        return f'{self.get_data_base_dir(
-            stratified_workloads=stratified_workloads,
-            romans_runs=romans_runs).as_posix()}/{target_db.db_name}_scaled{target_db.scale}/{wl_name}.json'
+        return f'{self.get_data_base_dir(stratified_workloads=stratified_workloads, romans_runs=romans_runs).as_posix()}/{target_db.db_name}_scaled{target_db.scale}/{wl_name}.json'
 
     def get_test_workloads(self, target_db: Dataset, romans_runs: bool) -> str:
         return self.assemble_wl_path(target_db, "workload_200k_s1", stratified_workloads=True, romans_runs=romans_runs)
