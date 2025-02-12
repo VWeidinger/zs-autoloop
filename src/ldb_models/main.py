@@ -139,7 +139,8 @@ def use_model(mode: str,
               wandb_run: Run,
               pt_profiler: bool,
               bound_predictions: bool,
-              run_qo_test_pipeline_after_each_epoch: bool = True):
+              is_pretrained: bool,
+              run_qo_test_pipeline_after_each_epoch: bool = True,):
     # Seed for reproducibility
     print(f"Found model config {config}")
     torch.manual_seed(config.seed)
@@ -153,7 +154,7 @@ def use_model(mode: str,
         return
 
     # Do sanity check on the training data paths
-    wl_runs.check_model_compability(config, mode)
+    wl_runs.check_model_compability(config, mode, is_pretrained=is_pretrained)
 
     # Initialize metrics
     metrics: List[Metric] = init_metrics(config.loss_class_name)
@@ -187,16 +188,17 @@ def use_model(mode: str,
     found = False
     rank_found = False
     finished = False
-    if model:
+
+    if model is not None:
         # Move model to device
-        print(f"Model device: {model.device}")
+        print(f"Model device: {model.device}",flush=True)
         model = model.to(model.device)
 
         # Init optimizer
         optimizer: Optimizer = opt.__dict__[config.optimizer_class_name](model.parameters(),
                                                                          **config.optimizer_kwargs)
 
-        print(f"Try to load model with name {config.name.NAME} and seed {config.seed} from {model_dir}")
+        print(f"Try to load model with name {config.name.NAME} and seed {config.seed} from {model_dir}",flush=True)
         csv_stats, epochs_wo_improvement, epoch, model, optimizer, metrics, finished, found, rank_found = \
             load_checkpoint(model=model,
                             target_path=model_dir,
@@ -207,9 +209,13 @@ def use_model(mode: str,
                             prefer_ft_rank=ft_with_ranking)
 
         if rank_found:
-            print("Found pretrained model (trained with ranking)")
+            print("Found pretrained model (trained with ranking)",flush=True)
         if found:
-            print("Found pretrained model")
+            print("Found pretrained model",flush=True)
+
+    if is_pretrained and not isinstance(config, TabularModelConfig):
+        # tabular model configs are handled differently
+        assert finished, f"Pretrained model not found and finished: {config.name.NAME} with seed {config.seed}"
 
     # prepare the prediction bounder
     if bound_predictions:
@@ -259,7 +265,9 @@ def use_model(mode: str,
                 rank_metric = None
 
             if isinstance(model_config, TabularModelConfig):
-                train_tabular_model(workload_runs=wl_runs,
+                # check if model is already pre-trained -> do not execute this
+                if not is_pretrained:
+                    train_tabular_model(workload_runs=wl_runs,
                                     config=config,
                                     statistics_file=statistics_file,
                                     model_dir=model_dir,
@@ -368,6 +376,7 @@ if __name__ == '__main__':
     parser.add_argument('--pt_profiler', action='store_true')
     parser.add_argument('--bound_predictions', action='store_true')
     parser.add_argument('--qo_eval_after_each_epoch', action='store_true')
+    parser.add_argument('--is_pretrained', action='store_true')
     args = parser.parse_args()
 
     assert args.device == 'cpu' or args.device.startswith('cuda'), "Device must be either 'cpu' or 'cuda'"
@@ -399,16 +408,33 @@ if __name__ == '__main__':
 
     model_config = get_model_config(model_type=args.model_type, m_args=model_args)
 
-    # If retraining, set specific model parameters
-    if args.mode == "retrain":
-        model_config = evolve(model_config, epochs=model_config.epochs + 100)
-        # Disable penalty for small values in case of retraining
-        if model_config.loss_class_name == "QLoss":
-            final_mlp_kwargs = model_config.final_mlp_kwargs
-            loss_class_kwargs = final_mlp_kwargs.pop('loss_class_kwargs')
-            loss_class_kwargs.update(penalty_negative=0)
-            final_mlp_kwargs.update(loss_class_kwargs=loss_class_kwargs)
-            model_config = evolve(model_config, final_mlp_kwargs=final_mlp_kwargs)
+    ## If retraining, set specific model parameters
+    # if args.mode == "retrain":
+    #     model_config = evolve(model_config, epochs=model_config.epochs + 100)
+    #     # Disable penalty for small values in case of retraining
+    #     if model_config.loss_class_name == "QLoss":
+    #         final_mlp_kwargs = model_config.final_mlp_kwargs
+    #         loss_class_kwargs = final_mlp_kwargs.pop('loss_class_kwargs')
+    #         loss_class_kwargs.update(penalty_negative=0)
+    #         final_mlp_kwargs.update(loss_class_kwargs=loss_class_kwargs)
+    #         model_config = evolve(model_config, final_mlp_kwargs=final_mlp_kwargs)
+
+    # extract model_type information
+    model_type = args.model_type
+    if model_type.startswith('pm-'):
+        model_type = model_type[3:].split('-')[0]
+    else:
+        model_type = model_type.split('-')[0]
+    if model_type.startswith('postgres'):
+        model_type = 'postgres'
+    elif model_type.startswith('zeroshot'):
+        model_type = 'zeroshot'
+    elif model_type.startswith('dace'):
+        model_type = 'dace'
+    elif model_type.startswith('flat'):
+        model_type = 'flat'
+    else:
+        raise ValueError(f"Model type {model_type} not recognized")
 
     # initialize wandb
     wandb_run: Optional[Run] = None
@@ -420,7 +446,8 @@ if __name__ == '__main__':
                                project=args.wandb_project,
                                name=wandb_name,
                                config=attrs.asdict(model_config),
-                               group=args.wandb_group)
+                               group=args.wandb_group,
+                               tags=[model_type])
 
     args = dict(
         mode=args.mode,
@@ -435,7 +462,8 @@ if __name__ == '__main__':
         pt_profiler=args.pt_profiler,
         bound_predictions=args.bound_predictions,
         wandb_run=wandb_run,
-        run_qo_test_pipeline_after_each_epoch=args.qo_eval_after_each_epoch)
+        run_qo_test_pipeline_after_each_epoch=args.qo_eval_after_each_epoch,
+    is_pretrained=args.is_pretrained)
 
     use_model(**args)
 

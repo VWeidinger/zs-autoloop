@@ -38,13 +38,13 @@ class WorkloadRuns:
             return True
         return False
 
-    def check_model_compability(self, model_config: ModelConfig, mode: str):
+    def check_model_compability(self, model_config: ModelConfig, mode: str, is_pretrained: bool = False) -> None:
         if mode == "train":
             if model_config.type == ModelType.WL_DRIVEN:
                 assert len(self.train_workload_runs) == 1, "One training workload run is supported for workload driven models"
                 assert len(self.test_workload_runs) == 0, "No test workload runs are allowed for workload driven models, as the test workload is the same as the training workload"
 
             if model_config.type == ModelType.WL_AGNOSTIC:
-                assert len(self.train_workload_runs) >= 1, "Model need to be trained more than 1 database"
-                #assert len(self.test_workload_runs) == 1, "Only one test workload run is supported for workload agnostic models"
+                if not is_pretrained:
+                    assert len(self.train_workload_runs) >= 1, "Model need to be trained more than 1 database"
         return

@@ -18,7 +18,8 @@ def generate_training_commands(datasets: List[Dataset], seeds: list[int], python
                                eval_join_order: bool = False, eval_access_path: bool = False,
                                eval_physical_operator: bool = False,
                                qo_eval_after_each_epoch: bool = False,
-                               use_romans_runs: bool = False) -> List[str]:
+                               use_romans_runs: bool = False,
+                               is_pretrained:bool=False) -> List[str]:
     if test_against:
         print(f'Testing the models against {test_against}')
 
@@ -28,14 +29,18 @@ def generate_training_commands(datasets: List[Dataset], seeds: list[int], python
             continue
 
         for target_model in model_list:
-            training_runs = " ".join(
-                target_model.get_training_workloads(training_datasets=datasets,
-                                                    target_dataset=target_dataset,
-                                                    stratified_workload=target_model.stratified_workloads,
-                                                    romans_runs=use_romans_runs))
+            if is_pretrained:
+                training_runs = None
+            else:
+                training_runs = " ".join(
+                    target_model.get_training_workloads(training_datasets=datasets,
+                                                        target_dataset=target_dataset,
+                                                        stratified_workload=target_model.stratified_workloads,
+                                                        romans_runs=use_romans_runs))
 
             test_runs = target_model.get_test_workloads(target_dataset, romans_runs=use_romans_runs)
             if eval_join_order:  # and target_dataset.db_name in ['imdb']:
+                # JOB-light
                 test_runs += " " + target_model.assemble_wl_path(Dataset('imdb'), 'join_order',
                                                                  stratified_workloads=False,
                                                                  romans_runs=use_romans_runs)
@@ -89,6 +94,9 @@ def generate_training_commands(datasets: List[Dataset], seeds: list[int], python
 
                 wandb_name = f"{name}{model_suffix}/{target_dataset.db_name}/{seed}"
 
+                if is_pretrained:
+                    wandb_name += '_pretrained'
+
                 command = (f"python{python_version} main.py "
                            f"--mode train "
                            f"--wandb_project {wandb_project} "
@@ -98,10 +106,13 @@ def generate_training_commands(datasets: List[Dataset], seeds: list[int], python
                            f"--device {target_model.device} "
                            f"--model_dir {target_model.get_model_dir(ClusterPaths(), target_dataset).as_posix()} "
                            f"--target_dir {target_model.get_eval_dir(ClusterPaths(), target_dataset).as_posix()} "
-                           f"--workload_runs {training_runs} "
                            f"--statistics_file {statistics_path} "
                            f"--seed {seed} "
-                           f"--wandb_name {wandb_name}")
+                           f"--wandb_name {wandb_name} "
+                           )
+
+                if training_runs is not None and len(training_runs) > 0:
+                    command += f" --workload_runs {training_runs} "
 
                 if target_model.type == ModelType.WL_AGNOSTIC:
                     command += f" --test_workload_runs {test_runs} "
@@ -129,6 +140,9 @@ def generate_training_commands(datasets: List[Dataset], seeds: list[int], python
 
                 if qo_eval_after_each_epoch:
                     command += " --qo_eval_after_each_epoch"
+
+                if is_pretrained:
+                    command += " --is_pretrained"
 
                 commands.append(command)
 
@@ -185,17 +199,18 @@ if __name__ == '__main__':
         Dataset('fhnk', scale=2)
     ]
 
-    seeds = [2]
+    seeds = [0]
     nodes = [
-        TrainingServers.NODE00,
-        # TrainingServers.NODE02,
+        # TrainingServers.NODE00,
+        TrainingServers.NODE02,
         # TrainingServers.NODE03,
         # TrainingServers.NODE04,
         # TrainingServers.NODE05,
     ]
     sockets = [0, 1]
     out_file_id_offset = 0
-    num_parallel_screens_or_jobs_dgx = 6
+    num_parallel_screens = 1
+    num_parallel_jobs_dgx = 6
 
     # ===================
     # CONFIGS
@@ -210,25 +225,38 @@ if __name__ == '__main__':
     eval_physical_operator = True  # evaluate physical operator selection
     qo_eval_after_each_epoch = True  # if True, will run a full QO evaluation after each epoch
     use_romans_runs = False
+    is_pretrained = False # if True, assumes that the model is pretrained and does not train it
     # ===================
 
     # generate model configs
     model_configs = [
         # ScaledPostgresModelConfig(),
     ]
-    for model_type in ['postgres', 'zeroshot', 'dace', 'flat']:
-        model_configs.extend([
-            # parameterized_config(model_type, wandb_group='baselines'),  # std
-            # parameterized_config(model_type, wandb_group='strat', stratified_workloads=True),  # strat
-            # parameterized_config(model_type, wandb_group='whintwl', include_hint_workloads=True),  # hint
-            # parameterized_config(model_type, wandb_group='whintwl_strat', include_hint_workloads=True,
-            #                      stratified_workloads=True),  # hint_strat
-            parameterized_config(model_type, wandb_group='whint_hintidx', include_hint_workloads=True, include_hint_idx_workloads=True),  # hint + idx
-            parameterized_config(model_type, wandb_group='whintidx', include_hint_idx_workloads=True),  # hint-idx
-            # parameterized_config(model_type, wandb_group='onlyhint', only_hint_workloads=True),  # hint_only
-            # parameterized_config(model_type, wandb_group='onlyhint_strat', only_hint_workloads=True,
-            #                      stratified_workloads=True),  # hint_only_strat
-        ])
+    for model_type in [
+        # 'postgres',
+        'zeroshot',
+        # 'dace',
+        # 'flat'
+    ]:
+        if model_type == 'dace':
+            model_configs.extend(
+                [
+                    parameterized_config(model_type, wandb_group='baselines', pad_length=60), # for the job workload DACE needs a pad length of 60 (up to 60 operators in a plan - 30 is not enough)
+                ]
+            )
+        else:
+            model_configs.extend([
+                parameterized_config(model_type, wandb_group='baselines'),  # std
+                # parameterized_config(model_type, wandb_group='strat', stratified_workloads=True),  # strat
+                # parameterized_config(model_type, wandb_group='whintwl', include_hint_workloads=True),  # hint
+                # parameterized_config(model_type, wandb_group='whintwl_strat', include_hint_workloads=True,
+                #                      stratified_workloads=True),  # hint_strat
+                # parameterized_config(model_type, wandb_group='whint_hintidx', include_hint_workloads=True, include_hint_idx_workloads=True),  # hint + idx
+                # parameterized_config(model_type, wandb_group='whintidx', include_hint_idx_workloads=True),  # hint-idx
+                # parameterized_config(model_type, wandb_group='onlyhint', only_hint_workloads=True),  # hint_only
+                # parameterized_config(model_type, wandb_group='onlyhint_strat', only_hint_workloads=True,
+                #                      stratified_workloads=True),  # hint_only_strat
+            ])
 
     model_configs = [model for model in model_configs if model is not None]
 
@@ -277,7 +305,8 @@ if __name__ == '__main__':
                        node_names=[node["hostname"] for node in nodes],
                        python_version='rye',
                        available_sockets=sockets,
-                       dgx_num_parallel_screens_or_jobs=num_parallel_screens_or_jobs_dgx,
+                       num_parallel_screens_or_jobs=num_parallel_screens,
+                       dgx_num_parallel_screens_or_jobs=num_parallel_jobs_dgx,
                        ssh_path=ssh_path,
                        )
 
@@ -297,7 +326,8 @@ if __name__ == '__main__':
                                                eval_access_path=eval_access_path,
                                                eval_physical_operator=eval_physical_operator,
                                                qo_eval_after_each_epoch=qo_eval_after_each_epoch,
-                                               use_romans_runs=use_romans_runs)
+                                               use_romans_runs=use_romans_runs,
+                                               is_pretrained=is_pretrained)
 
     runner.run_exp(commands=eval_commands,
                    set_up_steps=setup_steps,

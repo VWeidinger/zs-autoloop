@@ -4,7 +4,7 @@ import os
 import time
 from pathlib import Path
 from typing import Optional, List, Tuple
-
+import re
 import joblib
 import lightgbm as lgb
 import numpy as np
@@ -227,14 +227,20 @@ def predict_tabular_model(config: ModelConfig,
 
         # Log to wandb
         test_file_name = test_path.stem
-        # remove _seed from name
+        # remove _seed from name (this is different from the _s0 suffix)
         test_file_name = '_'.join(test_file_name.split('_')[:-1])
 
         if wandb_run:
             wandb_run.summary.update(prefix_dict(test_stats, f'{test_file_name}.json/test_'))
 
         if "join_order" in str(test_path):
-            evaluate_join_order(predictions=rows, wandb_run=wandb_run)
+            if test_file_name == 'join_order':
+                wl_name = 'job_light'  # job_light
+            elif test_file_name in ['join_order_job', 'join_order_job_all_valid']:
+                wl_name = 'job'
+            else:
+                raise ValueError(f"Unknown workload name: {test_file_name}")
+            evaluate_join_order(predictions=rows, wandb_run=wandb_run, wl_name=wl_name)
         if "physical_operator" in str(test_path):
             evaluate_physical_plan_selection(predictions=rows, wandb_run=wandb_run,
                                              with_idxs='_w_idx' in str(test_path))

@@ -55,12 +55,12 @@ def test_model(config: ModelConfig,
                     log_prefix=log_prefix
                 )
 
-                if wandb_run is not None:
-                    # extract filename from path
-                    filename = test_path.stem
-                    # remove the number annotation
-                    filename = '_'.join(filename.split('_')[:-1])
+                # extract filename from path
+                filename = test_path.stem
+                # remove _seed from name (this is different from the _s0 suffix)
+                filename = '_'.join(filename.split('_')[:-1])
 
+                if wandb_run is not None:
                     if is_per_epoch:
                         wandb_run.log(prefix_dict(test_stats, f'{filename}.json/'), step=epoch)
                     else:
@@ -69,9 +69,15 @@ def test_model(config: ModelConfig,
                 if not is_per_epoch:
                     save_csv([test_stats], str(test_path) + f"_test_stats{file_suffix}.csv")
 
-                if "join_order" in str(test_path):
+                if "join_order" in filename:
+                    if filename == 'join_order':
+                        wl_name = 'job_light' # job_light
+                    elif filename.startswith('join_order_job'): # could also be 'join_order_job_all_valid'
+                        wl_name = 'job'
+                    else:
+                        raise ValueError(f"Unknown workload name: {filename}")
                     evaluate_join_order(predictions=predictions_dict, is_per_epoch=is_per_epoch, epoch=epoch,
-                                        wandb_run=wandb_run)
+                                        wandb_run=wandb_run, wl_name=wl_name)
                 if "physical_operator" in str(test_path):
                     evaluate_physical_plan_selection(predictions=predictions_dict, with_idxs='_w_idx' in str(test_path),
                                                      is_per_epoch=is_per_epoch, epoch=epoch, wandb_run=wandb_run)

@@ -1,23 +1,26 @@
+from typing import Mapping, Any
+
 from torch import nn
 
 from classes.classes import ZeroShotModelConfig
 from models.zeroshot.utils.fc_out_model import FcOutModel
 from models.zeroshot.zero_shot_model import ZeroShotModelEncoder
+from training.losses import create_loss
 
-class PostgresZeroShotModel(FcOutModel):
+
+class PostgresZeroShotModel(nn.Module):
     def __init__(self, model_config: ZeroShotModelConfig, feature_statistics: dict, **zero_shot_kwargs):
-        super().__init__(output_dim=model_config.output_dim,
-                         input_dim=model_config.hidden_dim,
-                         final_out_layer=True,
-                         loss_class_name=model_config.loss_class_name,
-                         loss_class_kwargs=model_config.loss_class_kwargs,
-                         **model_config.final_mlp_kwargs)
+
+
+        super(PostgresZeroShotModel,self).__init__()
 
         self.label_norm = None
         self.device = model_config.device
         self.encoder = PostgresZeroShotModelEncoder(model_config, feature_statistics, **zero_shot_kwargs)
-        self.decoder = FcOutModel(output_dim=model_config.output_dim, input_dim=model_config.hidden_dim, **model_config.final_mlp_kwargs)
+        self.decoder = FcOutModel(output_dim=model_config.output_dim, input_dim=model_config.hidden_dim, final_out_layer=True, **model_config.final_mlp_kwargs)
 
+        # if model_config.loss_class_name is not None:
+        self.loss_fxn = create_loss(model_config.loss_class_name, loss_kwargs = model_config.loss_class_kwargs)
 
     def forward(self, model_input):
         g, features = model_input

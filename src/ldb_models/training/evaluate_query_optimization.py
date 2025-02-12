@@ -12,7 +12,7 @@ from training.training.metrics import SpearmanRank, SelectedRuntime, SurpassedPl
     MaxUnderestimation, PickRate, OptimalRuntime
 
 
-def evaluate_join_order(predictions, is_per_epoch: bool = False, epoch: int = None, wandb_run: Run = None):
+def evaluate_join_order(predictions, wl_name:str, is_per_epoch: bool = False, epoch: int = None, wandb_run: Run = None):
     """ This method evaluates a given workload of queries, how well the join order was predicted."""
     prediction_dataframe = pd.DataFrame(predictions)
     prediction_dataframe["hint"] = prediction_dataframe["hint"].fillna("")
@@ -28,7 +28,7 @@ def evaluate_join_order(predictions, is_per_epoch: bool = False, epoch: int = No
 
     aggregated_results = {key: [] for key in metrics}
 
-    prefix = 'join_order_eval'
+    prefix = f'join_order_{wl_name}_eval'
     if is_per_epoch:
         prefix += '-per_epoch'
 

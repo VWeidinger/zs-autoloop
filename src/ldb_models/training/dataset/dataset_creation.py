@@ -34,6 +34,9 @@ def read_workload_runs(workload_run_paths: List[Path],
     limit_plans_blacklist = ['join_order', 'physical_operator', 'access_path_selection']
 
     for path_index, path in enumerate(workload_run_paths):
+        if path is None or str(path) =='None':
+            continue
+
         per_file_plans = []
 
         try:

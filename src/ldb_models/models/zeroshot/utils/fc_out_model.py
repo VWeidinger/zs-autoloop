@@ -108,7 +108,7 @@ class FcOutModel(DynamicLayer):
     """
 
     def __init__(self, output_dim=None, input_dim=None, n_layers=None, width_factor=None,
-                 residual=True, loss_class_name=None, loss_class_kwargs=None, task=None, **kwargs):
+                 residual=True, task=None, **kwargs):
         super().__init__(**kwargs)
 
         self.task = task
@@ -123,9 +123,6 @@ class FcOutModel(DynamicLayer):
             bound = 1 / math.sqrt(self.output_dim)
             init.uniform_(self.replacement_param, -bound, bound)
             return
-
-        if loss_class_name is not None:
-            self.loss_fxn = create_loss(loss_class_name, loss_kwargs = loss_class_kwargs)
 
         layer_dims = [self.input_dim] + [int(width_factor * self.input_dim)] * n_layers + [self.output_dim]
 
