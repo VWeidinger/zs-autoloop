@@ -22,6 +22,7 @@ def read_workload_runs(workload_run_paths: List[Path],
                        input_format: InputFormats = InputFormats.parsed,
                        include_timeout_queries: bool = False,
                        include_hint_not_obeyed_queries: bool = False,
+                       include_zero_card_queries: bool = False,
                        stratify_per_wl_file: bool = False,
                        stratify_dataset: bool = False, ) -> (List[dict], dict):
     # reads several workload runs
@@ -62,22 +63,35 @@ def read_workload_runs(workload_run_paths: List[Path],
         else:
             file_in_limit_blacklist = False
 
+        if 'join_order_job' in str(path):
+            # overwrite flag, to include zero card queries
+            include_zero_card_queries = True
+
+        hint_not_obeyed_ctr = 0
+        timeout_ctr = 0
+        include_zero_card_queries_ctr = 0
+
         for p_id, plan in enumerate(file_plans):
             if input_format == InputFormats.parsed:
                 if not include_timeout_queries and plan["timeout"]:  # Skip timeout queries
+                    timeout_ctr += 1
                     continue
-
                 if not include_hint_not_obeyed_queries and plan["invalid_hint"]:  # Skip queries with invalid hints
+                    hint_not_obeyed_ctr += 1
                     continue
-                if plan["zero_card"]:
+                if not include_zero_card_queries and plan["zero_card"]:  # skip zero card queries
+                    include_zero_card_queries_ctr += 1
                     continue
             elif input_format == InputFormats.json:
                 if not include_timeout_queries and plan["timeout"]:  # Skip timeout queries
+                    timeout_ctr += 1
                     continue
                 if not include_hint_not_obeyed_queries and plan["invalid_hint"]:  # Skip queries with invalid hints
+                    hint_not_obeyed_ctr += 1
                     continue
-                if plan[
-                    "zero_card"]:  # TODO this annotation is not 100% correct in the json plans (plan parsed is fixing is)!
+                if not include_zero_card_queries and plan[
+                    "zero_card"]:  # TODO this annotation is not 100% correct in the json plans (plan parsed is fixing this)!
+                    include_zero_card_queries_ctr += 1
                     continue
             else:
                 raise ValueError(f"Input format {input_format} not supported")
@@ -111,8 +125,8 @@ def read_workload_runs(workload_run_paths: List[Path],
             )
 
         print(
-            f'Loaded {len(per_file_plans)}/{len(file_plans)} plans from {path} (include timeout: {include_timeout_queries}, '
-            f' include invalid hint: {include_hint_not_obeyed_queries}, include zero card: False, file in limit blacklist: {file_in_limit_blacklist}, limit file: {limit_plans_per_file})',
+            f'Loaded {len(per_file_plans)}/{len(file_plans)} plans from {path} (include timeout: {include_timeout_queries} (excluded: {timeout_ctr}), '
+            f' include invalid hint: {include_hint_not_obeyed_queries} (excluded: {hint_not_obeyed_ctr}), include zero card: {include_zero_card_queries} (excluded: {include_zero_card_queries_ctr}), file in limit blacklist: {file_in_limit_blacklist}, limit file: {limit_plans_per_file})',
             flush=True)
 
         plans.extend(per_file_plans)
@@ -221,6 +235,25 @@ def create_zeroshot_dataloader(workload_runs: WorkloadRuns,
     feature_statistics = load_json(str(statistics_file), namespace=False)
     assert feature_statistics != {}, "Feature statistics file is empty!"
     plan_collator = postgres_plan_collator
+
+    add_pseudo_entries_to_feature_statistics = True
+    if add_pseudo_entries_to_feature_statistics:
+        # base model has never seen these operator types - add them to the feature statistics to avoid one-hot encoder errors
+        if 'MIN' not in feature_statistics['aggregation']['value_dict']:
+            feature_statistics['aggregation']['value_dict']['MIN'] = 2
+        if 'MAX' not in feature_statistics['aggregation']['value_dict']:
+            feature_statistics['aggregation']['value_dict']['MAX'] = 2
+        if 'IN' not in feature_statistics['operator']['value_dict']:
+            feature_statistics['operator']['value_dict']['IN'] = 3
+        if 'LIKE' not in feature_statistics['operator']['value_dict']:
+            feature_statistics['operator']['value_dict']['LIKE'] = 3
+        if 'NOT LIKE' not in feature_statistics['operator']['value_dict']:
+            feature_statistics['operator']['value_dict']['NOT LIKE'] = 3
+        if 'IS NOT NULL' not in feature_statistics['operator']['value_dict']:
+            feature_statistics['operator']['value_dict']['IS NOT NULL'] = 3
+        if 'IS NULL' not in feature_statistics['operator']['value_dict']:
+            feature_statistics['operator']['value_dict']['IS NULL'] = 3
+
 
     dataloader_args = dict(batch_size=model_config.batch_size,
                            shuffle=data_loader_options.shuffle,

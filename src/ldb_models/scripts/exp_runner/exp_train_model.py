@@ -44,6 +44,10 @@ def generate_training_commands(datasets: List[Dataset], seeds: list[int], python
                 test_runs += " " + target_model.assemble_wl_path(Dataset('imdb'), 'join_order',
                                                                  stratified_workloads=False,
                                                                  romans_runs=use_romans_runs)
+                # JOB
+                test_runs += " " + target_model.assemble_wl_path(Dataset('imdb'), 'join_order_job_w_idxs_combined',
+                                                                 stratified_workloads=False,
+                                                                 romans_runs=use_romans_runs)
             if eval_access_path:  # and target_dataset.db_name in ['imdb', 'tpc_h', 'baseball']:
                 test_runs += " " + target_model.assemble_wl_path(Dataset('imdb'), "access_path_selection",
                                                                  stratified_workloads=False,
@@ -207,9 +211,9 @@ if __name__ == '__main__':
         # TrainingServers.NODE04,
         # TrainingServers.NODE05,
     ]
-    sockets = [0, 1]
-    out_file_id_offset = 0
-    num_parallel_screens = 1
+    sockets = [1]
+    out_file_id_offset = 1
+    num_parallel_screens = None
     num_parallel_jobs_dgx = 6
 
     # ===================
@@ -225,7 +229,7 @@ if __name__ == '__main__':
     eval_physical_operator = True  # evaluate physical operator selection
     qo_eval_after_each_epoch = True  # if True, will run a full QO evaluation after each epoch
     use_romans_runs = False
-    is_pretrained = False # if True, assumes that the model is pretrained and does not train it
+    is_pretrained = True  # if True, assumes that the model is pretrained and does not train it
     # ===================
 
     # generate model configs

@@ -41,6 +41,11 @@ class ExpRunner:
                  ssh_path: str = 'ssh'
                  ):
 
+        if num_parallel_screens_or_jobs is not None:
+            assert num_parallel_screens_or_jobs > 0, "num_parallel_screens_or_jobs must be greater than 0"
+        if dgx_num_parallel_screens_or_jobs is not None:
+            assert dgx_num_parallel_screens_or_jobs > 0, "dgx_num_parallel_screens_or_jobs must be greater than 0"
+
         # Read environments variable and arguments
         # Read credentials from environment variables
         load_dotenv()

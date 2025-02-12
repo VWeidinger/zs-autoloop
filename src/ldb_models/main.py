@@ -8,7 +8,6 @@ import numpy as np
 import torch
 import torch.optim as opt
 import wandb
-from attrs import evolve
 from torch import nn
 from torch.optim.optimizer import Optimizer
 from torch.utils.data import DataLoader
@@ -212,6 +211,14 @@ def use_model(mode: str,
             print("Found pretrained model (trained with ranking)",flush=True)
         if found:
             print("Found pretrained model",flush=True)
+
+    if is_pretrained:
+        assert found
+        if not finished:
+            print(
+                'Pretrained model not finished. Though still considering it as finished because of `is_pretrained` flag is set.',
+                flush=True)
+        finished = True
 
     if is_pretrained and not isinstance(config, TabularModelConfig):
         # tabular model configs are handled differently
