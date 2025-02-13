@@ -109,6 +109,7 @@ def evaluate_join_order(predictions, wl_name:str, is_per_epoch: bool = False, ep
             wandb_run.summary[f'{prefix}/avg_max_underestimation'] = avg_max_underestimation
             wandb_run.summary[f'{prefix}/num_queries'] = len(aggregated_results['spearman_corr'])
             wandb_run.summary[f'{prefix}/num_plans'] = len(predictions)
+            wandb_run.log({f'{prefix}_pred_table': wandb.Table(dataframe=prediction_dataframe)})
 
     return
 

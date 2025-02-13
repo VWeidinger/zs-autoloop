@@ -4,7 +4,7 @@ import os
 import time
 from pathlib import Path
 from typing import Optional, List, Tuple
-import re
+
 import joblib
 import lightgbm as lgb
 import numpy as np
@@ -236,7 +236,7 @@ def predict_tabular_model(config: ModelConfig,
         if "join_order" in str(test_path):
             if test_file_name == 'join_order':
                 wl_name = 'job_light'  # job_light
-            elif test_file_name in ['join_order_job', 'join_order_job_all_valid']:
+            elif test_file_name in ['join_order_job', 'join_order_job_w_idxs_combined']:
                 wl_name = 'job'
             else:
                 raise ValueError(f"Unknown workload name: {test_file_name}")

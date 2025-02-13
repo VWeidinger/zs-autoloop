@@ -212,7 +212,7 @@ def use_model(mode: str,
         if found:
             print("Found pretrained model",flush=True)
 
-    if is_pretrained:
+    if is_pretrained and not isinstance(config, TabularModelConfig):
         assert found
         if not finished:
             print(
