@@ -5,7 +5,7 @@ from ldb_schema.datasets import Dataset
 from ldb_schema.paths import ClusterPaths, LocalPaths
 from octopus.step import Rsync, KillAllScreens, SetupVenv, RsyncCurrentRepo, SetupRYEVenv
 
-from classes.classes import ModelConfig, ModelType
+from classes.classes import ModelConfig, ModelType, ZSWithIsIndexCond
 from classes.model_config_helper import parameterized_config
 from scripts.exp_runner.exp_runner import ExpRunner, TrainingServers
 
@@ -203,16 +203,16 @@ if __name__ == '__main__':
         Dataset('fhnk', scale=2)
     ]
 
-    seeds = [0]
+    seeds = [1]
     nodes = [
         # TrainingServers.NODE00,
         TrainingServers.NODE02,
-        # TrainingServers.NODE03,
-        # TrainingServers.NODE04,
+        TrainingServers.NODE03,
+        TrainingServers.NODE04,
         # TrainingServers.NODE05,
     ]
-    sockets = [1]
-    out_file_id_offset = 1
+    sockets = [0, 1]
+    out_file_id_offset = 0
     num_parallel_screens = None
     num_parallel_jobs_dgx = 6
 
@@ -229,34 +229,37 @@ if __name__ == '__main__':
     eval_physical_operator = True  # evaluate physical operator selection
     qo_eval_after_each_epoch = True  # if True, will run a full QO evaluation after each epoch
     use_romans_runs = False
-    is_pretrained = True  # if True, assumes that the model is pretrained and does not train it
+    is_pretrained = False  # if True, assumes that the model is pretrained and does not train it
     # ===================
 
     # generate model configs
     model_configs = [
         # ScaledPostgresModelConfig(),
+        ZSWithIsIndexCond()
     ]
     for model_type in [
-        # 'postgres',
+        'postgres',
         'zeroshot',
-        # 'dace',
-        # 'flat'
+        'dace',
+        'flat'
     ]:
         if model_type == 'dace':
             model_configs.extend(
                 [
                     parameterized_config(model_type, wandb_group='baselines', pad_length=60), # for the job workload DACE needs a pad length of 60 (up to 60 operators in a plan - 30 is not enough)
+                    # parameterized_config(model_type, wandb_group='whintwl', pad_length=60, include_hint_workloads=True),
+                    # parameterized_config(model_type, wandb_group='whintidx', pad_length=60, include_hint_idx_workloads=True),
                 ]
             )
         else:
             model_configs.extend([
                 parameterized_config(model_type, wandb_group='baselines'),  # std
                 # parameterized_config(model_type, wandb_group='strat', stratified_workloads=True),  # strat
-                # parameterized_config(model_type, wandb_group='whintwl', include_hint_workloads=True),  # hint
+                parameterized_config(model_type, wandb_group='whintwl', include_hint_workloads=True),  # hint
                 # parameterized_config(model_type, wandb_group='whintwl_strat', include_hint_workloads=True,
                 #                      stratified_workloads=True),  # hint_strat
                 # parameterized_config(model_type, wandb_group='whint_hintidx', include_hint_workloads=True, include_hint_idx_workloads=True),  # hint + idx
-                # parameterized_config(model_type, wandb_group='whintidx', include_hint_idx_workloads=True),  # hint-idx
+                parameterized_config(model_type, wandb_group='whintidx', include_hint_idx_workloads=True),  # hint-idx
                 # parameterized_config(model_type, wandb_group='onlyhint', only_hint_workloads=True),  # hint_only
                 # parameterized_config(model_type, wandb_group='onlyhint_strat', only_hint_workloads=True,
                 #                      stratified_workloads=True),  # hint_only_strat

@@ -14,7 +14,7 @@ from training.batch_to_funcs import dace_batch_to, simple_batch_to, batch_to
 from training.featurizations import Featurization, DACEFeaturization, QPPNetFeaturization, \
     PostgresEstSystemCardDetail, DACEFeaturizationNoCosts, QPPNetNoCostsFeaturization, FlatModelFeaturization, \
     FlatModelActCardFeaturization, QPPNetActCardsFeaturization, PostgresTrueCardDetail, DACEActCardFeaturization, \
-    PostgresEstWithPGCost
+    PostgresEstWithPGCost, PostgresEstWithIsIndexCond
 
 
 class InputFormats:
@@ -52,6 +52,7 @@ class ModelName:
                                                 "Zero-Shot (stratified, PG cost, with hint plan)")
     ZS_PG_COST_WITH_HINT_PLAN = Name("zeroshot_pg_cost_with_hint_plan",
                                      "Zero-Shot (PG cost, with hint plan)")
+    ZS_WISIDXCOND = Name("zeroshot_with_is_index_cond", "Zero-Shot (with is index condition feature)")
 
     QPP_NET = Name("qppnet", "QPP-Net")
     QPP_NET_NO_COSTS = Name("qppnet_no_costs", "QPP-Net\n(w/o PG costs)")
@@ -100,6 +101,7 @@ class ModelConfig:
     include_hint_idx_workloads: bool = False
     include_gt30_hints: bool = False
     wandb_group: str = field(default=None)
+    include_complex_workloads: bool = False
 
     def get_model_dir(self, source_path: Paths, database: Dataset) -> Path:
         return source_path.Data.models / self.name.NAME / database.db_name
@@ -144,6 +146,9 @@ class ModelConfig:
 
         if (self.include_hint_workloads or self.only_hint_workloads) and self.include_gt30_hints:
             workload_names.append('workload_200k_s1_full_hints_gt30')
+
+        if self.include_complex_workloads:
+            workload_names.append('complex_workload_200k_s1')
 
         if self.type == ModelType.WL_AGNOSTIC:
             training_workloads = []
@@ -364,6 +369,11 @@ class ZSLearnFromTimeoutConfig(ZeroShotModelConfig):
 class ZeroShotModel2Dim(ZeroShotModelConfig):
     name: Name = ModelName.ZS_2DIM
     hidden_dim: int = 2
+
+
+class ZSWithIsIndexCond(ZeroShotModelConfig):
+    name: Name = ModelName.ZS_WISIDXCOND
+    featurization: Featurization = PostgresEstWithIsIndexCond
 
 
 @attrs.define(frozen=True, slots=False)

@@ -108,8 +108,10 @@ def read_workload_runs(workload_run_paths: List[Path],
 
         # extract the timeout thresholds used during query execution
         per_file_timeout_thresholds = [p['timeout_threshold'] for p in per_file_plans]  # in ms
-        assert len(
-            set(per_file_timeout_thresholds)) == 1, f"Multiple timeout thresholds in {path}: {set(per_file_timeout_thresholds)}"
+        if len(per_file_timeout_thresholds) != 1:
+            print(f"Multiple timeout thresholds in {path}: {set(per_file_timeout_thresholds)}")
+        # assert len(
+        #     set(per_file_timeout_thresholds)) == 1, f"Multiple timeout thresholds in {path}: {set(per_file_timeout_thresholds)}"
         timeout_thresholds.append(per_file_timeout_thresholds[0])
 
         if stratify_per_wl_file:

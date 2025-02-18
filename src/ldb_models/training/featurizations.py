@@ -166,6 +166,10 @@ class PostgresEstSystemCardDetail(Featurization):
     TABLE_FEATURES = ['reltuples', 'relpages']
 
 
+class PostgresEstWithIsIndexCond(PostgresEstSystemCardDetail):
+    FILTER_FEATURES = ['operator', 'is_index_cond']
+
+
 class PostgresEstWithPGCost(PostgresEstSystemCardDetail):
     PLAN_FEATURES = ['est_card', 'est_width', 'op_name', 'est_children_card', 'pg_cost']
 
