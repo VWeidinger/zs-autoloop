@@ -1,11 +1,12 @@
 from ldb_schema.datasets import dataset_list_dict
 from ldb_schema.paths import ClusterPaths
-from octopus.step import KillAllScreens, SetupVenv, RsyncCurrentRepo
+from octopus.step import KillAllScreens, SetupVenv, RsyncCurrentRepo, SetupRYEVenv
 
 from scripts.exp_runner.exp_runner import ExpRunner, TrainingServers
 
 if __name__ == '__main__':
     install_venv = False
+    install_rye = True
 
     setup_steps = [RsyncCurrentRepo(gitignore_path='.gitignore')]
 
@@ -14,15 +15,18 @@ if __name__ == '__main__':
                                      requirements_txt_filename=f'{ClusterPaths().Models.src}/requirements.txt',
                                      force=False,
                                      ))
+    if install_rye:
+        setup_steps.append(SetupRYEVenv())
 
     purge_steps = [KillAllScreens()]
 
-    node = TrainingServers.NODE03
+    node = TrainingServers.NODE09
 
     runner = ExpRunner(replicate=False,
                        node_names=[node["hostname"]],
-                       python_version=node["python"],
-                       available_sockets=[1])
+                       python_version='rye',
+                       available_sockets=[0,1],
+                       num_parallel_screens_or_jobs=1)
 
     # for dataset in datasets:
 
@@ -35,7 +39,7 @@ if __name__ == '__main__':
     eval_commands = [
         f'python3 gather_feature_stats.py '
         f'--database {" ".join([d.data_folder for d in datasets])} '
-        f'--workload workload_200k_s1.json join_order.json access_path_selection.json physical_operator.json physical_operator_w_idx.json '
+        f'--workload workload_200k_s1.json complex_workload_200k_s1.json join_order.json access_path_selection.json physical_operator.json physical_operator_w_idx.json join_order_job_w_idxs_combined.json '
         f'--file_name {file_name} '
         f'--target_folder {target_folder} '
         f'--runs_dir {ClusterPaths().Data.runs} '

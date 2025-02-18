@@ -52,7 +52,6 @@ class ModelName:
                                                 "Zero-Shot (stratified, PG cost, with hint plan)")
     ZS_PG_COST_WITH_HINT_PLAN = Name("zeroshot_pg_cost_with_hint_plan",
                                      "Zero-Shot (PG cost, with hint plan)")
-    ZS_WISIDXCOND = Name("zeroshot_with_is_index_cond", "Zero-Shot (with is index condition feature)")
 
     QPP_NET = Name("qppnet", "QPP-Net")
     QPP_NET_NO_COSTS = Name("qppnet_no_costs", "QPP-Net\n(w/o PG costs)")
@@ -369,11 +368,6 @@ class ZSLearnFromTimeoutConfig(ZeroShotModelConfig):
 class ZeroShotModel2Dim(ZeroShotModelConfig):
     name: Name = ModelName.ZS_2DIM
     hidden_dim: int = 2
-
-
-class ZSWithIsIndexCond(ZeroShotModelConfig):
-    name: Name = ModelName.ZS_WISIDXCOND
-    featurization: Featurization = PostgresEstWithIsIndexCond
 
 
 @attrs.define(frozen=True, slots=False)

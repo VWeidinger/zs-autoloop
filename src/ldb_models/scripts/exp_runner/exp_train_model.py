@@ -5,9 +5,10 @@ from ldb_schema.datasets import Dataset
 from ldb_schema.paths import ClusterPaths, LocalPaths
 from octopus.step import Rsync, KillAllScreens, SetupVenv, RsyncCurrentRepo, SetupRYEVenv
 
-from classes.classes import ModelConfig, ModelType, ZSWithIsIndexCond
+from classes.classes import ModelConfig, ModelType
 from classes.model_config_helper import parameterized_config
 from scripts.exp_runner.exp_runner import ExpRunner, TrainingServers
+from training.featurizations import PostgresEstWithIsIndexCond
 
 
 def generate_training_commands(datasets: List[Dataset], seeds: list[int], python_version: str, wandb_project: str,
@@ -19,7 +20,7 @@ def generate_training_commands(datasets: List[Dataset], seeds: list[int], python
                                eval_physical_operator: bool = False,
                                qo_eval_after_each_epoch: bool = False,
                                use_romans_runs: bool = False,
-                               is_pretrained:bool=False) -> List[str]:
+                               is_pretrained: bool = False) -> List[str]:
     if test_against:
         print(f'Testing the models against {test_against}')
 
@@ -175,10 +176,9 @@ if __name__ == '__main__':
     if install_rye:
         setup_steps.append(SetupRYEVenv())
 
-
-
     purge_steps = [KillAllScreens()]
-    pickup_steps = [Rsync(src=[ClusterPaths().Data.runs.as_posix()], dest=[LocalPaths().data], put=False, update=True, ssh_path=ssh_path)]
+    pickup_steps = [Rsync(src=[ClusterPaths().Data.runs.as_posix()], dest=[LocalPaths().data], put=False, update=True,
+                          ssh_path=ssh_path)]
 
     datasets = [
         Dataset('airline', max_no_joins=5),
@@ -211,7 +211,7 @@ if __name__ == '__main__':
         TrainingServers.NODE04,
         # TrainingServers.NODE05,
     ]
-    sockets = [0, 1]
+    sockets = [0,1]
     out_file_id_offset = 0
     num_parallel_screens = None
     num_parallel_jobs_dgx = 6
@@ -233,37 +233,32 @@ if __name__ == '__main__':
     # ===================
 
     # generate model configs
-    model_configs = [
-        # ScaledPostgresModelConfig(),
-        ZSWithIsIndexCond()
-    ]
+    model_configs = []
     for model_type in [
-        'postgres',
+        # 'postgres',
         'zeroshot',
         'dace',
-        'flat'
+        # 'flat'
     ]:
         if model_type == 'dace':
-            model_configs.extend(
-                [
-                    parameterized_config(model_type, wandb_group='baselines', pad_length=60), # for the job workload DACE needs a pad length of 60 (up to 60 operators in a plan - 30 is not enough)
-                    # parameterized_config(model_type, wandb_group='whintwl', pad_length=60, include_hint_workloads=True),
-                    # parameterized_config(model_type, wandb_group='whintidx', pad_length=60, include_hint_idx_workloads=True),
-                ]
-            )
+            model_specific_args = {'pad_length': 60}
         else:
-            model_configs.extend([
-                parameterized_config(model_type, wandb_group='baselines'),  # std
-                # parameterized_config(model_type, wandb_group='strat', stratified_workloads=True),  # strat
-                parameterized_config(model_type, wandb_group='whintwl', include_hint_workloads=True),  # hint
-                # parameterized_config(model_type, wandb_group='whintwl_strat', include_hint_workloads=True,
-                #                      stratified_workloads=True),  # hint_strat
-                # parameterized_config(model_type, wandb_group='whint_hintidx', include_hint_workloads=True, include_hint_idx_workloads=True),  # hint + idx
-                parameterized_config(model_type, wandb_group='whintidx', include_hint_idx_workloads=True),  # hint-idx
-                # parameterized_config(model_type, wandb_group='onlyhint', only_hint_workloads=True),  # hint_only
-                # parameterized_config(model_type, wandb_group='onlyhint_strat', only_hint_workloads=True,
-                #                      stratified_workloads=True),  # hint_only_strat
-            ])
+            model_specific_args = {}
+
+        model_configs.extend([
+            parameterized_config(model_type, wandb_group='baselines', **model_specific_args),  # std
+            parameterized_config(model_type, wandb_group='whintwl', include_hint_workloads=True, **model_specific_args), # hint
+            # # parameterized_config(model_type, wandb_group='whint_hintidx', include_hint_workloads=True, include_hint_idx_workloads=True, **model_specific_args),  # hint + idx
+            parameterized_config(model_type, wandb_group='whintidx', include_hint_idx_workloads=True,
+                                 **model_specific_args),  # hint-idx
+            # # parameterized_config(model_type, wandb_group='onlyhint', only_hint_workloads=True, **model_specific_args),  # hint_only
+            parameterized_config(model_type, wandb_group='wcomplex', include_complex_workloads=True,
+                                 **model_specific_args),  # complex
+            parameterized_config(model_type, wandb_group='whintidx_complex', include_complex_workloads=True,
+                                 include_hint_idx_workloads=True,
+                                 **model_specific_args),  # complex + hint-idx
+            parameterized_config(model_type, wandb_group='wIsIdxFeat', featurization = PostgresEstWithIsIndexCond,**model_specific_args) if model_type == 'zeroshot' else None,
+        ])
 
     model_configs = [model for model in model_configs if model is not None]
 

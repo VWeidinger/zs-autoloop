@@ -4,6 +4,8 @@ from typing import Dict
 
 import classes.classes as cls
 from classes.classes import ModelConfig, Name
+from training.featurizations import Featurization
+import training.featurizations as fts
 
 
 def parameterized_config(base_config_name: str, **args):
@@ -18,6 +20,8 @@ def parameterized_config(base_config_name: str, **args):
         assert '-' not in key, "Arguments should not contain underscores. This is not supported on the receiver side!"
         if value is True:
             arg_string_list.append(key)
+        elif key == 'featurization':
+            arg_string_list.append(value.__name__)
         else:
             arg_string_list.append(f"{key}{value}")
     model_name = f'pm-{base_config_name}-{"-".join(arg_string_list)}'
@@ -81,9 +85,22 @@ def get_parameterized_model_config(model_name: str, m_args: Dict) -> ModelConfig
 
     args = args[1:]
     args_dict = m_args.copy()
+
+    # featurziation dict
+    featurization_dict = get_featurization_dict()
+    print(featurization_dict,flush=True)
+
     for arg in args:
+        # check if arg is a featurization
+        if arg in featurization_dict.keys():
+            args_dict['featurization'] = featurization_dict[arg]
+            continue
+
+
         # check if arg ends with number and if so, split it
         param_name, number = split_if_ends_with_digits(arg)
+
+
 
         if number is not None:
             args_dict[param_name] = int(number)
@@ -94,3 +111,11 @@ def get_parameterized_model_config(model_name: str, m_args: Dict) -> ModelConfig
     args_dict['name'] = Name(model_name, model_name)
 
     return get_model_config(model_type, args_dict)
+
+def get_featurization_dict():
+    featurization_dict = dict()
+    for name, obj in fts.__dict__.items():
+        if inspect.isclass(obj) and issubclass(obj, Featurization):
+            featurization_dict[name] = obj
+
+    return featurization_dict
