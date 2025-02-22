@@ -208,7 +208,7 @@ if __name__ == '__main__':
         # TrainingServers.NODE00,
         TrainingServers.NODE02,
         TrainingServers.NODE03,
-        TrainingServers.NODE04,
+        # TrainingServers.NODE04,
         # TrainingServers.NODE05,
     ]
     sockets = [0,1]
@@ -246,18 +246,27 @@ if __name__ == '__main__':
             model_specific_args = {}
 
         model_configs.extend([
-            parameterized_config(model_type, wandb_group='baselines', **model_specific_args),  # std
-            parameterized_config(model_type, wandb_group='whintwl', include_hint_workloads=True, **model_specific_args), # hint
-            # # parameterized_config(model_type, wandb_group='whint_hintidx', include_hint_workloads=True, include_hint_idx_workloads=True, **model_specific_args),  # hint + idx
-            parameterized_config(model_type, wandb_group='whintidx', include_hint_idx_workloads=True,
-                                 **model_specific_args),  # hint-idx
-            # # parameterized_config(model_type, wandb_group='onlyhint', only_hint_workloads=True, **model_specific_args),  # hint_only
-            parameterized_config(model_type, wandb_group='wcomplex', include_complex_workloads=True,
-                                 **model_specific_args),  # complex
-            parameterized_config(model_type, wandb_group='whintidx_complex', include_complex_workloads=True,
-                                 include_hint_idx_workloads=True,
-                                 **model_specific_args),  # complex + hint-idx
-            parameterized_config(model_type, wandb_group='wIsIdxFeat', featurization = PostgresEstWithIsIndexCond,**model_specific_args) if model_type == 'zeroshot' else None,
+            # parameterized_config(model_type, wandb_group='baselines', include_pg_opt_workloads=True, **model_specific_args),  # std
+            # parameterized_config(model_type, wandb_group='whintwl', include_hint_workloads=True,include_pg_opt_workloads=True,  **model_specific_args), # hint
+            # # # parameterized_config(model_type, wandb_group='whint_hintidx', include_hint_workloads=True, include_hint_idx_workloads=True, **model_specific_args),  # hint + idx
+            # parameterized_config(model_type, wandb_group='whintidx', include_hint_idx_workloads=True,include_pg_opt_workloads=True,
+            #                      **model_specific_args),  # hint-idx
+            # # # parameterized_config(model_type, wandb_group='onlyhint', only_hint_workloads=True, **model_specific_args),  # hint_only
+            # parameterized_config(model_type, wandb_group='wcomplex', include_complex_workloads=True,include_pg_opt_workloads=True,
+            #                      **model_specific_args),  # complex
+            # parameterized_config(model_type, wandb_group='whintidx_complex', include_complex_workloads=True,include_pg_opt_workloads=True,
+            #                      include_hint_idx_workloads=True,
+            #                      **model_specific_args),  # complex + hint-idx
+            # parameterized_config(model_type, wandb_group='wIsIdxFeat', featurization = PostgresEstWithIsIndexCond,include_pg_opt_workloads=True, **model_specific_args) if model_type == 'zeroshot' else None,
+            parameterized_config(model_type, wandb_group='wIsIdxFeat_complex_hintidxs_nopgopt', featurization=PostgresEstWithIsIndexCond, include_complex_workloads=True, include_hint_idx_workloads=True,
+                                 **model_specific_args) if model_type == 'zeroshot' else None,
+            parameterized_config(model_type, wandb_group='wIsIdxFeat_complex',
+                                 featurization=PostgresEstWithIsIndexCond, include_complex_workloads=True,include_pg_opt_workloads=True,
+                                 **model_specific_args) if model_type == 'zeroshot' else None,
+            parameterized_config(model_type, wandb_group='wIsIdxFeat_complex_pgopt_scanhint',
+                                 featurization=PostgresEstWithIsIndexCond, include_complex_workloads=True,
+                                 include_hint_idx_workloads=True, include_scan_only_hint_workloads=True,
+                                 **model_specific_args) if model_type == 'zeroshot' else None,
         ])
 
     model_configs = [model for model in model_configs if model is not None]

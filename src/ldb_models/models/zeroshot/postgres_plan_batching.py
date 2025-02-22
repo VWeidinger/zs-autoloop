@@ -154,19 +154,28 @@ def plan_to_graph(node, database_id, plan_depths, plan_features, plan_to_plan_ed
     #  node)
     filter = plan_params.get('filter')
     if filter is not None:
+        assert 'is_index_cond' in filter, f'No is_index_cond in filter: {filter} / {node}'
         db_column_features = db_statistics[database_id]["column_stats"]
-
-        parse_predicates(db_column_features, feature_statistics, filter, filter_to_plan_edges,
+        try:
+            parse_predicates(db_column_features, feature_statistics, filter, filter_to_plan_edges,
                          plan_featurization, predicate_col_features, predicate_depths, intra_predicate_edges,
                          logical_preds, plan_node_id=plan_node_id)
+        except Exception as e:
+            print(f'Error in filter: {filter}', flush=True)
+            raise e
 
     # featurize join conditions
     join = plan_params.get('join')
     if join is not None:
+        assert 'is_index_cond' in join, f'No is_index_cond in join: {join} / {node}'
         db_column_features = db_statistics[database_id]["column_stats"]
-        parse_predicates(db_column_features, feature_statistics, join, filter_to_plan_edges,
+        try:
+            parse_predicates(db_column_features, feature_statistics, join, filter_to_plan_edges,
                          plan_featurization, predicate_col_features, predicate_depths, intra_predicate_edges,
                          logical_preds, plan_node_id=plan_node_id, is_join=True)
+        except Exception as e:
+            print(f'Error in join: {join}', flush=True)
+            raise e
 
     # tables
     table_id = plan_params.get('table_id')

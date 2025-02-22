@@ -95,10 +95,11 @@ class ModelConfig:
     column_statistics: bool = False
     word_embeddings: bool = False
     stratified_workloads: bool = False
+    include_pg_opt_workloads: bool = False
     include_hint_workloads: bool = False
-    only_hint_workloads: bool = False
     include_hint_idx_workloads: bool = False
     include_gt30_hints: bool = False
+    include_scan_only_hint_workloads: bool = False
     wandb_group: str = field(default=None)
     include_complex_workloads: bool = False
 
@@ -129,25 +130,29 @@ class ModelConfig:
             return None
 
     def get_training_workloads(self, training_datasets: List[Dataset], target_dataset: Dataset,
-                               wl_name: str = "workload_200k_s1", stratified_workload: bool = False,
+                               stratified_workload: bool = False,
                                romans_runs: bool = False) -> List[str]:
 
         # select the workload to be used
+        workload_names = []
+
+        if self.include_pg_opt_workloads:
+            workload_names.append('workload_200k_s1')
+
         if self.include_hint_workloads:
-            workload_names = [wl_name, 'workload_200k_s1_full_hints_lt30']
-        elif self.only_hint_workloads:
-            workload_names = ['workload_200k_s1_full_hints_lt30']
-        else:
-            workload_names = [wl_name]
+            workload_names.append('workload_200k_s1_full_hints_lt30')
 
         if self.include_hint_idx_workloads:
             workload_names.append('workload_200k_s1_full_hints_idx')
 
-        if (self.include_hint_workloads or self.only_hint_workloads) and self.include_gt30_hints:
+        if self.include_gt30_hints:
             workload_names.append('workload_200k_s1_full_hints_gt30')
 
         if self.include_complex_workloads:
             workload_names.append('complex_workload_200k_s1')
+
+        if self.include_scan_only_hint_workloads:
+            workload_names.append('scan_only_s1_access_path_hints')
 
         if self.type == ModelType.WL_AGNOSTIC:
             training_workloads = []
