@@ -1,7 +1,7 @@
 import functools
 from json import JSONDecodeError
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Dict
 
 import numpy as np
 from ldb_schema.load_schema import load_json
@@ -166,15 +166,19 @@ def create_datasets(workload_run_paths,
                     val_ratio=0.15,
                     shuffle_before_split=True, is_test_dataset: bool = False,
                     do_not_limit_file: bool = False,
-                    stratify_dataset: bool = False, stratify_per_wl_file: bool = False) -> (
+                    stratify_dataset: bool = False, stratify_per_wl_file: bool = False, inject_plans:List[Dict]=None, inject_database_statistics:Dict=None) -> (
         Pipeline, PlanDataset, PlanDataset, PlanDataset, dict):
-    plans, database_statistics = read_workload_runs(workload_run_paths=workload_run_paths,
+    if inject_plans is None or inject_database_statistics is None:
+        plans, database_statistics = read_workload_runs(workload_run_paths=workload_run_paths,
                                                     limit_plans_per_file=model_config.limit_plans_per_file if not do_not_limit_file else None,
                                                     limit_plans_overall=model_config.limit_plans_overall if not do_not_limit_file else None,
                                                     input_format=model_config.input_format,
                                                     include_timeout_queries=model_config.include_timeout_queries and not is_test_dataset,
                                                     stratify_dataset=stratify_dataset,
                                                     stratify_per_wl_file=stratify_per_wl_file)
+    else:
+        plans = inject_plans
+        database_statistics = inject_database_statistics
 
     no_plans = len(plans)
     plan_indexes = list(range(no_plans))
@@ -232,7 +236,6 @@ def create_zeroshot_dataloader(workload_runs: WorkloadRuns,
     # Postgres_plan_collator does the heavy lifting of creating the graphs and extracting the features and thus
     # requires both database statistics but also feature statistics
     label_norm = Optional[Pipeline]
-    train_loader, val_loader, test_loaders = Optional[DataLoader], Optional[DataLoader], List[Optional[DataLoader]]
 
     feature_statistics = load_json(str(statistics_file), namespace=False)
     assert feature_statistics != {}, "Feature statistics file is empty!"
@@ -262,7 +265,7 @@ def create_zeroshot_dataloader(workload_runs: WorkloadRuns,
                            num_workers=model_config.num_workers,
                            pin_memory=data_loader_options.pin_memory)
 
-    if workload_runs.train_workload_runs:
+    if workload_runs.train_workload_runs and len(workload_runs.train_workload_runs) > 0:
         # Split plans into train/test/validation set
         print("Creating dataloader for training and validation data")
         label_norm, train_dataset, val_dataset, database_statistics \
@@ -287,7 +290,7 @@ def create_zeroshot_dataloader(workload_runs: WorkloadRuns,
     else:
         train_loader, val_loader = None, None
 
-    if workload_runs.test_workload_runs:
+    if workload_runs.test_workload_runs and len(workload_runs.test_workload_runs) > 0:
         # For each test workload run create a distinct test loader
         print("Creating dataloader for test data")
         test_loaders = []
@@ -312,5 +315,7 @@ def create_zeroshot_dataloader(workload_runs: WorkloadRuns,
 
             print(f"Created datasets of size: "
                   f"test: {len(test_dataset)}")
+    else:
+        test_loaders = None
 
     return label_norm, feature_statistics, train_loader, val_loader, test_loaders

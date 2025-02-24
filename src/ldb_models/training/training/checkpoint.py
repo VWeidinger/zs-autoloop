@@ -94,7 +94,9 @@ def load_checkpoint(model: nn.Module,
                     filetype: str = '.pt',
                     optimizer = None,
                     metrics = None,
-                    prefer_ft_rank:bool = False):
+                    prefer_ft_rank:bool = False,
+                    manual_model_dir:str=None,
+                    manual_model_name:str=None):
     """
     Load all training state from a checkpoint. Does not work across devices (e.g., GPU->CPU).
     """
@@ -104,18 +106,27 @@ def load_checkpoint(model: nn.Module,
     finished = False
     csv_stats = []
 
-    model_name = f'{config.name.NAME}_{config.seed}'
-    if prefer_ft_rank:
-        rank_model_name = f'{model_name}_rankmodel'
-        checkpoint_file = os.path.join(target_path, f'{rank_model_name}{filetype}')
-        if os.path.exists(checkpoint_file):
-            # we found a rank model checkpoint
-            model_name = rank_model_name
+    if manual_model_name is None:
+        model_name = f'{config.name.NAME}_{config.seed}'
+        if prefer_ft_rank:
+            rank_model_name = f'{model_name}_rankmodel'
+            checkpoint_file = os.path.join(target_path, f'{rank_model_name}{filetype}')
+            if os.path.exists(checkpoint_file):
+                # we found a rank model checkpoint
+                model_name = rank_model_name
+    else:
+        model_name = manual_model_name
+
+    if manual_model_dir is not None:
+        target_path = manual_model_dir
 
     if target_path is not None:
         try:
-            checkpoint = torch.load(os.path.join(target_path, f'{model_name}{filetype}'))
-            #checkpoint = torch.load(os.path.join(target_path, f'{model_name}{filetype}'), map_location=torch.device('cpu'))
+            if torch.cuda.is_available():
+                checkpoint = torch.load(os.path.join(target_path, f'{model_name}{filetype}'))
+            else:
+                checkpoint = torch.load(os.path.join(target_path, f'{model_name}{filetype}'), map_location=torch.device('cpu'))
+
             epochs_wo_improvement = checkpoint['epochs_wo_improvement']
             epoch = checkpoint['epoch']
             model.load_state_dict(checkpoint['model'])
