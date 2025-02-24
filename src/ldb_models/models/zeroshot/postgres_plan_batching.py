@@ -98,15 +98,27 @@ def plan_to_graph(node, database_id, plan_depths, plan_features, plan_to_plan_ed
                   filter_to_plan_edges, predicate_col_features, output_column_to_plan_edges, output_column_features,
                   column_to_output_column_edges, column_features, table_features, table_to_plan_edges,
                   output_column_idx, column_idx, table_idx, plan_featurization, predicate_depths, intra_predicate_edges,
-                  logical_preds, parent_node_id=None, depth=0):
-    plan_node_id = len(plan_depths)
-    plan_depths.append(depth)
+                  logical_preds, parent_node_id=None, depth=0, skip_top_aggregation:bool=False):
+
+    plan_params = node["plan_parameters"]
+
+    if 'Aggregate' in plan_params['op_name'] and skip_top_aggregation:
+        assert len(node["children"]) == 1, f'Aggregation has more than one child: {node}'
+        plan_to_graph(node["children"][0], database_id, plan_depths, plan_features, plan_to_plan_edges, db_statistics,
+                      feature_statistics, filter_to_plan_edges, predicate_col_features, output_column_to_plan_edges,
+                      output_column_features, column_to_output_column_edges, column_features, table_features,
+                      table_to_plan_edges, output_column_idx, column_idx, table_idx, plan_featurization,
+                      predicate_depths, intra_predicate_edges, logical_preds, parent_node_id=parent_node_id, depth=depth, skip_top_aggregation=False)
+        return
 
     # add plan features
-    plan_params = node["plan_parameters"]
     curr_plan_features = [encode(column, plan_params, feature_statistics) for column in
                           plan_featurization.PLAN_FEATURES]
     plan_features.append(curr_plan_features)
+
+    # compute plan node id
+    plan_node_id = len(plan_depths)
+    plan_depths.append(depth)
 
     # encode output columns which can in turn have several columns as a product in the aggregation
     output_columns = plan_params.get('output_columns')
@@ -205,7 +217,7 @@ def plan_to_graph(node, database_id, plan_depths, plan_features, plan_to_plan_ed
                       filter_to_plan_edges, predicate_col_features, output_column_to_plan_edges, output_column_features,
                       column_to_output_column_edges, column_features, table_features, table_to_plan_edges,
                       output_column_idx, column_idx, table_idx, plan_featurization, predicate_depths,
-                      intra_predicate_edges, logical_preds, parent_node_id=plan_node_id, depth=depth + 1)
+                      intra_predicate_edges, logical_preds, parent_node_id=plan_node_id, depth=depth + 1, skip_top_aggregation=skip_top_aggregation)
 
 
 def parse_predicates(db_column_features, feature_statistics, filter, filter_to_plan_edges, plan_featurization,
@@ -277,7 +289,7 @@ def parse_predicates(db_column_features, feature_statistics, filter, filter_to_p
 
 
 def postgres_plan_collator(plans: List[Tuple], feature_statistics: dict[dict] = None, db_statistics: dict = None,
-                           plan_featurization: Featurization = None, test_mode: bool = False):
+                           plan_featurization: Featurization = None, test_mode: bool = False, skip_top_aggregation:bool=False):
     """
     Combines physical plans into a large graph that can be fed into ML models.
     :return:
@@ -351,7 +363,8 @@ def postgres_plan_collator(plans: List[Tuple], feature_statistics: dict[dict] = 
                       feature_statistics, filter_to_plan_edges, filter_features, output_column_to_plan_edges,
                       output_column_features, column_to_output_column_edges, column_features, table_features,
                       table_to_plan_edges, output_column_idx, column_idx, table_idx,
-                      plan_featurization, predicate_depths, intra_predicate_edges, logical_preds)
+                      plan_featurization, predicate_depths, intra_predicate_edges, logical_preds,
+                      skip_top_aggregation=skip_top_aggregation)
 
 
     assert len(labels) == len(plans)

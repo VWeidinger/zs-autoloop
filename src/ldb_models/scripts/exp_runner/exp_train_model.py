@@ -237,7 +237,7 @@ if __name__ == '__main__':
     for model_type in [
         # 'postgres',
         'zeroshot',
-        'dace',
+        # 'dace',
         # 'flat'
     ]:
         if model_type == 'dace':
@@ -258,14 +258,19 @@ if __name__ == '__main__':
             #                      include_hint_idx_workloads=True,
             #                      **model_specific_args),  # complex + hint-idx
             # parameterized_config(model_type, wandb_group='wIsIdxFeat', featurization = PostgresEstWithIsIndexCond,include_pg_opt_workloads=True, **model_specific_args) if model_type == 'zeroshot' else None,
-            parameterized_config(model_type, wandb_group='wIsIdxFeat_complex_hintidxs_nopgopt', featurization=PostgresEstWithIsIndexCond, include_complex_workloads=True, include_hint_idx_workloads=True,
+            # parameterized_config(model_type, wandb_group='wIsIdxFeat_complex_hintidxs_nopgopt', featurization=PostgresEstWithIsIndexCond, include_complex_workloads=True, include_hint_idx_workloads=True,
+            #                      **model_specific_args) if model_type == 'zeroshot' else None,
+            # parameterized_config(model_type, wandb_group='wIsIdxFeat_complex',
+            #                      featurization=PostgresEstWithIsIndexCond, include_complex_workloads=True,include_pg_opt_workloads=True,
+            #                      **model_specific_args) if model_type == 'zeroshot' else None,
+            # parameterized_config(model_type, wandb_group='wIsIdxFeat_complex_pgopt_scanhint',
+            #                      featurization=PostgresEstWithIsIndexCond, include_complex_workloads=True,
+            #                      include_hint_idx_workloads=True, include_scan_only_hint_workloads=True,
+            #                      **model_specific_args) if model_type == 'zeroshot' else None,
+            parameterized_config(model_type, wandb_group='notopaggr',include_pg_opt_workloads=True,skip_top_aggregation=True,
                                  **model_specific_args) if model_type == 'zeroshot' else None,
-            parameterized_config(model_type, wandb_group='wIsIdxFeat_complex',
-                                 featurization=PostgresEstWithIsIndexCond, include_complex_workloads=True,include_pg_opt_workloads=True,
-                                 **model_specific_args) if model_type == 'zeroshot' else None,
-            parameterized_config(model_type, wandb_group='wIsIdxFeat_complex_pgopt_scanhint',
-                                 featurization=PostgresEstWithIsIndexCond, include_complex_workloads=True,
-                                 include_hint_idx_workloads=True, include_scan_only_hint_workloads=True,
+            parameterized_config(model_type, wandb_group='notopaggr', include_pg_opt_workloads=True, include_scan_only_hint_workloads=True,
+                                 skip_top_aggregation=True,
                                  **model_specific_args) if model_type == 'zeroshot' else None,
         ])
 

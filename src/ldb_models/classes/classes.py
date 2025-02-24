@@ -348,6 +348,7 @@ class ZeroShotModelConfig(ModelConfig):
     collator_func: Callable = postgres_plan_collator
     input_format: InputFormats = InputFormats.parsed
     device: str = "cuda:[socket]"  # Device selection is handled by octopus
+    skip_top_aggregation: bool = False
 
 
 @attrs.define(frozen=True, slots=False)
