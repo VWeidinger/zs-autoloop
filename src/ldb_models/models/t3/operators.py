@@ -5,7 +5,6 @@ from typing import Optional
 from models.t3.util import AutoNumber
 
 
-
 class OperatorType(AutoNumber):
     TableScan = ()
     InlineTable = ()
@@ -84,16 +83,28 @@ class Operator:
         return 1
 
 
-def parse_operator_type(op: dict) -> OperatorType:
-    name = op["operator"]
-    name = name.rstrip(digits)
-    if name == "join":
-        if op["physicalOperator"] in ("hashjoin", "singletonjoin", "bnljoin"):
+def parse_operator_type(op: dict, dbms:str= 'pg') -> OperatorType:
+    name = op['plan_parameters']["op_name"]
+
+    if dbms == 'umbra':
+        if name in ("hashjoin", "singletonjoin", "bnljoin"):
             return OperatorType.HashJoin
-        elif op["physicalOperator"] == "indexnljoin":
+        elif name == "indexnljoin":
             return OperatorType.IndexNLJoin
 
-    name_map = {
+    pg_name_map = {
+        'Seq Scan': OperatorType.TableScan,
+        'Index Scan':OperatorType.TableScan,
+        'Index Only Scan': OperatorType.TableScan,
+        'Hash Join': OperatorType.HashJoin,
+        'Index Nested Loop': OperatorType.IndexNLJoin,
+        'Nested Loop': None,
+        'Merge Join': None,
+        'Sort': OperatorType.Sort,
+    }
+
+    # umbra operatores
+    umbra_name_map = {
         "fileoutput": OperatorType.FileOutput,
         "csvwriter": OperatorType.CsvWriter,
         "sort": OperatorType.Sort,
@@ -113,6 +124,13 @@ def parse_operator_type(op: dict) -> OperatorType:
         "earlyprobe": OperatorType.EarlyProbe,
         "analyzeplan": OperatorType.AnalyzePlan,
     }
+
+    if dbms == 'pg':
+        name_map = pg_name_map
+    elif dbms == 'umbra':
+        name_map = umbra_name_map
+    else:
+        raise ValueError(f"Unknown dbms {dbms}")
+
     assert name in name_map, f"{name} missing in operator name map {name_map}"
     return name_map[name]
-

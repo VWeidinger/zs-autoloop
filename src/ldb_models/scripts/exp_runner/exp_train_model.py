@@ -5,7 +5,7 @@ from ldb_schema.datasets import Dataset
 from ldb_schema.paths import ClusterPaths, LocalPaths
 from octopus.step import Rsync, KillAllScreens, SetupVenv, RsyncCurrentRepo, SetupRYEVenv
 
-from classes.classes import ModelConfig, ModelType
+from classes.classes import ModelConfig, ModelType, T3TreeModelConfig, T3ModelConfig
 from classes.model_config_helper import parameterized_config
 from scripts.exp_runner.exp_runner import ExpRunner, TrainingServers
 from training.featurizations import PostgresEstWithIsIndexCond
@@ -84,6 +84,8 @@ def generate_training_commands(datasets: List[Dataset], seeds: list[int], python
                 model_type = 'dace'
             elif model_type.startswith('flat'):
                 model_type = 'flat'
+            elif model_type.startswith('t3'):
+                model_type = 't3'
             else:
                 raise ValueError(f"Model type {model_type} not recognized")
 
@@ -206,10 +208,11 @@ if __name__ == '__main__':
     seeds = [1]
     nodes = [
         # TrainingServers.NODE00,
-        TrainingServers.NODE02,
-        TrainingServers.NODE03,
+        # TrainingServers.NODE02,
+        # TrainingServers.NODE03,
         # TrainingServers.NODE04,
         # TrainingServers.NODE05,
+        TrainingServers.NODE09,
     ]
     sockets = [0,1]
     out_file_id_offset = 0
@@ -219,7 +222,7 @@ if __name__ == '__main__':
     # ===================
     # CONFIGS
     # ===================
-    quick_run = False  # if True, it will run only a few epochs on a few workloads
+    quick_run = True  # if True, it will run only a few epochs on a few workloads
     pt_profiler = False  # Profiler for PyTorch
     test_against = 'imdb'  # if not set, will test against all in an leave one out style
     ft_with_ranking = False  # fine-tune with ranking (pretrains a model and then fine-tunes it with ranking)
@@ -236,7 +239,7 @@ if __name__ == '__main__':
     model_configs = []
     for model_type in [
         # 'postgres',
-        'zeroshot',
+        # 'zeroshot',
         # 'dace',
         # 'flat'
     ]:
@@ -277,7 +280,7 @@ if __name__ == '__main__':
     model_configs = [model for model in model_configs if model is not None]
 
     # # Standard Models
-    # model_configs = [
+    model_configs = [
     #     # ScaledPostgresModelConfig(),  # --> Working
     #     # FlatModelConfig(),  # --> Working
     #     # E2EModelConfig(),                   # --> ToDo: Adapt to new codebase and generate sentences
@@ -315,7 +318,8 @@ if __name__ == '__main__':
     #     # QPPModelActCardsConfig(),
     #     # DACEModelActCardConfig(),
     #     # ZeroShotModelActCardConfig(),
-    # ]
+        T3ModelConfig(include_pg_opt_workloads=True),
+    ]
 
     runner = ExpRunner(replicate=False,
                        node_names=[node["hostname"] for node in nodes],

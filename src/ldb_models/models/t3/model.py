@@ -3,11 +3,12 @@ from abc import ABC, abstractmethod
 import lightgbm as lgb
 import numpy as np
 
+from models.t3.benchmarked_query import BenchmarkedQuery
 from models.t3.features import FeatureMapper
 from models.t3.query_plan import QueryPlan
 
 
-class Model(ABC):
+class T3Model(ABC):
     tree: lgb.Booster
 
     @abstractmethod
@@ -23,7 +24,7 @@ class Model(ABC):
         pass
 
 
-class TreeModel(Model):
+class TreeModel(T3Model):
     """
     Predicts execution time of whole pipeline
     """
@@ -70,7 +71,7 @@ class FlatTreeModel:
         return self._feature_mapper
 
 
-class PerTupleTreeModel(Model):
+class PerTupleTreeModel(T3Model):
     """
     Predicts execution time of a single tuple in a pipeline
     """
@@ -84,8 +85,8 @@ class PerTupleTreeModel(Model):
         return sum(self.estimate_pipeline_runtime(query))
 
     def estimate_pipeline_runtime(
-        self,
-        query: "BenchmarkedQuery",
+            self,
+            query: "BenchmarkedQuery",
     ) -> list[float]:
         x = query.get_feature_matrix(self._feature_mapper)
         scan_sizes = self._feature_mapper.get_pipeline_scan_sizes(query.query_plan)
@@ -93,9 +94,9 @@ class PerTupleTreeModel(Model):
         return [max(0.0, float(e)) for e in pred]
 
     def predict(
-        self,
-        x,
-        scan_sizes,
+            self,
+            x,
+            scan_sizes,
     ) -> np.ndarray:
         mask = np.any(x != 0, axis=1)
         pred = self.tree.predict(x).flatten()

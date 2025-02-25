@@ -1,10 +1,17 @@
+from enum import Enum
 from functools import cmp_to_key
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Dict, List
 import math
 
 from models.t3.database import Database
 from models.t3.operator_stages import ExecutionPhase, Pipeline, OperatorStage, build_pipeline
 from models.t3.operators import Operator, OperatorType, parse_operator_type, Expressions
+
+
+class CardType(Enum):
+    pg = 1
+    act = 2
+    deepdb = 3
 
 class QueryPlan:
     operators: dict[int, Operator]
@@ -14,55 +21,47 @@ class QueryPlan:
     ius: dict[str, float]  # maps from iu name to estimated size
     predicted_cardinalities: bool
 
-    def __init__(self, plan: dict, db: Database, predicted_cardinalities: bool):
-        self.json_plan = plan["plan"]
+    def __init__(self, plan: dict, card_type:CardType, db_statistics:Dict):
+        self.db_statistics = db_statistics
+        self.json_plan = plan
         self.operators = {}
-        self.db = db
-        self.predicted_cardinalities = predicted_cardinalities
-        self.ius = self._parse_ius(plan["ius"])
-        self._parse_operator(self.json_plan, [])
+        self.ius = None #self._parse_ius(plan["ius"]) # TODO implement
+        self._parse_operator(self.json_plan, [], card_type=card_type)
+
 
     @staticmethod
     def _parse_ius(ius: list[dict]) -> dict[str, float]:
-        return {iu["iu"]: iu["estimatedSize"] for iu in ius}
+        return {iu["iu"]: iu["estimatedSize"] for iu in ius} # TODO not available in postgres
 
     @staticmethod
-    def _get_output_cardinality(op: dict, predicted_cardinalities: bool) -> float:
-        output_cardinality = 0
-        found = False
-        if "cardinality" in op and op["operator"] == "tablescan":
-            # tablescan ops in below nested loop join operators have no analyzePlanCardinality
-            output_cardinality = op["cardinality"]
-            found = True
-        if "analyzePlanCardinality" in op and not predicted_cardinalities:
-            # we overwrite the cardinality if correct cardinalities are present
-            output_cardinality = op["analyzePlanCardinality"]
-            found = True
-        if not found:
-            assert True, "could not find output cardinality"
-        return output_cardinality
-
-    @staticmethod
-    def _get_left_cardinality(op: dict, operator_type: OperatorType, predicted_cardinalities: bool) -> float:
-        assert operator_type.is_join_type()
-        if (predicted_cardinalities or "analyzePlanCardinality" not in op["left"]) and "cardinality" in op["left"]:
-            return op["left"]["cardinality"]
+    def _get_output_cardinality(op: dict, card_type:CardType) -> float:
+        if card_type == CardType.pg:
+            return op['plan_parameters']['est_card']
+        elif card_type == CardType.act:
+            return op['plan_parameters']['act_card']
+        elif card_type == CardType.deepdb:
+            return op['plan_parameters']['deepdb_card']
         else:
-            return op["left"]["analyzePlanCardinality"]
+            raise ValueError(f"Unknown cardinality type {card_type}")
+
+    @staticmethod
+    def _get_left_cardinality(op: dict, operator_type: OperatorType, card_type:CardType) -> float:
+        assert operator_type.is_join_type()
+        return QueryPlan._get_output_cardinality(op["left"], card_type= card_type)
 
     def _get_table_name(self, op: dict) -> str:
         """
         our database does not give us quotes on table names, so we add them if needed
         """
-        return self.db.schema.quote_table_name(op["tablename"])
+        return op['plan_parameters']['table_name']
 
-    def _get_input_cardinality(self, op: dict, operator_type: OperatorType, predicted_cardinalities: bool) -> float:
+    def _get_input_cardinality(self, op: dict, operator_type: OperatorType, card_type:CardType) -> float:
         if operator_type.is_join_type():
-            return self._get_left_cardinality(op, operator_type, predicted_cardinalities)
+            return self._get_left_cardinality(op, operator_type, card_type=card_type)
         elif operator_type == OperatorType.TableScan:
-            return self.db.schema.get_table_scan_size(self._get_table_name(op))
+            return self.db_statistics['table_stats_dict'][self._get_table_name(op)]['reltuples']
         elif operator_type in (OperatorType.PipelineBreakerScan, OperatorType.InlineTable):
-            return self._get_output_cardinality(op, predicted_cardinalities)
+            return self._get_output_cardinality(op, card_type=card_type)
             # return op["cardinality"]
         elif operator_type == OperatorType.MultiWayJoin:
             return 0
@@ -70,37 +69,23 @@ class QueryPlan:
             if op["operation"] == "unionall":
                 return 0
             else:
-                return self._get_output_cardinality(op, predicted_cardinalities)
+                return self._get_output_cardinality(op, card_type=card_type)
         else:
-            while not (
-                ("analyzePlanCardinality" in op["input"] and not predicted_cardinalities)
-                or "cardinality" in op["input"]
-            ):
-                op = op["input"]
-            if "analyzePlanCardinality" in op["input"] and not predicted_cardinalities:
-                return op["input"]["analyzePlanCardinality"]
-            else:
-                return op["input"]["cardinality"]
+            assert 'input' in op, f'operator {op["operator"]} has more than one child'
+            return self._get_output_cardinality(op['input'], card_type=card_type)
 
     def _get_right_cardinality(
-        self, op: dict, operator_type: OperatorType, predicted_cardinalities: bool
+        self, op: dict, operator_type: OperatorType, card_type:CardType
     ) -> Optional[float]:
         if operator_type == OperatorType.IndexNLJoin:
-            return self._get_input_cardinality(op["right"], parse_operator_type(op["right"]), predicted_cardinalities)
+            return self._get_input_cardinality(op["right"], parse_operator_type(op["right"]), card_type=card_type) # right side is probe side (left is index)
         if operator_type.is_join_type():
-            return QueryPlan._get_output_cardinality(op["right"], predicted_cardinalities)
-            # return op["right"]["cardinality"]
+            return QueryPlan._get_output_cardinality(op["right"], card_type=card_type)
         else:
             return None
 
     def _get_tuple_size(self, op: dict) -> float:
-        iu_sizes = []
-        for iu in op["producedIUs"]:
-            if type(iu) == str:
-                iu_sizes.append(self.ius[iu])
-            else:
-                iu_sizes.append(iu["estimatedSize"])
-        return sum(iu_sizes)
+        return op['plan_parameters']['est_width'] # TODO not sure why ius where used for umbra here!
 
     @staticmethod
     def _annotate_child(parent: Operator, child: Operator):
@@ -128,37 +113,39 @@ class QueryPlan:
     def _featurize_expression(
         expression: dict, result: Expressions, incoming_selectivity: float, expression_selectivity: float
     ):
-        if "mode" in expression and expression["mode"] == "filter":
-            QueryPlan._featurize_expression(expression["value"], result, incoming_selectivity, expression_selectivity)
-        elif "mode" in expression and expression["mode"] == "joinfilter":
+        # join
+        if 'table_name2' in expression:
             result.join_filter_count += 1
-        elif ("mode" in expression and expression["mode"] in ("<", "<=", ">", ">=", "=", "!=", "isnotnull", "is")) or (
-            "expression" in expression and expression["expression"] in ("compare", "isnotnull", "is")
-        ):
+        elif expression['operator'] in ("<", "<=", ">", ">=", "=", "!=", "isnotnull", "is", 'IS NOT NULL'):
             # null checks should be similarly cheap as comparisons
             result.compare_count += 1
             result.compare_selectivity += incoming_selectivity
-        elif "expression" in expression and expression["expression"] == "not":
-            QueryPlan._featurize_expression(expression["input"], result, incoming_selectivity, expression_selectivity)
-        elif "expression" in expression and expression["expression"] == "or":
+        # NOT
+        elif expression["operator"] in ("not",'NOT'):
+            assert len(expression["children"]) == 1, f"not operator with more than one child: {expression}"
+            QueryPlan._featurize_expression(expression["children"][0], result, incoming_selectivity, expression_selectivity)
+        # OR
+        elif expression["operator"] in ("or",'OR'):
             result.or_expression_count += 1
             result.or_selectivity += incoming_selectivity
-            n_expressions = len(expression["input"])
+            n_expressions = len(expression["children"])
             outgoing_sel = incoming_selectivity * expression_selectivity
             # we assume that number of expressions reached is uniformly distributed
             single_expression_sel = (incoming_selectivity - outgoing_sel) / n_expressions
-            for i, input in enumerate(expression["input"]):
+            for i, input in enumerate(expression["children"]):
                 current_incoming_sel = incoming_selectivity - i * single_expression_sel
                 QueryPlan._featurize_expression(input, result, current_incoming_sel, single_expression_sel)
-        elif "expression" in expression and expression["expression"] == "and":
-            n_expressions = len(expression["input"])
+        # AND
+        elif expression['operator'] in ("and",'AND'):
+            n_expressions = len(expression['children'])
             outgoing_sel = incoming_selectivity * expression_selectivity
             # we assume that number of expressions reached is uniformly distributed
             single_expression_sel = (incoming_selectivity - outgoing_sel) / n_expressions
-            for i, input in enumerate(expression["input"]):
+            for i, input in enumerate(expression['children']):
                 current_incoming_sel = incoming_selectivity - i * single_expression_sel
                 QueryPlan._featurize_expression(input, result, current_incoming_sel, single_expression_sel)
-        elif "expression" in expression and expression["expression"] == "in":
+        # IN
+        elif expression["operator"] in ("in",'IN'):
             result.in_expression_count += 1
             result.in_expression_selectivity += incoming_selectivity
         elif ("mode" in expression and expression["mode"] in ("[]", "[)", "(]", "()")) or (
@@ -166,10 +153,12 @@ class QueryPlan:
         ):
             result.between_count += 1
             result.between_selectivity += incoming_selectivity
-        elif "expression" in expression and expression["expression"] == "like":
+        # LIKE
+        elif expression['operator'] in ("like",'LIKE'):
             result.like_count += 1
             result.like_selectivity += incoming_selectivity
-        elif "expression" in expression and expression["expression"] == "startswith":
+        # startswith
+        elif expression['operator'] in ("startswith",'STARTSWITH'):
             result.starts_with_count += 1
             result.starts_with_selectivity += incoming_selectivity
         elif ("mode" in expression and expression["mode"] == "false") or (
@@ -182,32 +171,39 @@ class QueryPlan:
     @staticmethod
     def _get_expression_selectivity(expression: dict) -> float:
         if "estimatedSelectivity" in expression:
-            return expression["estimatedSelectivity"]
-        elif expression["expression"] == "compare":
-            if expression["direction"] in ("<", "<=", ">", ">="):
-                return 0.5
-            elif expression["direction"] == "=":
-                return 0.01
-            elif expression["direction"] == "<>":
-                return 0.99
-        elif expression["expression"] in ("between", "isnotnull"):
+            return expression["estimatedSelectivity"] # does not exist for postgres
+        elif expression["operator"] in ("<", "<=", ">", ">="):
             return 0.5
-        elif expression["expression"] in ("in", "like", "startswith"):
+        elif expression["operator"] == "=":
             return 0.01
-        elif expression["expression"] == "not":
-            return 1.0 - QueryPlan._get_expression_selectivity(expression["input"])
-        elif expression["expression"] == "and":
-            selectivities = [QueryPlan._get_expression_selectivity(e) for e in expression["input"]]
+        elif expression["operator"] in ("<>",'!='):
+            return 0.99
+        elif expression["operator"] in ("between", "isnotnull", 'BETWEEN', 'IS NOT NULL'):
+            return 0.5
+        elif expression["operator"] in ("in", "like", "startswith", 'IN', 'LIKE','STARTSWITH'):
+            return 0.01
+        elif expression["operator"] in ("not",'NOT'):
+            return 1.0 - QueryPlan._get_expression_selectivity(expression['children'])
+        elif expression["operator"] in ("and",'AND'):
+            selectivities = [QueryPlan._get_expression_selectivity(e) for e in expression['children']]
             return math.prod(selectivities)
-        elif expression["expression"] == "or":
-            selectivities = [QueryPlan._get_expression_selectivity(e) for e in expression["input"]]
+        elif expression["operator"] in ("or",'OR'):
+            selectivities = [QueryPlan._get_expression_selectivity(e) for e in expression['children']]
             return min([sum(selectivities), 1.0])
-        assert False, "could not find selectivity for expression"
+        assert False, f"could not find selectivity for expression: {expression}"
 
     def _list_expressions(self, op: dict) -> tuple[list[dict], list[float]]:
-        restrictions = op["restrictions"]
-        residuals = op["residuals"]
-        expressions = restrictions + residuals
+        if 'filter' in op['plan_parameters']:
+            filters = [op['plan_parameters']['filter']]
+        else:
+            filters = []
+
+        if 'join' in op['plan_parameters']:
+            joins = [op['plan_parameters']['join']]
+        else:
+            joins = []
+
+        expressions = filters + joins
         selectivities = [self._get_expression_selectivity(e) for e in expressions]
         return expressions, selectivities
 
@@ -222,52 +218,55 @@ class QueryPlan:
 
         return result
 
-    def _parse_operator(self, op: dict, parent: list[Operator]):
+    def _parse_operator(self, op: dict, parent: list[Operator], card_type:CardType):
         assert len(parent) <= 1
         operator_type = parse_operator_type(op)
-        output_cardinality = self._get_output_cardinality(op, self.predicted_cardinalities)
-        input_cardinality = self._get_input_cardinality(op, operator_type, self.predicted_cardinalities)
-        right_cardinality = self._get_right_cardinality(op, operator_type, self.predicted_cardinalities)
+        output_cardinality = self._get_output_cardinality(op, card_type=card_type)
+        input_cardinality = self._get_input_cardinality(op, operator_type, card_type=card_type)
+        right_cardinality = self._get_right_cardinality(op, operator_type, card_type=card_type)
         output_tuple_size = self._get_tuple_size(op)
 
         expressions = self._parse_expressions(op, operator_type)
 
+        assert 'op_id' in op['plan_parameters'], f'operator {op} does not have an op_id'
+
         current_op = Operator(
-            operator_type,
-            op["operator"],
-            op["operatorId"],
-            output_cardinality,
-            input_cardinality,
-            right_cardinality,
-            output_tuple_size,
-            expressions,
-            parent,
-            None,
-            None,
-            op,
+            type = operator_type,
+            operator_name=op['plan_parameters']['op_name'],
+            op_id=op['plan_parameters']['op_id'],
+            output_cardinality=output_cardinality,
+            input_cardinality=input_cardinality,
+            right_input_cardinality=right_cardinality,
+            output_tuple_size=output_tuple_size,
+            expressions=expressions,
+            parents=parent,
+            input_op=None,
+            right_input_op=None,
+            json=op,
         )
 
         if current_op.op_id in self.operators:
             self.operators[current_op.op_id].parents.extend(parent)
             return
 
+        # recursively call on children
         if operator_type.is_join_type():
-            self._parse_operator(op["left"], [current_op])
-            self._parse_operator(op["right"], [current_op])
+            self._parse_operator(op["left"], [current_op], card_type=card_type)
+            self._parse_operator(op["right"], [current_op], card_type=card_type)
         elif operator_type == OperatorType.MultiWayJoin:
             for input in op["inputs"]:
-                self._parse_operator(input["op"], [current_op])
+                self._parse_operator(input["op"], [current_op], card_type=card_type) # TODO change
         elif operator_type == OperatorType.PipelineBreakerScan:
             # only one of the scanners will include the input
             if "pipelineBreaker" in op:
-                self._parse_operator(op["pipelineBreaker"], [current_op])
+                self._parse_operator(op["pipelineBreaker"], [current_op], card_type=card_type) # TODO change
         elif operator_type in (OperatorType.TableScan, OperatorType.InlineTable):
             pass
         elif operator_type == OperatorType.SetOperation:
             for a in op["arguments"]:
-                self._parse_operator(a["input"], [current_op])
+                self._parse_operator(a["input"], [current_op], card_type=card_type) # TODO change
         else:
-            self._parse_operator(op["input"], [current_op])
+            self._parse_operator(op["input"], [current_op], card_type=card_type)
 
         for p in parent:
             self._annotate_child(p, current_op)
@@ -387,7 +386,7 @@ class QueryPlan:
         """
         build pipelines using only the json plan
         """
-        operator_dict: dict[int, Operator] = {op.json["analyzePlanId"]: op for op in self.operators.values()}
+        operator_dict: dict[int, Operator] = {op.json['plan_parameters']['op_id']: op for op in self.operators.values()}
         result = []
         for pipeline in pipelines:
             if pipeline["operators"] == [0] and 0 not in operator_dict and pipeline["duration"] == 0:
