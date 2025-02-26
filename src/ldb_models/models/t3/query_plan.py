@@ -1,7 +1,7 @@
+import math
 from enum import Enum
 from functools import cmp_to_key
-from typing import Optional, Tuple, Dict, List
-import math
+from typing import Optional, Tuple, Dict
 
 from models.t3.database import Database
 from models.t3.operator_stages import ExecutionPhase, Pipeline, OperatorStage, build_pipeline
@@ -386,7 +386,8 @@ class QueryPlan:
         """
         build pipelines using only the json plan
         """
-        operator_dict: dict[int, Operator] = {op.json['plan_parameters']['op_id']: op for op in self.operators.values()}
+        operator_dict: dict[int, Operator] = {op.json['plan_parameters']['analyze_plan_id']: op for op in
+                                              self.operators.values()}
         result = []
         for pipeline in pipelines:
             if pipeline["operators"] == [0] and 0 not in operator_dict and pipeline["duration"] == 0:

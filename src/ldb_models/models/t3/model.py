@@ -23,6 +23,9 @@ class T3Model(ABC):
     def get_feature_mapper(self) -> FeatureMapper:
         pass
 
+    def estimate_runtime_wrapper(self, queries: list["BenchmarkedQuery"]) -> list[float]:
+        return np.asarray([self.estimate_runtime(q) for q in queries])
+
 
 class TreeModel(T3Model):
     """

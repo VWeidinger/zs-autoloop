@@ -193,8 +193,8 @@ def predict_tabular_model(config: ModelConfig,
         pred_func = m.predict
         gen_dataset_func = gen_postgres_cost_dataset
     elif isinstance(config,T3ModelConfig):
-        pred_func = t3_model.estimate_runtime
-        gen_dataset_func = functools.partial(gen_t3_dataset,model_config=config,verbose=False)
+        pred_func = t3_model.estimate_runtime_wrapper  # use the list-predict wrapper
+        gen_dataset_func = functools.partial(gen_t3_dataset, model_config=config, verbose=False, return_dataset=False)
     else:
         raise NotImplementedError('Not supported tabular model')
 
