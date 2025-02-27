@@ -74,7 +74,7 @@ def extract_pipeline_infos(parsed_plan: Dict, pipelines: List[Dict], root: bool 
 
     # check for pipeline breaking operations
     if operator in ['Sort', 'Aggregate', 'Simple Aggregate', 'Finalize Aggregate']:
-        assert len(child_streams) == 1
+        assert len(child_streams) == 1, f'{len(child_streams)} / {parsed_plan}'
         op_ids = child_streams[0]
         op_ids = [analyze_plan_id] + op_ids
 
@@ -96,11 +96,11 @@ def extract_pipeline_infos(parsed_plan: Dict, pipelines: List[Dict], root: bool 
             return pipeline_op_ids
         elif operator in ['Index Nested Loop']:  # TODO - not sure if this makes sense!
             # index pipeline finished
-            index_pipeline = [analyze_plan_id] + child_streams[0]
+            index_pipeline = [analyze_plan_id] + child_streams[1]
             pipelines.insert(0, construct_pseudo_pipeline(index_pipeline, runtime=runtime))
 
             # continue other pipeline
-            pipeline_op_ids = [analyze_plan_id] + child_streams[1]
+            pipeline_op_ids = [analyze_plan_id] + child_streams[0]
             return pipeline_op_ids
         else:
             # other joins not supported
@@ -179,9 +179,6 @@ def rewrite_children(parsed_plan: Dict):
                 # set children
                 left = children[0]  # probe side
                 right = children[1]  # index side
-
-                raise UnsupportedOperatorException(
-                    f'Operator not supported: {parsed_plan["plan_parameters"]["op_name"]}')
             elif parsed_plan['plan_parameters']['op_name'] in ['Merge Join']:
                 raise UnsupportedOperatorException(
                     f'Operator not supported: {parsed_plan["plan_parameters"]["op_name"]}')

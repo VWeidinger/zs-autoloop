@@ -393,7 +393,8 @@ class QueryPlan:
             if pipeline["operators"] == [0] and 0 not in operator_dict and pipeline["duration"] == 0:
                 assert False, "could not assign operators to pipelines"
             ops = [operator_dict[op_id] for op_id in pipeline["operators"]]
-            ops.sort(key=cmp_to_key(lambda b, a: a.precedes(b)))
+            ops.sort(key=cmp_to_key(
+                lambda b, a: a.precedes(b)))  # sort by precedence: inverting the order! (higher id at the begin)
             start = float(pipeline["start"])
             stop = float(pipeline["stop"])
             result.append(build_pipeline(ops, start, stop))
