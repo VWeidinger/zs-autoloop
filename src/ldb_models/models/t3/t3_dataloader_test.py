@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 from ldb_schema.paths import LocalPaths
 
 from classes.classes import T3ModelConfig
-from models.t3.t3_dataloader import gen_t3_dataset, rewrite_children, prune_nodes_to_ignore, extract_pipeline_infos, \
+from models.t3.t3_dataloader import gen_t3_dataset, rewrite_children, extract_pipeline_infos, \
     annotate_op_id
 
 
@@ -21,7 +21,7 @@ class MyTestCase(unittest.TestCase):
                                                                                                statistics_file=None,
                                                                                                cap_training_samples=None,
                                                                                                featurization=None,
-                                                                                               limit_plans_per_file=100,
+                                                                                               limit_plans_per_file=1000,
                                                                                                limit_plans_overall=None,
                                                                                                val_ratio=0,
                                                                                                return_dataset=True,
@@ -33,7 +33,7 @@ class MyTestCase(unittest.TestCase):
                                                                                                statistics_file=None,
                                                                                                cap_training_samples=None,
                                                                                                featurization=None,
-                                                                                               limit_plans_per_file=100,
+                                                                                               limit_plans_per_file=1000,
                                                                                                limit_plans_overall=None,
                                                                                                val_ratio=0,
                                                                                                return_dataset=False,
@@ -152,7 +152,6 @@ class MyTestCase(unittest.TestCase):
 
         rewrite_children(plan)
 
-        plan = prune_nodes_to_ignore(plan)
         annotate_op_id(plan)
 
         pipelines = []
@@ -161,14 +160,21 @@ class MyTestCase(unittest.TestCase):
         expected_pipelines = [{
             "operators": [
                 0
-            ]
+            ],
+            'duration': 0.125,
+            'start': 3977.943,
+            'stop': 3978.068
+
         },
             {
                 "operators": [
                     0,
                     1,
                     8
-                ]
+                ],
+                'duration': 67.911,
+                'start': 3910.032,
+                'stop': 3977.943
             },
             {
                 "operators": [
@@ -176,24 +182,36 @@ class MyTestCase(unittest.TestCase):
                     2,
                     4,
                     7
-                ]
+                ],
+                'duration': 3539.869,
+                'start': 370.163,
+                'stop': 3910.032
             },
             {
                 "operators": [
                     2,
                     3
-                ]
+                ],
+                'duration': 0.019,
+                'start': 370.144,
+                'stop': 370.163
             },
             {
                 "operators": [
                     4,
                     5,
                     6
-                ]
+                ],
+                'duration': 370.144,
+                'start': 0,
+                'stop': 370.144
             }]
         self.assertEqual(len(expected_pipelines), len(pipelines))
         for p1, p2 in zip(expected_pipelines, pipelines):
             self.assertEqual(p1['operators'], p2['operators'])
+            self.assertAlmostEqual(p1['duration'], p2['duration'])
+            self.assertEqual(p1['start'], p2['start'])
+            self.assertEqual(p1['stop'], p2['stop'])
 
         plan = {
             "plan_parameters": {
@@ -230,11 +248,11 @@ class MyTestCase(unittest.TestCase):
                 }
             ],
             "dataset": "imdb",
+            "plan_runtime_ms": 3978.068,
         }
 
         rewrite_children(plan)
 
-        plan = prune_nodes_to_ignore(plan)
         annotate_op_id(plan)
 
         pipelines = []
@@ -243,24 +261,107 @@ class MyTestCase(unittest.TestCase):
         expected_pipelines = [{
             "operators": [
                 0
-            ]
+            ],
+            'duration': 0.125,
+            'start': 3977.943,
+            'stop': 3978.068
         },
             {
                 "operators": [
                     0,
                     1,
                     2
-                ]
-            },
-            {
-                "operators": [
-                    1, 3
-                ]
+                ],
+                'duration': 3977.943,
+                'start': 0,
+                'stop': 3977.943
             }]
         self.assertEqual(len(expected_pipelines), len(pipelines))
         for p1, p2 in zip(expected_pipelines, pipelines):
             self.assertEqual(p1['operators'], p2['operators'])
+            self.assertAlmostEqual(p1['duration'], p2['duration'])
+            self.assertEqual(p1['start'], p2['start'])
+            self.assertEqual(p1['stop'], p2['stop'])
 
+        plan = {
+            "plan_parameters": {
+                "act_time": 3977.943,
+                "op_name": "Finalize Aggregate",
+            },
+            "children": [
+
+                {
+                    "plan_parameters": {
+                        "act_time": 3910.056,
+                        "op_name": "Nested Loop",
+                    },
+                    "children": [
+                        {
+                            "plan_parameters": {
+                                "act_time": 370.079,
+                                "op_name": "Seq Scan",
+                                "table_name": "title",
+                            },
+                            "children": []
+                        },
+                        {
+                            "plan_parameters": {
+                                "act_time": 0.024,
+                                "table_name": "role_type",
+                                "table_id": 21,
+                                "op_name": "Index Scan",
+                            },
+                            "children": []
+                        }
+
+                    ]
+                }
+            ],
+            "dataset": "imdb",
+            "plan_runtime_ms": 3978.068,
+        }
+
+        rewrite_children(plan)
+
+        annotate_op_id(plan)
+
+        pipelines = []
+        extract_pipeline_infos(plan, pipelines=pipelines)
+
+        expected_pipelines = [{
+            "operators": [
+                0
+            ],
+            'duration': 0.125,
+            'start': 3977.943,
+            'stop': 3978.068
+        },
+            {
+                "operators": [
+                    0,
+                    1,
+                    3
+                ],
+                'duration': 3977.919,
+                'start': 0.024,
+                'stop': 3977.943
+            },
+            {
+                "operators": [
+                    1,
+                    2
+                ],
+                'duration': 0.024,
+                'start': 0,
+                'stop': 0.024,
+            }
+        ]
+        self.assertEqual(len(expected_pipelines), len(pipelines))
+        for p1, p2 in zip(expected_pipelines, pipelines):
+            self.assertEqual(p1['operators'], p2['operators'])
+            self.assertAlmostEqual(p1['duration'], p2['duration'])
+            self.assertEqual(p1['start'], p2['start'])
+            self.assertEqual(p1['stop'], p2['stop'])
 
 
 if __name__ == '__main__':

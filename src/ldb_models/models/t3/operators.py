@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-from string import digits
 from typing import Optional
 
 from models.t3.util import AutoNumber
@@ -27,8 +26,15 @@ class OperatorType(AutoNumber):
     EarlyProbe = ()
     AnalyzePlan = ()
 
+    # PG Specific Operators
+    IdxScan = ()
+    NLJoin = ()
+    MergeJoin = ()
+    Aggregate = ()
+
     def is_join_type(self):
-        return self in {OperatorType.HashJoin, OperatorType.IndexNLJoin, OperatorType.GroupJoin}
+        return self in {OperatorType.HashJoin, OperatorType.IndexNLJoin, OperatorType.GroupJoin, OperatorType.MergeJoin,
+                        OperatorType.NLJoin}
 
 
 @dataclass
@@ -94,13 +100,14 @@ def parse_operator_type(op: dict, dbms:str= 'pg') -> OperatorType:
 
     pg_name_map = {
         'Seq Scan': OperatorType.TableScan,
-        'Index Scan':OperatorType.TableScan,
-        'Index Only Scan': OperatorType.TableScan,
+        'Index Scan': OperatorType.IdxScan,
+        'Index Only Scan': OperatorType.IdxScan,
         'Hash Join': OperatorType.HashJoin,
         'Index Nested Loop': OperatorType.IndexNLJoin,
-        'Nested Loop': None,
-        'Merge Join': None,
+        'Nested Loop': OperatorType.NLJoin,
+        'Merge Join': OperatorType.MergeJoin,
         'Sort': OperatorType.Sort,
+        'Aggregate': OperatorType.Aggregate,
     }
 
     # umbra operatores

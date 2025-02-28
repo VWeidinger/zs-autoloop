@@ -60,6 +60,9 @@ class QueryPlan:
             return self._get_left_cardinality(op, operator_type, card_type=card_type)
         elif operator_type == OperatorType.TableScan:
             return self.db_statistics['table_stats_dict'][self._get_table_name(op)]['reltuples']
+        elif operator_type == OperatorType.IdxScan:
+            # an index scan does not need to scan the whole table - we use the index selectivity
+            return self._get_output_cardinality(op, card_type=card_type)
         elif operator_type in (OperatorType.PipelineBreakerScan, OperatorType.InlineTable):
             return self._get_output_cardinality(op, card_type=card_type)
             # return op["cardinality"]
@@ -77,8 +80,7 @@ class QueryPlan:
     def _get_right_cardinality(
         self, op: dict, operator_type: OperatorType, card_type:CardType
     ) -> Optional[float]:
-        if operator_type == OperatorType.IndexNLJoin:
-            return self._get_input_cardinality(op["right"], parse_operator_type(op["right"]), card_type=card_type) # right side is probe side (left is index)
+        # only in case of join operations we can compute this
         if operator_type.is_join_type():
             return QueryPlan._get_output_cardinality(op["right"], card_type=card_type)
         else:
@@ -116,7 +118,7 @@ class QueryPlan:
         # join
         if 'table_name2' in expression:
             result.join_filter_count += 1
-        elif expression['operator'] in ("<", "<=", ">", ">=", "=", "!=", "isnotnull", "is", 'IS NOT NULL'):
+        elif expression['operator'] in ("<", "<=", ">", ">=", "=", "!=", "isnotnull", "is", 'IS NOT NULL', 'IS NULL'):
             # null checks should be similarly cheap as comparisons
             result.compare_count += 1
             result.compare_selectivity += incoming_selectivity
@@ -154,7 +156,7 @@ class QueryPlan:
             result.between_count += 1
             result.between_selectivity += incoming_selectivity
         # LIKE
-        elif expression['operator'] in ("like",'LIKE'):
+        elif expression['operator'] in ("like", 'LIKE', 'NOT LIKE'):
             result.like_count += 1
             result.like_selectivity += incoming_selectivity
         # startswith
@@ -178,10 +180,12 @@ class QueryPlan:
             return 0.01
         elif expression["operator"] in ("<>",'!='):
             return 0.99
-        elif expression["operator"] in ("between", "isnotnull", 'BETWEEN', 'IS NOT NULL'):
+        elif expression["operator"] in ("between", "isnotnull", 'BETWEEN', 'IS NOT NULL', 'IS NULL'):
             return 0.5
         elif expression["operator"] in ("in", "like", "startswith", 'IN', 'LIKE','STARTSWITH'):
             return 0.01
+        elif expression["operator"] in ("NOT LIKE"):
+            return 0.99
         elif expression["operator"] in ("not",'NOT'):
             return 1.0 - QueryPlan._get_expression_selectivity(expression['children'])
         elif expression["operator"] in ("and",'AND'):
@@ -260,7 +264,7 @@ class QueryPlan:
             # only one of the scanners will include the input
             if "pipelineBreaker" in op:
                 self._parse_operator(op["pipelineBreaker"], [current_op], card_type=card_type) # TODO change
-        elif operator_type in (OperatorType.TableScan, OperatorType.InlineTable):
+        elif operator_type in (OperatorType.TableScan, OperatorType.InlineTable, OperatorType.IdxScan):
             pass
         elif operator_type == OperatorType.SetOperation:
             for a in op["arguments"]:

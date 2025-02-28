@@ -32,14 +32,20 @@ class BenchmarkedQuery:
         return (stop - start) / 1_000_000
 
     def check_pipeline_overlap(self):
+        # sort pipelines by their start time
         pipelines = sorted(self.query_plan.pipelines, key=lambda p: (p.start, p.stop))
+        # iterate over pipelines - start with the earliest pipeline
         for i, p in enumerate(pipelines[:-1]):
+            # check the following pipeline
             p2 = pipelines[i + 1]
             if not p.stop <= p2.start:
+                # we have a pipeline start/stop overlap: two pipelines are running at the same time - this should not happen
                 ids1 = [o.operator.op_id for o in p.operators]
                 ids2 = [o.operator.op_id for o in p2.operators]
                 common_ops = list(set(ids1).intersection(set(ids2)))
                 if not len(common_ops) > 0:
+                    pipelines_start_stop = [(p.start, p.stop) for p in pipelines]
+                    raise ValueError(f"pipelines overlap without common op: {pipelines_start_stop} \n{self.query_plan}")
                     print(" pipelines overlap without common op")
                 common_ops = [o for o in p.operators if o.operator.op_id in common_ops]
                 if len(common_ops) == 1 and common_ops[0].operator.type == OperatorType.SetOperation:
@@ -48,6 +54,8 @@ class BenchmarkedQuery:
                     p.stop = p2.start
                     p2.stop = max(p.stop, p2.stop)
                 else:
+                    raise ValueError(
+                        f"pipelines overlap! common ops: {', '.join(o.operator.operator_name for o in common_ops)}")
                     print("pipelines overlap!")
                     print(f" common ops: {', '.join(o.operator.operator_name for o in common_ops)}")
 

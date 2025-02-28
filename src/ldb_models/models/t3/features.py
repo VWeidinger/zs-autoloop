@@ -112,6 +112,21 @@ class QualifiedFeature:
         OperatorType.CsvWriter: {OperatorStage.Build: [FeatureDim.sink, FeatureDim.input]},
         OperatorType.AssertSingle: {OperatorStage.PassThrough: [FeatureDim.input]},
         OperatorType.EarlyProbe: {OperatorStage.PassThrough: [FeatureDim.out]},
+
+        # PG Specific Operators
+        OperatorType.IdxScan: {OperatorStage.Probe: [FeatureDim.out, FeatureDim.expressions, FeatureDim.empty_output]},
+        OperatorType.NLJoin: {
+            OperatorStage.Build: [FeatureDim.sink, FeatureDim.input],
+            OperatorStage.Probe: [FeatureDim.input, FeatureDim.right_card, FeatureDim.out]
+        },
+        OperatorType.MergeJoin: {
+            OperatorStage.Probe: [FeatureDim.input, FeatureDim.right_card, FeatureDim.out],
+            OperatorStage.Build: [FeatureDim.sink, FeatureDim.input],
+        },
+        OperatorType.Aggregate: {
+            OperatorStage.Build: [FeatureDim.sink, FeatureDim.input],
+            OperatorStage.Scan: [FeatureDim.scan, FeatureDim.out],
+        },
     }
 
     def __init__(

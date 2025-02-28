@@ -119,7 +119,7 @@ def get_operator_stage(op_index: int, op: Operator, pipeline_ops: list[Operator]
         return OperatorStage.PassThrough
     elif op.type in (OperatorType.CsvWriter, OperatorType.FileOutput, OperatorType.Temp):
         return OperatorStage.Build
-    elif op.type in (OperatorType.GroupBy, OperatorType.Sort, OperatorType.Window):
+    elif op.type in (OperatorType.GroupBy, OperatorType.Sort, OperatorType.Window, OperatorType.Aggregate):
         if op_index == 0 and len(pipeline_ops) == 1:
             return OperatorStage.Scan
         elif op_index == len(pipeline_ops) - 1:
@@ -137,13 +137,18 @@ def get_operator_stage(op_index: int, op: Operator, pipeline_ops: list[Operator]
             return OperatorStage.Build
     elif op.type == OperatorType.IndexNLJoin:
         assert op_index > 0
-        input_op = pipeline_ops[op_index - 1]
+        input_op = pipeline_ops[op_index - 1]  # get operator that is executed before the current operator
         assert input_op.json == op.json["right"] or input_op.json == op.json["left"]
         if op_index != len(pipeline_ops) - 1:
+            # not at the top/root of the pipeline - this must be a probe operation (otherwise there would be another operation following the INLJ)
+            if input_op.json != op.json["left"]:
+                pass
             assert input_op.json == op.json["left"]
             return OperatorStage.Probe
         elif len(op.parents) == 0:
-            # if this operator is the root of the tree, we might go left or right
+            # operator is the root of the tree, we might go left or right
+            if input_op.json != op.json["left"]:
+                assert input_op.json == op.json['left']
             if input_op.json == op.json["left"]:
                 return OperatorStage.Probe
             elif input_op.json == op.json["right"]:
@@ -151,6 +156,7 @@ def get_operator_stage(op_index: int, op: Operator, pipeline_ops: list[Operator]
             else:
                 assert False, f"Error parsing indexNlJoin: unexpected input operator\n{op.json}"
         else:
+            # root of the pipeline, but not root of the tree - this is the build side of the INLJ i.e. the index scan?
             assert input_op.json == op.json["right"], (
                 f"Error parsing index nl join\n" f"{input_op.json}\n{op.json['right']}"
             )
@@ -179,6 +185,24 @@ def get_operator_stage(op_index: int, op: Operator, pipeline_ops: list[Operator]
         else:
             assert input_op.json == op.json["left"]
             return OperatorStage.Build
+    elif op.type == OperatorType.NLJoin:
+        input_op = pipeline_ops[op_index - 1]
+        assert input_op.json == op.json["right"] or input_op.json == op.json["left"]
+        if input_op.json == op.json["right"]:
+            return OperatorStage.Probe
+        else:
+            assert input_op.json == op.json["left"]
+            return OperatorStage.Build
+    elif op.type == OperatorType.MergeJoin:
+        if op_index == 0:
+            # pipline starts with merge
+            return OperatorStage.Probe
+        else:
+            # pipeline ends with merge
+            return OperatorStage.Build
+    elif op.type == OperatorType.IdxScan:
+        return OperatorStage.Probe
+
     assert False, f"unhandled operator: {op.type.name}"
 
 

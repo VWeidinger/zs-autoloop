@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Tuple
 
 import lightgbm as lgb
 import numpy as np
@@ -26,7 +26,11 @@ def annotate_op_id(parsed_plan: Dict, id: int = -1) -> int:
 
     if 'left' in parsed_plan:
         id = annotate_op_id(parsed_plan['left'], id)
-        id = annotate_op_id(parsed_plan['right'], id)
+
+        assert 'right' in parsed_plan
+        # in case of an index NLJ the right side is pruned / can be none
+        if parsed_plan['right'] is not None:
+            id = annotate_op_id(parsed_plan['right'], id)
 
     return id
 
@@ -41,36 +45,79 @@ def add_table_stats_dict(db_statistics: Dict):
 
 
 def construct_pseudo_pipeline(op_ids: List[int], runtime: int) -> Dict:
+    assert runtime >= 0, f'{runtime}'
+
     return {
-        'start': max(op_ids) * 10,  # we do not know the real ordering in pg - we start with the left most pipeline
-        'stop': max(op_ids) * 10 + 5,
         'duration': runtime,
         'parallelism': None,
         'operators': op_ids
+        # add the orderingl ater
     }
 
 
-def extract_pipeline_infos(parsed_plan: Dict, pipelines: List[Dict], root: bool = True) -> List[int]:
+def add_order_to_pipelines(pipelines: List[Dict]):
+    # first pipeline is executed first, then all the others
+
+    start_ts = 0
+
+    # start iterating from the end
+    for i in range(len(pipelines) - 1, -1, -1):
+        pipeline = pipelines[i]
+
+        pipeline['start'] = start_ts
+
+        # add duration to start_ts
+        start_ts += pipeline['duration']
+        pipeline['stop'] = start_ts
+
+
+def extract_pipeline_infos(parsed_plan: Dict, pipelines: List[Dict], root: bool = True) -> Tuple[List[int], float]:
     operator = parsed_plan['plan_parameters']['op_name']
     analyze_plan_id = parsed_plan['plan_parameters']['analyze_plan_id']  # unique identifier of this node in the plan
-    runtime = parsed_plan['plan_parameters']['act_time']  # total time of the subplan
+    act_time = parsed_plan['plan_parameters']['act_time']  # total time of the subplan
 
     if root:
-        pipeline_op_ids = extract_pipeline_infos(parsed_plan, pipelines, root=False)
-        # add to pipelines - insert at begin: first pipeline is executed last
-        pipelines.insert(0, construct_pseudo_pipeline(op_ids=pipeline_op_ids, runtime=runtime))
+        pipeline_op_ids, child_pipelines_runtime = extract_pipeline_infos(parsed_plan, pipelines, root=False)
 
-        return None
+        total_plan_runtime = parsed_plan['plan_runtime_ms']
+
+        # add to pipelines - insert at begin: first pipeline is executed last
+        pipelines.insert(0, construct_pseudo_pipeline(op_ids=pipeline_op_ids,
+                                                      runtime=total_plan_runtime - child_pipelines_runtime))
+
+        # make sure all pipeline runtimes sum up to total plan runtime
+        pipeline_runtimes = [p['duration'] for p in pipelines]
+        assert np.isclose(np.sum(pipeline_runtimes),
+                          total_plan_runtime), f'{np.sum(pipeline_runtimes)} / {total_plan_runtime}'
+
+        add_order_to_pipelines(pipelines)
+
+        return None, total_plan_runtime
 
     # call fn on child nodes
     if 'input' in parsed_plan:
-        child_streams = [extract_pipeline_infos(parsed_plan['input'], pipelines=pipelines, root=False)]
+        child_stream, child_pipelines_runtime = extract_pipeline_infos(parsed_plan['input'], pipelines=pipelines,
+                                                                       root=False)
+        child_streams = [child_stream]
+        child_pipelines_runtimes = [child_pipelines_runtime]
     elif 'left' in parsed_plan:
-        left = extract_pipeline_infos(parsed_plan['left'], pipelines=pipelines, root=False)
-        right = extract_pipeline_infos(parsed_plan['right'], pipelines=pipelines, root=False)
-        child_streams = [left, right]
+        left, left_child_pipelines_runtime = extract_pipeline_infos(parsed_plan['left'], pipelines=pipelines,
+                                                                    root=False)
+        child_streams = [left]
+        child_pipelines_runtimes = [left_child_pipelines_runtime]
+
+        # in case of an index NLJ the right side is not represented as a separate pipeline
+        if operator not in ['Index Nested Loop']:
+            right, right_child_pipelines_runtimes = extract_pipeline_infos(parsed_plan['right'], pipelines=pipelines,
+                                                                           root=False)
+            child_streams.append(right)
+            child_pipelines_runtimes.append(right_child_pipelines_runtimes)
     else:
         child_streams = []
+        child_pipelines_runtimes = [0]
+
+    # make sure each element in child_pipelines_runtimes is > 0
+    assert all([x >= 0 for x in child_pipelines_runtimes]), f'{child_pipelines_runtimes} / {parsed_plan}'
 
     # check for pipeline breaking operations
     if operator in ['Sort', 'Aggregate', 'Simple Aggregate', 'Finalize Aggregate']:
@@ -79,73 +126,102 @@ def extract_pipeline_infos(parsed_plan: Dict, pipelines: List[Dict], root: bool 
         op_ids = [analyze_plan_id] + op_ids
 
         # add to pipelines - insert at begin: first pipeline is executed last
-        pipelines.insert(0, construct_pseudo_pipeline(op_ids=op_ids, runtime=runtime))
+        assert len(child_pipelines_runtimes) == 1, f'{child_pipelines_runtimes}'
+        pipelines.insert(0, construct_pseudo_pipeline(op_ids=op_ids, runtime=act_time - child_pipelines_runtimes[0]))
 
-        return [analyze_plan_id]
+        return [analyze_plan_id], act_time
     elif len(child_streams) == 2:
         # handle joins
         if operator in ['Hash Join']:
             # hash pipeline finished
-            assert 'hash_pipeline_runtime' in parsed_plan['plan_parameters']
-            hash_pipeline_runtime = parsed_plan['plan_parameters']['hash_pipeline_runtime']
+            hash_pipeline_runtime = parsed_plan['plan_parameters']['left_runtime']
+            hash_pipeline_runtime = hash_pipeline_runtime - child_pipelines_runtimes[0]  # subtract child runtime
+
             hash_pipeline = [analyze_plan_id] + child_streams[0]
             pipelines.insert(0, construct_pseudo_pipeline(hash_pipeline, runtime=hash_pipeline_runtime))
 
             # continue other pipeline
             pipeline_op_ids = [analyze_plan_id] + child_streams[1]
-            return pipeline_op_ids
-        elif operator in ['Index Nested Loop']:  # TODO - not sure if this makes sense!
-            # index pipeline finished
-            index_pipeline = [analyze_plan_id] + child_streams[1]
-            pipelines.insert(0, construct_pseudo_pipeline(index_pipeline, runtime=runtime))
+            return pipeline_op_ids, hash_pipeline_runtime + child_pipelines_runtimes[0] + child_pipelines_runtimes[
+                1]  # runtime of hash pipeline + runtimes of all sub pipelines
+        elif operator in [
+            'Index Nested Loop']:  # the right child is pruned beforehand - i.e. only one child / no need to break the pipeline or finalize a pipeline here
+            assert False, 'Index Nested Loop should not have two incoming pipelines!'
+            # # index pipeline finished
+            # index_pipeline = [analyze_plan_id] + child_streams[1]
+            # pipelines.insert(0, construct_pseudo_pipeline(index_pipeline, runtime=runtime))
+            #
+            # # continue other pipeline
+            # pipeline_op_ids = [analyze_plan_id] + child_streams[0]
+            # return pipeline_op_ids
+        elif operator in ['Merge Join']:
+            # merge join is a blocking operator - we need to finalize both pipelines
+            left_pipeline = [analyze_plan_id] + child_streams[0]
+            left_runtime = parsed_plan['plan_parameters']['left_runtime']
+            left_runtime = left_runtime - child_pipelines_runtimes[0]  # subtract child pipeline runtime
+            assert left_runtime >= 0, f'{left_runtime} / {child_pipelines_runtimes}, {parsed_plan}'
+            pipelines.insert(0, construct_pseudo_pipeline(left_pipeline, runtime=left_runtime))
 
-            # continue other pipeline
-            pipeline_op_ids = [analyze_plan_id] + child_streams[0]
-            return pipeline_op_ids
+            right_pipeline = [analyze_plan_id] + child_streams[1]
+            right_runtime = parsed_plan['plan_parameters']['right_runtime']
+            right_runtime = right_runtime - child_pipelines_runtimes[1]  # subtract child pipeline runtime
+            if right_runtime == 0:
+                # in case of a sort, we need to add a small runtime to the right pipeline (since we are creating a pipeline between sort and the merge)
+                right_runtime += 0.00001
+            assert right_runtime >= 0, f'{right_runtime} / {child_pipelines_runtimes}, {parsed_plan}'
+            pipelines.insert(0, construct_pseudo_pipeline(right_pipeline, runtime=right_runtime))
+
+            # continue new pipeline
+            pipeline_op_ids = [analyze_plan_id]
+            return pipeline_op_ids, left_runtime + right_runtime + child_pipelines_runtimes[0] + \
+                                    child_pipelines_runtimes[
+                                        1]  # runtime of both pipelines + runtimes of all sub pipelines
+        elif operator in ['Nested Loop']:
+            # left child is the inner pipeline
+            left_pipeline = [analyze_plan_id] + child_streams[0]
+            left_runtime = parsed_plan['plan_parameters']['left_runtime']
+            left_runtime = left_runtime - child_pipelines_runtimes[0]  # subtract child pipeline runtime
+
+            if left_runtime < 0 and left_runtime > -0.05:
+                # sometimes we have small inconsistencies. We make it fit.
+                left_runtime = 0
+
+            assert left_runtime >= 0, f'{left_runtime} / {child_pipelines_runtimes}, {parsed_plan}'
+            pipelines.insert(0, construct_pseudo_pipeline(left_pipeline, runtime=left_runtime))
+
+            # right input is the outer pipeline (i.e. we model this as probe side)
+            right_pipeline = child_streams[1]
+            pipeline_op_ids = [analyze_plan_id] + right_pipeline
+            return pipeline_op_ids, left_runtime + child_pipelines_runtimes[0] + child_pipelines_runtimes[
+                1]  # runtime of both pipelines + runtimes of all sub pipelines
         else:
             # other joins not supported
             raise Exception
     elif len(child_streams) == 0:
         # leaf node
-        return [analyze_plan_id]
+        return [analyze_plan_id], 0
     else:
         assert len(child_streams) == 1, f'{parsed_plan}'
         pipeline_op_ids = [analyze_plan_id] + child_streams[0]
 
-        return pipeline_op_ids
-
-
-def prune_nodes_to_ignore(parsed_plan: Dict):
-    op_name = parsed_plan['plan_parameters']['op_name']
-
-    # recursively clean plan
-    if 'left' in parsed_plan:
-        parsed_plan['left'] = prune_nodes_to_ignore(parsed_plan['left'])
-        parsed_plan['right'] = prune_nodes_to_ignore(parsed_plan['right'])
-    if 'input' in parsed_plan:
-        parsed_plan['input'] = prune_nodes_to_ignore(parsed_plan['input'])
-
-    # potentially prune this node
-    if op_name in ['Aggregate', 'Simple Aggregate', 'Hash']:
-
-        assert 'input' in parsed_plan and not 'left' in parsed_plan and not 'right' in parsed_plan, f'Unexpected operator: {parsed_plan}'
-        child = parsed_plan['input']
-
-        # args to copy over if existing
-        arg_names = ['plan_runtime_ms', 'sql', 'database_id']
-        for arg in arg_names:
-            if arg in parsed_plan:
-                child[arg] = parsed_plan[arg]
-
-        return child
-
-    return parsed_plan
+        return pipeline_op_ids, child_pipelines_runtimes[0]
 
 
 class UnsupportedOperatorException(Exception):
     def __init__(self, message):
         super().__init__(message)
 
+
+def prune_ops(node: Dict):
+    # prune specific operators
+    if node['plan_parameters']['op_name'] in ['Materialize']:
+        # remove the materialize operator
+        assert len(node['children']) == 1, f'Materialize operator should have only one child: {node}'
+        node = node['children'][0]
+
+        node = prune_ops(node)
+
+    return node
 
 def rewrite_children(parsed_plan: Dict):
     # make sure in hashjoin children the first side is always the hash
@@ -162,12 +238,18 @@ def rewrite_children(parsed_plan: Dict):
                 assert child_op_names[
                            1] == 'Hash', f'Postgres usually gives the hash at the second position: {child_op_names} / {parsed_plan}'
 
-                # set children
-                left = children[1]  # build side
-                right = children[0]  # probe side
+                # prune the hash side
+                hash_op = children[1]
+                assert len(hash_op['children']) == 1, f'Hash operator should have only one child: {hash_op}'
+                children[1] = hash_op['children'][0]
 
                 # annotate hash pipeline runtime to this node
-                parsed_plan['plan_parameters']['hash_pipeline_runtime'] = left['plan_parameters']['act_time']
+                parsed_plan['plan_parameters']['left_runtime'] = hash_op['plan_parameters']['act_time']
+
+                # set children
+                left = children[1]  # build side / hash side
+                right = children[0]  # probe side
+
             elif parsed_plan['plan_parameters']['op_name'] in ['Index Nested Loop']:
                 # make sure first child is of op_name index
                 child_op_names = [c['plan_parameters']['op_name'] for c in children]
@@ -176,14 +258,49 @@ def rewrite_children(parsed_plan: Dict):
                 assert child_op_names[1] in ['Index Scan',
                                              'Index Only Scan'], f'Postgres usually gives the index at the second position: {child_op_names} / {parsed_plan}'
 
+                # copy information from index scan to this node - we will prune the index scan
+                parsed_plan['plan_parameters']['idx_scan'] = children[1]['plan_parameters']
+
                 # set children
                 left = children[0]  # probe side
-                right = children[1]  # index side
+                right = children[1]  # index side - only to convey information - no pipeline will be constructed
             elif parsed_plan['plan_parameters']['op_name'] in ['Merge Join']:
-                raise UnsupportedOperatorException(
-                    f'Operator not supported: {parsed_plan["plan_parameters"]["op_name"]}')
+                # make sure botch children are sorts
+                child_op_names = [c['plan_parameters']['op_name'] for c in children]
+
+                # it not always has to be a sort - e.g. if the data is already sorted
+                # assert 'Sort' in child_op_names, f'No sort in children found: {child_op_names} / {parsed_plan}'
+                # assert child_op_names[0] == 'Sort', f'Both children have to be a sort: {child_op_names} / {parsed_plan}'
+                # assert child_op_names[1] == 'Sort', f'Both children have to be a sort: {child_op_names} / {parsed_plan}'
+
+                left = children[0]  # left sort
+                right = children[1]  # right sort
+            elif parsed_plan['plan_parameters']['op_name'] in ['Nested Loop']:
+                # swap left/right: in pg we have the outer on the left and the inner on the right
+                # but we want to represent the inner as the "build" / blocking side and the outer as the "probe" side
+                # therefor (to be consistent with HashJoin/...) we swap them - build side is always left
+                left = children[1]  # left side
+                right = children[0]  # right side
             else:
                 raise UnsupportedOperatorException(f'Operator not supported: {parsed_plan["plan_parameters"]["op_name"]}')
+
+            # copy left runtime / right runtime
+            if 'left_runtime' not in parsed_plan['plan_parameters']:
+                # hash join is already setting this parameter
+                left_time = left['plan_parameters']['act_time']
+                if left['plan_parameters']['op_name'] in ['Materialize']:
+                    # materialize operator runtime annotation does not include child runtimes - we need to take the child runtime
+                    left_time = left['children'][0]['plan_parameters'][
+                        'act_time']  # + left_time - do not take materialzie time into account. Mostly they are wrong / off / inconsistent
+                    assert left_time < parsed_plan['plan_parameters']['act_time'], f'{parsed_plan} / {left}'
+                assert left_time >= 0, left
+                parsed_plan['plan_parameters']['left_runtime'] = left_time
+            assert 'right_runtime' not in parsed_plan['plan_parameters'], f'Right runtime already set: {parsed_plan}'
+            parsed_plan['plan_parameters']['right_runtime'] = right['plan_parameters']['act_time']
+
+            # prune specific operators
+            left = prune_ops(left)
+            right = prune_ops(right)
 
             # annotate left/right
             parsed_plan['left'] = left
@@ -195,7 +312,41 @@ def rewrite_children(parsed_plan: Dict):
 
         else:
             assert len(children) == 1, f'Operator not supported: {parsed_plan["plan_parameters"]["op_name"]}'
-            input = children[0]  # there is no left/right
+
+            # extract op_name
+            op_name = parsed_plan['plan_parameters']['op_name']
+
+            if op_name in ['Finalize Aggregate']:
+                # remove all children until we find a non-gather / non-partial aggregate op
+                def find_non_gather(node):
+                    if node['plan_parameters']['op_name'] in ['Gather', 'Partial Aggregate']:
+                        children = node['children']
+                        assert len(children) == 1, f'Gather / Partial Aggregate should have only one child: {node}'
+                        return find_non_gather(children[0])
+                    else:
+                        return node
+
+                # skip both gather and partial aggregate
+                input = find_non_gather(children[0])
+
+                # rename the operator
+                parsed_plan['plan_parameters']['op_name'] = 'Aggregate'
+            elif op_name in ['Simple Aggregate']:
+                child_op = children[0]['plan_parameters']['op_name']
+                assert child_op not in ['Gather', 'Partial Aggregate'], f'Unexpected operator: {parsed_plan}'
+                input = children[0]  # there is no left/right
+
+                # rename the operator
+                parsed_plan['plan_parameters']['op_name'] = 'Aggregate'
+            else:
+                input = children[0]  # there is no left/right
+
+            # copy intput runtime
+            parsed_plan['plan_parameters']['input_runtime'] = input['plan_parameters']['act_time']
+
+            # prune ops
+            input = prune_ops(input)
+
             parsed_plan['input'] = input
 
             # recursively call on left
@@ -282,7 +433,7 @@ def gen_t3_dataset(workload_runs: List[Path],
         try:
             rewrite_children(plan)
         except UnsupportedOperatorException as e:
-            # print(f'Unsupported Operator: {e}')
+            print(f'Unsupported Operator: {e}')
             continue
 
         sqls.append(plan["sql"])
@@ -290,9 +441,6 @@ def gen_t3_dataset(workload_runs: List[Path],
         selectivities += plan["selectivity"]
         join_ops += plan["join_op"]
         scan_ops += plan["scan_op"]
-
-        # prune nodes to ignore - prune only afterward HJ reordering - we still need the hash op
-        plan = prune_nodes_to_ignore(plan)
 
         # assign unique IDs to each operator in the plan
         annotate_op_id(plan)
