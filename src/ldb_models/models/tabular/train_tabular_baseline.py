@@ -42,7 +42,7 @@ def train_tabular_model(workload_runs: WorkloadRuns,
                         bound_predictions: bool = False,
                         prediction_bounder: Optional[PredictionBounder] = None,
                         dataloader_options: DataLoaderOptions = None,
-                        verbose:bool=False
+                        verbose: bool = True
                         ):
     if bound_predictions or prediction_bounder:
         raise NotImplementedError("prediction bounding needs to be implemented for flat models")

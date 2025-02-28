@@ -24,7 +24,13 @@ class T3Model(ABC):
         pass
 
     def estimate_runtime_wrapper(self, queries: list["BenchmarkedQuery"]) -> list[float]:
-        return np.asarray([self.estimate_runtime(q) for q in queries])
+        preds = np.asarray([self.estimate_runtime(q) for q in queries])
+
+        # convert to seconds
+        preds = preds / 1000
+
+        return preds
+
 
 
 class TreeModel(T3Model):
@@ -72,6 +78,14 @@ class FlatTreeModel:
 
     def get_feature_mapper(self) -> FeatureMapper:
         return self._feature_mapper
+
+    def estimate_runtime_wrapper(self, queries: list["BenchmarkedQuery"]) -> list[float]:
+        preds = np.asarray([self.estimate_runtime(q) for q in queries])
+
+        # convert to seconds
+        preds = preds / 1000
+
+        return preds
 
 
 class PerTupleTreeModel(T3Model):

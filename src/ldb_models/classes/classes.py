@@ -15,7 +15,7 @@ from training.batch_to_funcs import dace_batch_to, simple_batch_to, batch_to
 from training.featurizations import Featurization, DACEFeaturization, QPPNetFeaturization, \
     PostgresEstSystemCardDetail, DACEFeaturizationNoCosts, QPPNetNoCostsFeaturization, FlatModelFeaturization, \
     FlatModelActCardFeaturization, QPPNetActCardsFeaturization, PostgresTrueCardDetail, DACEActCardFeaturization, \
-    PostgresEstWithPGCost, PostgresEstWithIsIndexCond
+    PostgresEstWithPGCost
 
 
 class InputFormats:
@@ -519,7 +519,7 @@ class T3ModelConfig(TabularModelConfig):
     type: ModelType = ModelType.WL_AGNOSTIC
     device: str = "cuda:[socket]"
     input_format: InputFormats = InputFormats.parsed
-    card_type: CardType = CardType.act
+    card_type: CardType = CardType.pg
 
 @attrs.define(frozen=True, slots=False)
 class T3TreeModelConfig(T3ModelConfig):

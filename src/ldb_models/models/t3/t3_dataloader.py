@@ -353,6 +353,35 @@ def rewrite_children(parsed_plan: Dict):
             rewrite_children(input)
 
 
+def check_plan_runtime_validity(parsed_plan: Dict, parent_runtime: float) -> bool:
+    # make sure that act_time of this  node is always smaller than runtime of parent
+    act_time = parsed_plan['plan_parameters']['act_time']
+    operator = parsed_plan['plan_parameters']['op_name']
+    children = parsed_plan['children'] if 'children' in parsed_plan else []
+
+    if operator == 'Materialize':
+        # skip
+        assert len(children) == 1
+        return check_plan_runtime_validity(children[0], parent_runtime)
+
+    if act_time > parent_runtime:
+        return False
+
+    child_runtimes = []
+    for child in children:
+        if not check_plan_runtime_validity(child, act_time):
+            return False
+
+        if child['plan_parameters']['op_name'] == 'Materialize':
+            child_runtimes.append(child['children'][0]['plan_parameters']['act_time'])
+        else:
+            child_runtimes.append(child['plan_parameters']['act_time'])
+
+    if sum(child_runtimes) > act_time:
+        return False
+
+    return True
+
 def assemble_x_y(queries: List[BenchmarkedQuery], model_config: T3ModelConfig):
     feature_mapper = FeatureMapper()
     x_vectors = []
@@ -426,7 +455,14 @@ def gen_t3_dataset(workload_runs: List[Path],
     sqls, hints = [], []  # Required to later evaluate against query optimization
 
     filtered_plans = []
+
+    skip_plan_inconsistent_runtimes_ctr = 0
     for plan in plans:
+
+        if not check_plan_runtime_validity(plan, parent_runtime=plan['plan_runtime_ms']):
+            skip_plan_inconsistent_runtimes_ctr += 1
+            continue
+
         assign_additional_plan_info(plan=plan, db_statistics=db_statistics)
 
         # reorder hashjoin children (hash first child)
@@ -463,6 +499,8 @@ def gen_t3_dataset(workload_runs: List[Path],
 
         labels.append(plan['plan_runtime_ms'] / 1000)
         filtered_plans.append(plans)
+
+    print(f'Skipped {skip_plan_inconsistent_runtimes_ctr}/{len(plans)} plans due to inconsistent runtimes')
 
     labels = np.asarray(labels)
 
