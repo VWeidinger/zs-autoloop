@@ -198,9 +198,10 @@ def evaluate_physical_plan_selection(predictions: dict, with_idxs: bool = False,
             wandb_run.summary[f'{log_prefix}/avg_pick_rate'] = avg_pick_rate
 
     total = sum(optimal_join_op_ctr.values())
-    optimal_join_op_ctr = {k: v / total for k, v in optimal_join_op_ctr.items()}
+
+    optimal_join_op_ctr = {k: v / total if total > 0 else 0 for k, v in optimal_join_op_ctr.items()}
     assert total == sum(selected_join_op_ctr.values())
-    selected_join_op_ctr = {k: v / total for k, v in selected_join_op_ctr.items()}
+    selected_join_op_ctr = {k: v / total if total > 0 else 0 for k, v in selected_join_op_ctr.items()}
 
     def autopct_format(values):
         def my_format(pct):
@@ -344,7 +345,8 @@ def evaluate_access_path_selection(predictions: dict, is_per_epoch: bool = False
             elif 'SeqScan' in row['hint']:
                 if 'Seq Scan' != row['scan_op']:
                     # not necessary - discarding plans where hint was not obeyed in dataset creation
-                    raise Exception(f'Hint {row["hint"]} and scan_op {row["scan_op"]} do not match')
+                    raise Exception(
+                        f'Hint {row["hint"]} and scan_op {row["scan_op"]} do not match \n {row} \n {group_df}')
                 sel_runtimes_seq_dict[float(row['selectivity'])] = {'label': float(row['label']),
                                                                     'prediction': float(row['prediction'])}
                 seq_labels_dict[row['sql']] = float(row['label'])

@@ -15,7 +15,7 @@ from wandb.apis.public import Run
 
 from classes.classes import ModelConfig, E2EModelConfig, ZeroShotModelConfig, MSCNModelConfig, DataLoaderOptions, \
     TlstmModelConfig, FlatModelConfig, ScaledPostgresModelConfig, TabularModelConfig, QPPNetModelConfig, \
-    DACEModelConfig, QueryFormerModelConfig
+    DACEModelConfig, QueryFormerModelConfig, T3ModelConfig
 from classes.model_config_helper import get_model_config
 from classes.workload_runs import WorkloadRuns
 from models.dace.dace_dataset import create_dace_dataloader
@@ -97,7 +97,7 @@ def init_model(statistics_file: Path,
                                    dataloader_options=DataLoaderOptions())
         model: nn.Module = DACELora(config=config)
 
-    elif isinstance(config, (ScaledPostgresModelConfig, FlatModelConfig)):
+    elif isinstance(config, (ScaledPostgresModelConfig, FlatModelConfig, T3ModelConfig)):
         model = None
         train_loader, val_loader, test_loaders = None, None, None
         feature_statistics = None
@@ -274,7 +274,7 @@ def use_model(mode: str,
             if isinstance(model_config, TabularModelConfig):
                 # check if model is already pre-trained -> do not execute this
                 if not is_pretrained:
-                    train_tabular_model(workload_runs=wl_runs,
+                    model = train_tabular_model(workload_runs=wl_runs,
                                     config=config,
                                     statistics_file=statistics_file,
                                     model_dir=model_dir,
@@ -310,7 +310,8 @@ def use_model(mode: str,
                                       model_dir=model_dir,
                                       wandb_run=wandb_run,
                                       bound_predictions=bound_predictions,
-                                      prediction_bounder=prediction_bounder, )
+                                      prediction_bounder=prediction_bounder,
+                                      t3_model=model)
             else:
                 test_model(config=config,
                            test_csv_paths=wl_runs.target_test_csv_paths,
@@ -341,6 +342,7 @@ def use_model(mode: str,
                                   wandb_run=wandb_run,
                                   bound_predictions=bound_predictions,
                                   prediction_bounder=prediction_bounder,
+                                  t3_model=model
                                   )
         else:
             test_model(config=config,
@@ -440,6 +442,8 @@ if __name__ == '__main__':
         model_type = 'dace'
     elif model_type.startswith('flat'):
         model_type = 'flat'
+    elif model_type.startswith('t3'):
+        model_type = 't3'
     else:
         raise ValueError(f"Model type {model_type} not recognized")
 

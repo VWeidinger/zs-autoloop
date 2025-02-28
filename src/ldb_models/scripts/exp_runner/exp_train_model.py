@@ -8,7 +8,6 @@ from octopus.step import Rsync, KillAllScreens, SetupVenv, RsyncCurrentRepo, Set
 from classes.classes import ModelConfig, ModelType
 from classes.model_config_helper import parameterized_config
 from scripts.exp_runner.exp_runner import ExpRunner, TrainingServers
-from training.featurizations import PostgresEstWithIsIndexCond
 
 
 def generate_training_commands(datasets: List[Dataset], seeds: list[int], python_version: str, wandb_project: str,
@@ -84,6 +83,8 @@ def generate_training_commands(datasets: List[Dataset], seeds: list[int], python
                 model_type = 'dace'
             elif model_type.startswith('flat'):
                 model_type = 'flat'
+            elif model_type.startswith('t3'):
+                model_type = 't3'
             else:
                 raise ValueError(f"Model type {model_type} not recognized")
 
@@ -206,12 +207,13 @@ if __name__ == '__main__':
     seeds = [1]
     nodes = [
         # TrainingServers.NODE00,
-        TrainingServers.NODE02,
-        TrainingServers.NODE03,
+        # TrainingServers.NODE02,
+        # TrainingServers.NODE03,
         # TrainingServers.NODE04,
         # TrainingServers.NODE05,
+        TrainingServers.NODE09,
     ]
-    sockets = [0,1]
+    sockets = [0, 1, 2, 3]
     out_file_id_offset = 0
     num_parallel_screens = None
     num_parallel_jobs_dgx = 6
@@ -236,9 +238,10 @@ if __name__ == '__main__':
     model_configs = []
     for model_type in [
         # 'postgres',
-        'zeroshot',
+        # 'zeroshot',
         # 'dace',
         # 'flat'
+        't3'
     ]:
         if model_type == 'dace':
             model_specific_args = {'pad_length': 60}
@@ -246,17 +249,21 @@ if __name__ == '__main__':
             model_specific_args = {}
 
         model_configs.extend([
-            # parameterized_config(model_type, wandb_group='baselines', include_pg_opt_workloads=True, **model_specific_args),  # std
-            # parameterized_config(model_type, wandb_group='whintwl', include_hint_workloads=True,include_pg_opt_workloads=True,  **model_specific_args), # hint
-            # # # parameterized_config(model_type, wandb_group='whint_hintidx', include_hint_workloads=True, include_hint_idx_workloads=True, **model_specific_args),  # hint + idx
-            # parameterized_config(model_type, wandb_group='whintidx', include_hint_idx_workloads=True,include_pg_opt_workloads=True,
-            #                      **model_specific_args),  # hint-idx
+            parameterized_config(model_type, wandb_group='baselines', include_pg_opt_workloads=True,
+                                 **model_specific_args),  # std
+            parameterized_config(model_type, wandb_group='whintwl', include_hint_workloads=True,
+                                 include_pg_opt_workloads=True, **model_specific_args),  # hint
+            # # parameterized_config(model_type, wandb_group='whint_hintidx', include_hint_workloads=True, include_hint_idx_workloads=True, **model_specific_args),  # hint + idx
+            parameterized_config(model_type, wandb_group='whintidx', include_hint_idx_workloads=True,
+                                 include_pg_opt_workloads=True,
+                                 **model_specific_args),  # hint-idx
             # # # parameterized_config(model_type, wandb_group='onlyhint', only_hint_workloads=True, **model_specific_args),  # hint_only
             # parameterized_config(model_type, wandb_group='wcomplex', include_complex_workloads=True,include_pg_opt_workloads=True,
             #                      **model_specific_args),  # complex
-            # parameterized_config(model_type, wandb_group='whintidx_complex', include_complex_workloads=True,include_pg_opt_workloads=True,
-            #                      include_hint_idx_workloads=True,
-            #                      **model_specific_args),  # complex + hint-idx
+            parameterized_config(model_type, wandb_group='whintidx_complex', include_complex_workloads=True,
+                                 include_pg_opt_workloads=True,
+                                 include_hint_idx_workloads=True,
+                                 **model_specific_args),  # complex + hint-idx
             # parameterized_config(model_type, wandb_group='wIsIdxFeat', featurization = PostgresEstWithIsIndexCond,include_pg_opt_workloads=True, **model_specific_args) if model_type == 'zeroshot' else None,
             # parameterized_config(model_type, wandb_group='wIsIdxFeat_complex_hintidxs_nopgopt', featurization=PostgresEstWithIsIndexCond, include_complex_workloads=True, include_hint_idx_workloads=True,
             #                      **model_specific_args) if model_type == 'zeroshot' else None,
@@ -267,11 +274,11 @@ if __name__ == '__main__':
             #                      featurization=PostgresEstWithIsIndexCond, include_complex_workloads=True,
             #                      include_hint_idx_workloads=True, include_scan_only_hint_workloads=True,
             #                      **model_specific_args) if model_type == 'zeroshot' else None,
-            parameterized_config(model_type, wandb_group='notopaggr',include_pg_opt_workloads=True,skip_top_aggregation=True,
-                                 **model_specific_args) if model_type == 'zeroshot' else None,
-            parameterized_config(model_type, wandb_group='notopaggr', include_pg_opt_workloads=True, include_scan_only_hint_workloads=True,
-                                 skip_top_aggregation=True,
-                                 **model_specific_args) if model_type == 'zeroshot' else None,
+            # parameterized_config(model_type, wandb_group='notopaggr',include_pg_opt_workloads=True,skip_top_aggregation=True,
+            #                      **model_specific_args) if model_type == 'zeroshot' else None,
+            # parameterized_config(model_type, wandb_group='notopaggr', include_pg_opt_workloads=True, include_scan_only_hint_workloads=True,
+            #                      skip_top_aggregation=True,
+            #                      **model_specific_args) if model_type == 'zeroshot' else None,
         ])
 
     model_configs = [model for model in model_configs if model is not None]
@@ -315,6 +322,9 @@ if __name__ == '__main__':
     #     # QPPModelActCardsConfig(),
     #     # DACEModelActCardConfig(),
     #     # ZeroShotModelActCardConfig(),
+    #     T3ModelConfig(include_pg_opt_workloads=True),
+    #     T3TreeModelConfig(include_pg_opt_workloads=True),
+    #     T3FlatModelConfig(include_pg_opt_workloads=True),
     # ]
 
     runner = ExpRunner(replicate=False,

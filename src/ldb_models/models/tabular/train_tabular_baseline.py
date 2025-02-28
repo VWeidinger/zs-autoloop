@@ -14,8 +14,12 @@ from sklearn.linear_model import LinearRegression
 from wandb.apis.public import Run
 
 from classes.classes import FlatModelConfig, ModelConfig, ScaledPostgresModelConfig, \
-    AnalyticalEstCardModelConfig, AnalyticalActCardModelConfig, DataLoaderOptions
+    AnalyticalEstCardModelConfig, AnalyticalActCardModelConfig, DataLoaderOptions, T3ModelConfig, T3FlatModelConfig, \
+    T3TreeModelConfig
 from classes.workload_runs import WorkloadRuns
+from models.t3.model import T3Model, TreeModel, FlatTreeModel, PerTupleTreeModel
+from models.t3.t3_dataloader import gen_t3_dataset
+from models.tabular.slice_train_val import slice_train_val
 from models.zeroshot.postgres_plan_batching import assign_additional_plan_info
 from training.bound_predictions_with_history import PredictionBounder
 from training.dataset.dataset_creation import read_workload_runs
@@ -38,6 +42,7 @@ def train_tabular_model(workload_runs: WorkloadRuns,
                         bound_predictions: bool = False,
                         prediction_bounder: Optional[PredictionBounder] = None,
                         dataloader_options: DataLoaderOptions = None,
+                        verbose: bool = True
                         ):
     if bound_predictions or prediction_bounder:
         raise NotImplementedError("prediction bounding needs to be implemented for flat models")
@@ -58,6 +63,8 @@ def train_tabular_model(workload_runs: WorkloadRuns,
         gen_dataset_func = functools.partial(gen_analytical_flattened_dataset, act_card=False)
     elif isinstance(config, AnalyticalActCardModelConfig):
         gen_dataset_func = functools.partial(gen_analytical_flattened_dataset, act_card=True)
+    elif isinstance(config, T3ModelConfig):
+        gen_dataset_func = functools.partial(gen_t3_dataset,model_config=config,verbose=verbose)
     else:
         raise RuntimeError("Not supported")
 
@@ -91,12 +98,14 @@ def train_tabular_model(workload_runs: WorkloadRuns,
     else:
         raise RuntimeError("Not supported")
 
-    print(f"Training model {config.name.NAME} "
-          f"with seed {config.seed} "
-          f"and {len(x_train)} training points "
-          f"and {len(x_test)} validation points")
+    if isinstance(x_train,list):
+        print(f"Training model {config.name.NAME} "
+              f"with seed {config.seed} "
+              f"and {len(x_train)} training points "
+              f"and {len(x_test)} validation points")
 
     start_t = time.perf_counter()
+    model = None
     if isinstance(config, FlatModelConfig):
         train_data = lgb.Dataset(x_train, label=y_train)
         val_data = lgb.Dataset(x_test, label=y_test, reference=train_data)
@@ -117,15 +126,33 @@ def train_tabular_model(workload_runs: WorkloadRuns,
         joblib.dump(m, f'{model_dir}_{config.seed}.pkl')
         print(f'Model saved to {model_dir}_{config.seed}.pkl')
         os.chmod(f'{model_dir}_{config.seed}.pkl', 0o777)
-
+    elif isinstance(config, T3ModelConfig):
+        param = {"objective": "mape", "verbose": 2 if verbose else -1}
+        bst = lgb.Booster(param, x_train)
+        bst.add_valid(x_test, "val_data")
+        if verbose:
+            print(bst.eval_train())
+        for i in range(200):
+            bst.update()
+            if verbose:
+                print(i + 1, bst.eval_train(), bst.eval_valid())
+        bst.save_model(f'{model_dir}_{config.seed}.txt')
+        print(f'Model saved to {model_dir}_{config.seed}.txt')
+        if isinstance(config,T3FlatModelConfig):
+            model=FlatTreeModel(bst)
+        elif isinstance(config,T3TreeModelConfig):
+            model=TreeModel(bst)
+        else:
+            model = PerTupleTreeModel(bst)
     else:
         raise NotImplementedError('Not supported tabular model')
 
     param_dict.update(training_time=time.perf_counter() - start_t,
-                      no_train_points=len(x_train),
-                      no_val_points=len(x_test))
+                      no_train_points=len(x_train) if isinstance(x_train,list) else -1,
+                      no_val_points=len(x_test) if isinstance(x_test,list) else -1,)
 
     save_csv([param_dict], str(model_dir) + f'_{config.seed}_params.csv')
+    return model
 
 
 def predict_tabular_model(config: ModelConfig,
@@ -136,7 +163,8 @@ def predict_tabular_model(config: ModelConfig,
                           wandb_run: Optional[Run] = None,
                           bound_predictions: bool = False,
                           prediction_bounder: Optional[PredictionBounder] = None,
-                          log_all_queries: bool = False):
+                          log_all_queries: bool = False,
+                          t3_model:T3Model=None):
     if bound_predictions or prediction_bounder:
         raise NotImplementedError("prediction bounding needs to be implemented for flat models")
 
@@ -164,7 +192,9 @@ def predict_tabular_model(config: ModelConfig,
         m = joblib.load(filename=f'{model_dir}_{config.seed}.pkl')
         pred_func = m.predict
         gen_dataset_func = gen_postgres_cost_dataset
-
+    elif isinstance(config,T3ModelConfig):
+        pred_func = t3_model.estimate_runtime_wrapper  # use the list-predict wrapper
+        gen_dataset_func = functools.partial(gen_t3_dataset, model_config=config, verbose=False, return_dataset=False)
     else:
         raise NotImplementedError('Not supported tabular model')
 
@@ -424,28 +454,4 @@ def gen_analytical_flattened_dataset(workload_runs, statistics_file, cap_trainin
                                             feature_row_vec_right_input, feature_row_vec_prod_input)))
         labels.append(plan["plan_runtime_ms"] / 1000)
     X_train, X_val, Y_train, Y_val = slice_train_val(cap_training_samples, feature_vecs, labels, plans, val_ratio)
-    return X_train, X_val, Y_train, Y_val
-
-
-def slice_train_val(cap_training_samples, feature_vecs, labels, plans, val_ratio, shuffle=True):
-    feature_vecs = np.array(feature_vecs)
-    labels = np.array(labels)
-    no_plans = len(plans)
-    plan_idxs = list(range(no_plans))
-    if shuffle:
-        np.random.shuffle(plan_idxs)
-    train_ratio = 1 - val_ratio
-    split_train = int(no_plans * train_ratio)
-    train_idxs = plan_idxs[:split_train]
-    # Limit number of training samples. To have comparable batch sizes, replicate remaining indexes.
-    if cap_training_samples is not None:
-        train_idxs = train_idxs[:cap_training_samples]
-    X_val = None
-    Y_val = None
-    if val_ratio > 0:
-        val_idxs = plan_idxs[split_train:]
-        X_val = feature_vecs[val_idxs]
-        Y_val = labels[val_idxs]
-    X_train = feature_vecs[train_idxs]
-    Y_train = labels[train_idxs]
     return X_train, X_val, Y_train, Y_val

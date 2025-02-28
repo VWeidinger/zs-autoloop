@@ -7,6 +7,7 @@ from ldb_schema.datasets import Dataset
 from ldb_schema.paths import Paths, ClusterPaths
 
 from models.query_former.dataloader import query_former_batch_to
+from models.t3.query_plan import CardType
 from models.workload_driven.dataset.mscn_batching import mscn_plan_collator
 from models.workload_driven.dataset.plan_tree_batching import plan_batch_to, baseline_plan_collator
 from models.zeroshot.postgres_plan_batching import postgres_plan_collator
@@ -14,7 +15,7 @@ from training.batch_to_funcs import dace_batch_to, simple_batch_to, batch_to
 from training.featurizations import Featurization, DACEFeaturization, QPPNetFeaturization, \
     PostgresEstSystemCardDetail, DACEFeaturizationNoCosts, QPPNetNoCostsFeaturization, FlatModelFeaturization, \
     FlatModelActCardFeaturization, QPPNetActCardsFeaturization, PostgresTrueCardDetail, DACEActCardFeaturization, \
-    PostgresEstWithPGCost, PostgresEstWithIsIndexCond
+    PostgresEstWithPGCost
 
 
 class InputFormats:
@@ -64,6 +65,9 @@ class ModelName:
     DACE_ONLY_HINTS = Name("dace_only_hints", "DACE (only hints)")
 
     QUERY_FORMER = Name("query_former", "QueryFormer")
+    T3 = Name("t3", "T3")
+    T3Flat = Name("t3_flat", "T3 (Flat)")
+    T3Tree = Name("t3_tree", "T3 (Tree)")
 
 
 class ModelType:
@@ -166,6 +170,7 @@ class ModelConfig:
                         training_workloads.append(path.as_posix())
 
             # assert len(training_workloads) == 19, f"Found {len(training_workloads)}, but it should be 19"
+            assert len(training_workloads)>0, f'No training workloads found for {self.name.NAME}'
             return training_workloads
 
         elif self.type == ModelType.WL_DRIVEN:
@@ -175,6 +180,7 @@ class ModelConfig:
                     stratified_workloads=stratified_workload,
                     romans_runs=romans_runs) / f"{target_dataset.db_name}_scaled{target_dataset.scale}" / f"{wl}.json"
                 training_workloads.append(path.as_posix())
+            assert len(training_workloads) >0 , f'No training workloads found for {self.name.NAME}'
             return training_workloads
 
     def assemble_wl_path(self, target_db: Dataset, wl_name, stratified_workloads: bool = True,
@@ -506,6 +512,22 @@ class QueryFormerModelConfig(ModelConfig):
     batch_to_func: Callable = query_former_batch_to
     loss_class_name: str = "QLoss"  # Originally MSELoss
     optimizer_class_name: str = "AdamW"  # Originally Adam
+
+@attrs.define(frozen=True, slots=False)
+class T3ModelConfig(TabularModelConfig):
+    name: Name = ModelName.T3
+    type: ModelType = ModelType.WL_AGNOSTIC
+    device: str = "cuda:[socket]"
+    input_format: InputFormats = InputFormats.parsed
+    card_type: CardType = CardType.pg
+
+@attrs.define(frozen=True, slots=False)
+class T3TreeModelConfig(T3ModelConfig):
+    name: Name = ModelName.T3Tree
+
+@attrs.define(frozen=True, slots=False)
+class T3FlatModelConfig(T3ModelConfig):
+    name: Name = ModelName.T3Flat
 
 
 @attrs.define(frozen=True, slots=False)
