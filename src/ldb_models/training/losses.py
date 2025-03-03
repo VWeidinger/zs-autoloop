@@ -56,7 +56,7 @@ class QLoss(nn.Module):
         if input_zero_mask.any():
             input = input + input_zero_mask * torch.full(input.shape, 0.0000001, device=input.device)
         if target_zero_mask.any():
-            target = target + target_zero_mask * torch.full(input.shape, 0.0000001, device=target.device)
+            target = target + target_zero_mask * torch.full(target.shape, 0.0000001, device=target.device)
 
         q_error = torch.zeros((len(target), 1), device=target.device)
 

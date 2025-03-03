@@ -220,10 +220,6 @@ def use_model(mode: str,
                 flush=True)
         finished = True
 
-    if is_pretrained and not isinstance(config, TabularModelConfig):
-        # tabular model configs are handled differently
-        assert finished, f"Pretrained model not found and finished: {config.name.NAME} with seed {config.seed}"
-
     # prepare the prediction bounder
     if bound_predictions:
         prediction_bounder = PredictionBounder(history_dataset=train_loader.dataset)

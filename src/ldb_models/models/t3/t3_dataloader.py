@@ -10,7 +10,7 @@ from models.t3.features import FeatureMapper
 from models.t3.query_plan import QueryPlan
 from models.tabular.slice_train_val import slice_train_val
 from models.zeroshot.postgres_plan_batching import assign_additional_plan_info
-from training.dataset.dataset_creation import read_workload_runs
+from training.dataset.dataset_creation import read_workload_runs, check_plan_runtime_validity
 from training.featurizations import Featurization
 
 
@@ -352,36 +352,6 @@ def rewrite_children(parsed_plan: Dict):
             # recursively call on left
             rewrite_children(input)
 
-
-def check_plan_runtime_validity(parsed_plan: Dict, parent_runtime: float) -> bool:
-    # make sure that act_time of this  node is always smaller than runtime of parent
-    act_time = parsed_plan['plan_parameters']['act_time']
-    operator = parsed_plan['plan_parameters']['op_name']
-    children = parsed_plan['children'] if 'children' in parsed_plan else []
-
-    if operator == 'Materialize':
-        # skip
-        assert len(children) == 1
-        return check_plan_runtime_validity(children[0], parent_runtime)
-
-    if act_time > parent_runtime:
-        return False
-
-    child_runtimes = []
-    for child in children:
-        if not check_plan_runtime_validity(child, act_time):
-            return False
-
-        if child['plan_parameters']['op_name'] == 'Materialize':
-            child_runtimes.append(child['children'][0]['plan_parameters']['act_time'])
-        else:
-            child_runtimes.append(child['plan_parameters']['act_time'])
-
-    if sum(child_runtimes) > act_time:
-        return False
-
-    return True
-
 def assemble_x_y(queries: List[BenchmarkedQuery], model_config: T3ModelConfig):
     feature_mapper = FeatureMapper()
     x_vectors = []
@@ -432,13 +402,15 @@ def gen_t3_dataset(workload_runs: List[Path],
                    include_timeout_queries: bool = False,
                    model_config: T3ModelConfig = None,
                    verbose: bool = False,
-                   return_dataset: bool = True
+                   return_dataset: bool = True,
+                   augment_with_subplans: bool = False,
                    ):
     # read files
     plans, db_statistics = read_workload_runs(workload_run_paths=workload_runs,
                                               include_timeout_queries=include_timeout_queries,
                                               limit_plans_per_file=limit_plans_per_file,
-                                              limit_plans_overall=limit_plans_overall)
+                                              limit_plans_overall=limit_plans_overall,
+                                              augment_with_subplans=augment_with_subplans)
 
     # augment database statistics
     for db_id, stats in db_statistics.items():

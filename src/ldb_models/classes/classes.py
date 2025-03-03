@@ -106,6 +106,7 @@ class ModelConfig:
     include_scan_only_hint_workloads: bool = False
     wandb_group: str = field(default=None)
     include_complex_workloads: bool = False
+    train_on_subplans: bool = False
 
     def get_model_dir(self, source_path: Paths, database: Dataset) -> Path:
         return source_path.Data.models / self.name.NAME / database.db_name

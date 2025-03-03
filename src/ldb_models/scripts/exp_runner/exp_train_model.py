@@ -103,6 +103,16 @@ def generate_training_commands(datasets: List[Dataset], seeds: list[int], python
                 if is_pretrained:
                     wandb_name += '_pretrained'
 
+                # shorten wandb name
+                wandb_name = wandb_name.replace('include_complex_workloads', 'complex')
+                wandb_name = wandb_name.replace('include_pg_opt_workloads', 'pgopt')
+                wandb_name = wandb_name.replace('include_hint_workloads', 'hint')
+                wandb_name = wandb_name.replace('include_hint_idx_workloads', 'hintidx')
+                wandb_name = wandb_name.replace('include_scan_only_hint_workloads', 'scanhint')
+                wandb_name = wandb_name.replace('train_on_subplans', 'subplans')
+                wandb_name = wandb_name.replace('PostgresEstWithIsIndexCond', 'FeatPGEstIsIdxC')
+                wandb_name = wandb_name.replace('limit_plans_per_file', 'limitpf')
+
                 command = (f"python{python_version} main.py "
                            f"--mode train "
                            f"--wandb_project {wandb_project} "
@@ -207,13 +217,13 @@ if __name__ == '__main__':
     seeds = [1]
     nodes = [
         # TrainingServers.NODE00,
-        # TrainingServers.NODE02,
+        TrainingServers.NODE02,
         # TrainingServers.NODE03,
         # TrainingServers.NODE04,
         # TrainingServers.NODE05,
-        TrainingServers.NODE09,
+        # TrainingServers.NODE09,
     ]
-    sockets = [0, 1, 2, 3]
+    sockets = [0, 1]
     out_file_id_offset = 0
     num_parallel_screens = None
     num_parallel_jobs_dgx = 6
@@ -238,10 +248,10 @@ if __name__ == '__main__':
     model_configs = []
     for model_type in [
         # 'postgres',
-        # 'zeroshot',
+        'zeroshot',
         # 'dace',
-        # 'flat'
-        't3'
+        # 'flat',
+        # 't3'
     ]:
         if model_type == 'dace':
             model_specific_args = {'pad_length': 60}
@@ -249,21 +259,21 @@ if __name__ == '__main__':
             model_specific_args = {}
 
         model_configs.extend([
-            parameterized_config(model_type, wandb_group='baselines', include_pg_opt_workloads=True,
-                                 **model_specific_args),  # std
-            parameterized_config(model_type, wandb_group='whintwl', include_hint_workloads=True,
-                                 include_pg_opt_workloads=True, **model_specific_args),  # hint
+            # parameterized_config(model_type, wandb_group='baselines', include_pg_opt_workloads=True,
+            #                      **model_specific_args),  # std
+            # parameterized_config(model_type, wandb_group='whintwl', include_hint_workloads=True,
+            #                      include_pg_opt_workloads=True, **model_specific_args),  # hint
             # # parameterized_config(model_type, wandb_group='whint_hintidx', include_hint_workloads=True, include_hint_idx_workloads=True, **model_specific_args),  # hint + idx
-            parameterized_config(model_type, wandb_group='whintidx', include_hint_idx_workloads=True,
-                                 include_pg_opt_workloads=True,
-                                 **model_specific_args),  # hint-idx
+            # parameterized_config(model_type, wandb_group='whintidx', include_hint_idx_workloads=True,
+            #                      include_pg_opt_workloads=True,
+            #                      **model_specific_args),  # hint-idx
             # # # parameterized_config(model_type, wandb_group='onlyhint', only_hint_workloads=True, **model_specific_args),  # hint_only
             # parameterized_config(model_type, wandb_group='wcomplex', include_complex_workloads=True,include_pg_opt_workloads=True,
             #                      **model_specific_args),  # complex
-            parameterized_config(model_type, wandb_group='whintidx_complex', include_complex_workloads=True,
-                                 include_pg_opt_workloads=True,
-                                 include_hint_idx_workloads=True,
-                                 **model_specific_args),  # complex + hint-idx
+            # parameterized_config(model_type, wandb_group='whintidx_complex', include_complex_workloads=True,
+            #                      include_pg_opt_workloads=True,
+            #                      include_hint_idx_workloads=True,
+            #                      **model_specific_args),  # complex + hint-idx
             # parameterized_config(model_type, wandb_group='wIsIdxFeat', featurization = PostgresEstWithIsIndexCond,include_pg_opt_workloads=True, **model_specific_args) if model_type == 'zeroshot' else None,
             # parameterized_config(model_type, wandb_group='wIsIdxFeat_complex_hintidxs_nopgopt', featurization=PostgresEstWithIsIndexCond, include_complex_workloads=True, include_hint_idx_workloads=True,
             #                      **model_specific_args) if model_type == 'zeroshot' else None,
@@ -279,6 +289,13 @@ if __name__ == '__main__':
             # parameterized_config(model_type, wandb_group='notopaggr', include_pg_opt_workloads=True, include_scan_only_hint_workloads=True,
             #                      skip_top_aggregation=True,
             #                      **model_specific_args) if model_type == 'zeroshot' else None,
+            parameterized_config(model_type, wandb_group='wsubplans_pgopt_hintidx_complex',
+                                 include_complex_workloads=True,
+                                 include_pg_opt_workloads=True,
+                                 include_hint_idx_workloads=True,
+                                 train_on_subplans=True,
+                                 limit_plans_per_file=5000,
+                                 **model_specific_args),  # w subplans
         ])
 
     model_configs = [model for model in model_configs if model is not None]

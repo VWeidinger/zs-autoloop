@@ -8,6 +8,7 @@ from ldb_schema.load_schema import load_json
 from sklearn import preprocessing
 from sklearn.pipeline import Pipeline
 from torch.utils.data import DataLoader
+from tqdm import tqdm
 
 from classes.classes import ZeroShotModelConfig, DataLoaderOptions, ModelConfig, InputFormats
 from classes.workload_runs import WorkloadRuns
@@ -24,7 +25,8 @@ def read_workload_runs(workload_run_paths: List[Path],
                        include_hint_not_obeyed_queries: bool = False,
                        include_zero_card_queries: bool = False,
                        stratify_per_wl_file: bool = False,
-                       stratify_dataset: bool = False, ) -> (List[dict], dict):
+                       stratify_dataset: bool = False,
+                       augment_with_subplans: bool = False) -> (List[dict], dict):
     # reads several workload runs
     plans = []
     database_statistics = dict()
@@ -35,7 +37,7 @@ def read_workload_runs(workload_run_paths: List[Path],
     limit_plans_blacklist = ['join_order', 'physical_operator', 'access_path_selection']
 
     for path_index, path in enumerate(workload_run_paths):
-        if path is None or str(path) =='None':
+        if path is None or str(path) == 'None':
             continue
 
         per_file_plans = []
@@ -108,11 +110,37 @@ def read_workload_runs(workload_run_paths: List[Path],
 
         # extract the timeout thresholds used during query execution
         per_file_timeout_thresholds = [p['timeout_threshold'] for p in per_file_plans]  # in ms
-        if len(per_file_timeout_thresholds) != 1:
+        if len(set(per_file_timeout_thresholds)) != 1:
             print(f"Multiple timeout thresholds in {path}: {set(per_file_timeout_thresholds)}")
-        # assert len(
-        #     set(per_file_timeout_thresholds)) == 1, f"Multiple timeout thresholds in {path}: {set(per_file_timeout_thresholds)}"
+
         timeout_thresholds.append(per_file_timeout_thresholds[0])
+
+        if augment_with_subplans:
+            # augment the plans with subplans
+            print(f'Augmenting plans with subplans', flush=True)
+            subplans = augment_subplans(per_file_plans)
+            print(f'Extracted {len(subplans)} subplans for the {len(per_file_plans)} plans in {path}', flush=True)
+
+            # shuffle the subplans
+            np.random.shuffle(subplans)
+
+            # apply limit
+            if limit_plans_per_file is not None and len(
+                    per_file_plans) >= limit_plans_per_file and not file_in_limit_blacklist:
+                per_file_plans = per_file_plans[:int(limit_plans_per_file / 2)]
+                subplans = subplans[:int(limit_plans_per_file / 2)]
+
+                print(
+                    f'Reducing number of plans to {len(per_file_plans)} full-plans and {len(subplans)} sub-plans for {path}',
+                    flush=True)
+            else:
+                subplans = subplans[:len(per_file_plans)]
+
+            # add the subplans to the plans - make sure it is 50/50 split (full-plans vs. sub-plans)
+            per_file_plans = per_file_plans + subplans
+
+            # shuffle the plans
+            np.random.shuffle(per_file_plans)
 
         if stratify_per_wl_file:
             print(f'Stratify per wl file: {stratify_per_wl_file}')
@@ -157,6 +185,83 @@ def read_workload_runs(workload_run_paths: List[Path],
     return plans, database_statistics
 
 
+def check_plan_runtime_validity(parsed_plan: Dict, parent_runtime: float) -> bool:
+    # make sure that act_time of this  node is always smaller than runtime of parent
+    act_time = parsed_plan['plan_parameters']['act_time']
+    operator = parsed_plan['plan_parameters']['op_name']
+    children = parsed_plan['children'] if 'children' in parsed_plan else []
+
+    if operator == 'Materialize':
+        # skip
+        assert len(children) == 1
+        return check_plan_runtime_validity(children[0], parent_runtime)
+
+    if act_time > parent_runtime:
+        return False
+
+    child_runtimes = []
+    for child in children:
+        if not check_plan_runtime_validity(child, act_time):
+            return False
+
+        if child['plan_parameters']['op_name'] == 'Materialize':
+            child_runtimes.append(child['children'][0]['plan_parameters']['act_time'])
+        else:
+            child_runtimes.append(child['plan_parameters']['act_time'])
+
+    if sum(child_runtimes) > act_time:
+        return False
+
+    return True
+
+
+def augment_subplans(plans: List[dict], return_only_subplans: bool = True) -> List[dict]:
+    augmented_plans = []
+    for plan in tqdm(plans, desc='Augmenting subplans'):
+
+        if not return_only_subplans:
+            augmented_plans.append(plan)
+
+        # check if subplan runtimes are consistent - if not: do not augment
+        if not check_plan_runtime_validity(plan, parent_runtime=plan['plan_runtime_ms']):
+            continue
+
+        root_info = {
+            'timeout': plan['timeout'],
+            'invalid_hint': plan['invalid_hint'],
+            'zero_card': plan['zero_card'],
+            'database_id': plan['database_id'],
+        }
+
+        # extract subplans
+        augmented_plans.extend(recursively_augment_plan(plan, root_info))
+
+    return augmented_plans
+
+
+def recursively_augment_plan(plan: Dict, root_information: Dict, depth: int = 0) -> List[Dict]:
+    if 'children' in plan and len(plan['children']) > 0:
+        children = plan['children']
+    else:
+        return []
+
+    # filter out children with runtime 0
+    children = [child for child in children if child['plan_parameters']['act_time'] > 0]
+
+    # copy over all children ([:] is important to create a copy!)
+    subplans = children[:]
+
+    # iterate over all children and augment them
+    for child in children:
+        child['plan_runtime_ms'] = plan['plan_parameters']['act_time']
+
+        child.update(root_information)
+
+        subplans.extend(recursively_augment_plan(child, root_information, depth=depth + 1))
+
+    return subplans
+
+
 def _inv_log1p(x):
     return np.exp(x) - 1
 
@@ -166,16 +271,18 @@ def create_datasets(workload_run_paths,
                     val_ratio=0.15,
                     shuffle_before_split=True, is_test_dataset: bool = False,
                     do_not_limit_file: bool = False,
-                    stratify_dataset: bool = False, stratify_per_wl_file: bool = False, inject_plans:List[Dict]=None, inject_database_statistics:Dict=None) -> (
+                    stratify_dataset: bool = False, stratify_per_wl_file: bool = False, inject_plans: List[Dict] = None,
+                    inject_database_statistics: Dict = None) -> (
         Pipeline, PlanDataset, PlanDataset, PlanDataset, dict):
     if inject_plans is None or inject_database_statistics is None:
         plans, database_statistics = read_workload_runs(workload_run_paths=workload_run_paths,
-                                                    limit_plans_per_file=model_config.limit_plans_per_file if not do_not_limit_file else None,
-                                                    limit_plans_overall=model_config.limit_plans_overall if not do_not_limit_file else None,
-                                                    input_format=model_config.input_format,
-                                                    include_timeout_queries=model_config.include_timeout_queries and not is_test_dataset,
-                                                    stratify_dataset=stratify_dataset,
-                                                    stratify_per_wl_file=stratify_per_wl_file)
+                                                        limit_plans_per_file=model_config.limit_plans_per_file if not do_not_limit_file else None,
+                                                        limit_plans_overall=model_config.limit_plans_overall if not do_not_limit_file else None,
+                                                        input_format=model_config.input_format,
+                                                        include_timeout_queries=model_config.include_timeout_queries and not is_test_dataset,
+                                                        stratify_dataset=stratify_dataset,
+                                                        stratify_per_wl_file=stratify_per_wl_file,
+                                                        augment_with_subplans=model_config.train_on_subplans and not is_test_dataset)
     else:
         plans = inject_plans
         database_statistics = inject_database_statistics
@@ -259,7 +366,6 @@ def create_zeroshot_dataloader(workload_runs: WorkloadRuns,
         if 'IS NULL' not in feature_statistics['operator']['value_dict']:
             feature_statistics['operator']['value_dict']['IS NULL'] = 3
 
-
     dataloader_args = dict(batch_size=model_config.batch_size,
                            shuffle=data_loader_options.shuffle,
                            num_workers=model_config.num_workers,
@@ -278,7 +384,7 @@ def create_zeroshot_dataloader(workload_runs: WorkloadRuns,
                                              feature_statistics=feature_statistics,
                                              plan_featurization=model_config.featurization,
                                              test_mode=False,
-                                             skip_top_aggregation=model_config.skip_top_aggregation,)
+                                             skip_top_aggregation=model_config.skip_top_aggregation, )
 
         dataloader_args.update(collate_fn=train_collate_fn)
         train_loader: DataLoader = DataLoader(train_dataset, **dataloader_args)

@@ -64,7 +64,7 @@ def train_tabular_model(workload_runs: WorkloadRuns,
     elif isinstance(config, AnalyticalActCardModelConfig):
         gen_dataset_func = functools.partial(gen_analytical_flattened_dataset, act_card=True)
     elif isinstance(config, T3ModelConfig):
-        gen_dataset_func = functools.partial(gen_t3_dataset,model_config=config,verbose=verbose)
+        gen_dataset_func = functools.partial(gen_t3_dataset, model_config=config, verbose=verbose)
     else:
         raise RuntimeError("Not supported")
 
@@ -77,7 +77,8 @@ def train_tabular_model(workload_runs: WorkloadRuns,
                                                                   stratify_dataset=dataloader_options.stratify_dataset,
                                                                   stratify_per_wl_file=dataloader_options.stratify_per_wl_file,
                                                                   limit_plans_per_file=config.limit_plans_per_file,
-                                                                  limit_plans_overall=config.limit_plans_overall)
+                                                                  limit_plans_overall=config.limit_plans_overall,
+                                                                  augment_with_subplans=config.train_on_subplans)
         raise NotImplementedError("This needs to be solved for workload driven model due to the correct split")
     elif config.type == 'wl_agnostic':
 
@@ -93,12 +94,13 @@ def train_tabular_model(workload_runs: WorkloadRuns,
             val_ratio=0.20,
             shuffle=True,
             limit_plans_per_file=config.limit_plans_per_file,
-            limit_plans_overall=config.limit_plans_overall
+            limit_plans_overall=config.limit_plans_overall,
+            augment_with_subplans=config.train_on_subplans,
         )
     else:
         raise RuntimeError("Not supported")
 
-    if isinstance(x_train,list):
+    if isinstance(x_train, list):
         print(f"Training model {config.name.NAME} "
               f"with seed {config.seed} "
               f"and {len(x_train)} training points "
@@ -136,22 +138,27 @@ def train_tabular_model(workload_runs: WorkloadRuns,
             bst.update()
             if verbose:
                 print(i + 1, bst.eval_train(), bst.eval_valid())
-        bst.save_model(f'{model_dir}_{config.seed}.txt')
+
+        # assemble model path
+        model_path = f'{model_dir}_{config.seed}_{config.name}.txt'
+        bst.save_model(model_path)
         print(f'Model saved to {model_dir}_{config.seed}.txt')
-        if isinstance(config,T3FlatModelConfig):
-            model=FlatTreeModel(bst)
-        elif isinstance(config,T3TreeModelConfig):
-            model=TreeModel(bst)
+
+        # wrap the model in the T3Model class
+        if isinstance(config, T3FlatModelConfig):
+            model = FlatTreeModel(bst)
+        elif isinstance(config, T3TreeModelConfig):
+            model = TreeModel(bst)
         else:
             model = PerTupleTreeModel(bst)
     else:
         raise NotImplementedError('Not supported tabular model')
 
     param_dict.update(training_time=time.perf_counter() - start_t,
-                      no_train_points=len(x_train) if isinstance(x_train,list) else -1,
-                      no_val_points=len(x_test) if isinstance(x_test,list) else -1,)
+                      no_train_points=len(x_train) if isinstance(x_train, list) else -1,
+                      no_val_points=len(x_test) if isinstance(x_test, list) else -1, )
 
-    save_csv([param_dict], str(model_dir) + f'_{config.seed}_params.csv')
+    save_csv([param_dict], str(model_dir) + f'_{config.seed}_{config.name}_params.csv')
     return model
 
 
@@ -164,7 +171,7 @@ def predict_tabular_model(config: ModelConfig,
                           bound_predictions: bool = False,
                           prediction_bounder: Optional[PredictionBounder] = None,
                           log_all_queries: bool = False,
-                          t3_model:T3Model=None):
+                          t3_model: T3Model = None):
     if bound_predictions or prediction_bounder:
         raise NotImplementedError("prediction bounding needs to be implemented for flat models")
 
@@ -192,7 +199,7 @@ def predict_tabular_model(config: ModelConfig,
         m = joblib.load(filename=f'{model_dir}_{config.seed}.pkl')
         pred_func = m.predict
         gen_dataset_func = gen_postgres_cost_dataset
-    elif isinstance(config,T3ModelConfig):
+    elif isinstance(config, T3ModelConfig):
         pred_func = t3_model.estimate_runtime_wrapper  # use the list-predict wrapper
         gen_dataset_func = functools.partial(gen_t3_dataset, model_config=config, verbose=False, return_dataset=False)
     else:
@@ -214,7 +221,9 @@ def predict_tabular_model(config: ModelConfig,
                                shuffle=False,
                                include_timeout_queries=False,
                                limit_plans_overall=config.limit_plans_overall,
-                               limit_plans_per_file=config.limit_plans_per_file)
+                               limit_plans_per_file=config.limit_plans_per_file,
+                               augment_with_subplans=False,  # nether augment test dataset
+                               )
         test_datasets.append(
             (x_test, y_test, test_sqls, test_hints, test_selectivities, test_scan_op_list, test_join_op_list))
 
@@ -289,12 +298,14 @@ def gen_postgres_cost_dataset(workload_runs: List[Path],
                               val_ratio: float = 0.15,
                               include_timeout_queries: bool = False,
                               stratify_dataset: bool = False,
-                              stratify_per_wl_file: bool = False) -> Tuple[np.ndarray]:
+                              stratify_per_wl_file: bool = False,
+                              augment_with_subplans: bool = False, ) -> Tuple[np.ndarray]:
     plans, database_statistics = read_workload_runs(workload_runs, include_timeout_queries=include_timeout_queries,
                                                     stratify_dataset=stratify_dataset,
                                                     stratify_per_wl_file=stratify_per_wl_file,
                                                     limit_plans_overall=limit_plans_overall,
-                                                    limit_plans_per_file=limit_plans_per_file)
+                                                    limit_plans_per_file=limit_plans_per_file,
+                                                    augment_with_subplans=augment_with_subplans)
     feature_vecs = []
     labels = []
     sqls, hints = [], []  # Required to later evaluate against join order
@@ -330,13 +341,15 @@ def gen_flattened_dataset(workload_runs: List[Path],
                           val_ratio: float = 0.15,
                           shuffle: bool = True,
                           include_timeout_queries: bool = False,
+                          augment_with_subplans: bool = False,
                           ):
     feature_statistics = load_json(str(statistics_file), namespace=False)
     op_idx_dict = feature_statistics['op_name']['value_dict']
     no_ops = len(op_idx_dict)
     plans, database_statistics = read_workload_runs(workload_runs, include_timeout_queries=include_timeout_queries,
                                                     limit_plans_per_file=limit_plans_per_file,
-                                                    limit_plans_overall=limit_plans_overall)
+                                                    limit_plans_overall=limit_plans_overall,
+                                                    augment_with_subplans=augment_with_subplans)
     feature_vecs = []
     labels = []
     selectivities = []
@@ -408,7 +421,8 @@ def extract_card(p, act_card):
 def gen_analytical_flattened_dataset(workload_runs, statistics_file, cap_training_samples, val_ratio=0.15,
                                      act_card=False, include_timeout_queries: bool = False,
                                      stratify_dataset: bool = False, stratify_per_wl_file: bool = False,
-                                     limit_plans_per_file: int = None, limit_plans_overall: int = None):
+                                     limit_plans_per_file: int = None, limit_plans_overall: int = None,
+                                     augment_with_subplans: bool = False):
     feature_statistics = load_json(str(statistics_file), namespace=False)
     op_idx_dict = feature_statistics['op_name']['value_dict']
     no_ops = len(op_idx_dict)
@@ -417,7 +431,8 @@ def gen_analytical_flattened_dataset(workload_runs, statistics_file, cap_trainin
                                                     stratify_dataset=stratify_dataset,
                                                     stratify_per_wl_file=stratify_per_wl_file,
                                                     limit_plans_per_file=limit_plans_per_file,
-                                                    limit_plans_overall=limit_plans_overall)
+                                                    limit_plans_overall=limit_plans_overall,
+                                                    augment_with_subplans=augment_with_subplans)
     feature_vecs = []
     labels = []
     for plan in plans:
