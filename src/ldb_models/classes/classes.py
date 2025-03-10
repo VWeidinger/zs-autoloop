@@ -45,6 +45,7 @@ class ModelName:
     ZS_FROM_TIMEOUT = Name('zeroshot_learn_from_timeout', 'Zero-Shot (learn from timeout)')
     ZS_RANK_LOSS = Name('zeroshot_rank_loss', 'Zero-Shot (Rank Loss)')
     ZS_STRATIFIED = Name("zeroshot_stratified", "Zero-Shot (stratified)")
+    ZS_XL = Name("zeroshot_xl", "Zero-Shot (XL)")
     ZS_PGCOST = Name("zeroshot_pgcost", "Zero-Shot (pgcost)")
     ZS_WITH_HINTS = Name("zeroshot_with_hints", "Zero-Shot (with hints)")
     ZS_ONLY_HINTS = Name("zeroshot_only_hints", "Zero-Shot (only hints)")
@@ -171,7 +172,7 @@ class ModelConfig:
                         training_workloads.append(path.as_posix())
 
             # assert len(training_workloads) == 19, f"Found {len(training_workloads)}, but it should be 19"
-            assert len(training_workloads)>0, f'No training workloads found for {self.name.NAME}'
+            assert len(training_workloads) > 0, f'No training workloads found for {self.name.NAME}'
             return training_workloads
 
         elif self.type == ModelType.WL_DRIVEN:
@@ -181,7 +182,7 @@ class ModelConfig:
                     stratified_workloads=stratified_workload,
                     romans_runs=romans_runs) / f"{target_dataset.db_name}_scaled{target_dataset.scale}" / f"{wl}.json"
                 training_workloads.append(path.as_posix())
-            assert len(training_workloads) >0 , f'No training workloads found for {self.name.NAME}'
+            assert len(training_workloads) > 0, f'No training workloads found for {self.name.NAME}'
             return training_workloads
 
     def assemble_wl_path(self, target_db: Dataset, wl_name, stratified_workloads: bool = True,
@@ -359,6 +360,18 @@ class ZeroShotModelConfig(ModelConfig):
 
 
 @attrs.define(frozen=True, slots=False)
+class ZeroShotXLConfig(ZeroShotModelConfig):
+    name: Name = ModelName.ZS_XL
+    final_mlp_kwargs: dict = dict(width_factor=2,
+                                  n_layers=6, **ZeroShotModelConfig().fc_out_kwargs)
+    tree_layer_kwargs: dict = dict(width_factor=1.2,
+                                   n_layers=4, **ZeroShotModelConfig().fc_out_kwargs)
+    hidden_dim: int = 256
+    include_scan_only_hint_workloads: bool = True
+    include_hint_idx_workloads: bool = True
+    include_complex_workloads: bool = True
+
+@attrs.define(frozen=True, slots=False)
 class ZSStratifiedModelConfig(ZeroShotModelConfig):
     name: Name = ModelName.ZS_STRATIFIED
     stratified_workloads: bool = True
@@ -514,6 +527,7 @@ class QueryFormerModelConfig(ModelConfig):
     loss_class_name: str = "QLoss"  # Originally MSELoss
     optimizer_class_name: str = "AdamW"  # Originally Adam
 
+
 @attrs.define(frozen=True, slots=False)
 class T3ModelConfig(TabularModelConfig):
     name: Name = ModelName.T3
@@ -522,9 +536,11 @@ class T3ModelConfig(TabularModelConfig):
     input_format: InputFormats = InputFormats.parsed
     card_type: CardType = CardType.pg
 
+
 @attrs.define(frozen=True, slots=False)
 class T3TreeModelConfig(T3ModelConfig):
     name: Name = ModelName.T3Tree
+
 
 @attrs.define(frozen=True, slots=False)
 class T3FlatModelConfig(T3ModelConfig):

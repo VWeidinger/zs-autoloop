@@ -12,7 +12,8 @@ from training.training.metrics import SpearmanRank, SelectedRuntime, SurpassedPl
     MaxUnderestimation, PickRate, OptimalRuntime
 
 
-def evaluate_join_order(predictions, wl_name:str, is_per_epoch: bool = False, epoch: int = None, wandb_run: Run = None):
+def evaluate_join_order(predictions, wl_name: str, is_per_epoch: bool = False, epoch: int = None,
+                        wandb_run: Run = None):
     """ This method evaluates a given workload of queries, how well the join order was predicted."""
     prediction_dataframe = pd.DataFrame(predictions)
     prediction_dataframe["hint"] = prediction_dataframe["hint"].fillna("")
@@ -69,6 +70,14 @@ def evaluate_join_order(predictions, wl_name:str, is_per_epoch: bool = False, ep
                 else:
                     wandb_run.log(data)
 
+    selected_runtimes = aggregated_results["selected_runtime"]
+    optimal_runtimes = aggregated_results["optimal_runtime"]
+
+    # sort by optimal runtime (desc)
+    sorted_indices = [i for i in sorted(range(len(optimal_runtimes)), key=lambda k: optimal_runtimes[k], reverse=True)]
+    optimal_runtimes_sorted = [optimal_runtimes[i] for i in sorted_indices]
+    selected_runtimes_sorted = [selected_runtimes[i] for i in sorted_indices]
+
     avg_spearman_corr = np.mean(aggregated_results['spearman_corr'])
     total_selected_runtime = np.sum(aggregated_results['selected_runtime'])
     total_optimal_runtime = np.sum(aggregated_results['optimal_runtime'])
@@ -109,7 +118,13 @@ def evaluate_join_order(predictions, wl_name:str, is_per_epoch: bool = False, ep
             wandb_run.summary[f'{prefix}/avg_max_underestimation'] = avg_max_underestimation
             wandb_run.summary[f'{prefix}/num_queries'] = len(aggregated_results['spearman_corr'])
             wandb_run.summary[f'{prefix}/num_plans'] = len(predictions)
-            wandb_run.log({f'{prefix}_pred_table': wandb.Table(dataframe=prediction_dataframe)})
+            wandb_run.log({f'{prefix}_pred_table': wandb.Table(dataframe=prediction_dataframe),
+                           f'{prefix}_plot': wandb.plot.line_series(xs=range(len(optimal_runtimes)),
+                                                                    ys=[optimal_runtimes_sorted,
+                                                                        selected_runtimes_sorted],
+                                                                    keys=["Optimal Runtimes", "Picked Runtimes"],
+                                                                    title="JOB - Picked vs. Optimal Runtimes",
+                                                                    xname="Query ID", )})
 
     return
 

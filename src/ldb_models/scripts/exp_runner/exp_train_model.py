@@ -5,7 +5,7 @@ from ldb_schema.datasets import Dataset
 from ldb_schema.paths import ClusterPaths, LocalPaths
 from octopus.step import Rsync, KillAllScreens, SetupVenv, RsyncCurrentRepo, SetupRYEVenv
 
-from classes.classes import ModelConfig, ModelType
+from classes.classes import ModelConfig, ModelType, ZeroShotXLConfig
 from classes.model_config_helper import parameterized_config
 from scripts.exp_runner.exp_runner import ExpRunner, TrainingServers
 
@@ -301,48 +301,50 @@ if __name__ == '__main__':
     model_configs = [model for model in model_configs if model is not None]
 
     # # Standard Models
-    # model_configs = [
-    #     # ScaledPostgresModelConfig(),  # --> Working
-    #     # FlatModelConfig(),  # --> Working
-    #     # E2EModelConfig(),                   # --> ToDo: Adapt to new codebase and generate sentences
-    #     # QPPNetModelConfig(),                # --> Working?
-    #     # MSCNModelConfig(),                  # --> ToDo: Adapt to new codebase and generate sentences
-    #     # DACEModelConfig(),                  # --> Working
-    #     # QueryFormerModelConfig(),           # --> ToDo: Generate Sentences
-    #     # ZeroShotModelConfig(),  # --> Working
-    #     # ZSLearnFromTimeoutConfig(),         # --> Working
-    #     # ZSRankLossConfig(),                 # --> Working
-    #
-    #     # Stratified Models
-    #     # FlatStratifiedModelConfig(),  # --> Working
-    #     # ZSStratifiedModelConfig(),  # --> Working
-    #     # DACEStratifiedModelConfig(),        # --> Working
-    #     # ScaledPostgresStratifiedModelConfig(),  # --> Working
-    #
-    #     # ZeroShotWithPostgresConfig(),  # --> Working
-    #     # ZeroShotModelWHintsConfig(),  # --> Working
-    #     # ZeroShotModelOnlyHints(),
-    #     # ZeroShotModel2Dim(),
-    #     # ZSStratifiedPGCostWithHintPlan(),
-    #     # ZSPGCostWithHintPlan(),
-    #     parameterized_config('zeroshot', include_hint_workloads=True, stratified_workloads=True),
-    #
-    #     # Ablation Models (without postgres Estimates)
-    #     # QPPModelNoCostsConfig(),
-    #
-    #     # DACEModelNoCostsConfig(),
-    #     # DACEModelWHintsConfig(),
-    #     # DACEModelOnlyHints(),
-    #
-    #     # Ablation Models (actual cardinalities)
-    #     # FlatModelActCardModelConfig(),
-    #     # QPPModelActCardsConfig(),
-    #     # DACEModelActCardConfig(),
-    #     # ZeroShotModelActCardConfig(),
-    #     T3ModelConfig(include_pg_opt_workloads=True),
-    #     T3TreeModelConfig(include_pg_opt_workloads=True),
-    #     T3FlatModelConfig(include_pg_opt_workloads=True),
-    # ]
+    model_configs = [
+        # ScaledPostgresModelConfig(),  # --> Working
+        # FlatModelConfig(),  # --> Working
+        # E2EModelConfig(),                   # --> ToDo: Adapt to new codebase and generate sentences
+        # QPPNetModelConfig(),                # --> Working?
+        # MSCNModelConfig(),                  # --> ToDo: Adapt to new codebase and generate sentences
+        # DACEModelConfig(),                  # --> Working
+        # QueryFormerModelConfig(),           # --> ToDo: Generate Sentences
+        # ZeroShotModelConfig(),  # --> Working
+        # ZSLearnFromTimeoutConfig(),         # --> Working
+        # ZSRankLossConfig(),                 # --> Working
+
+        # Stratified Models
+        # FlatStratifiedModelConfig(),  # --> Working
+        # ZSStratifiedModelConfig(),  # --> Working
+        # DACEStratifiedModelConfig(),        # --> Working
+        # ScaledPostgresStratifiedModelConfig(),  # --> Working
+
+        # ZeroShotWithPostgresConfig(),  # --> Working
+        # ZeroShotModelWHintsConfig(),  # --> Working
+        # ZeroShotModelOnlyHints(),
+        # ZeroShotModel2Dim(),
+        # ZSStratifiedPGCostWithHintPlan(),
+        # ZSPGCostWithHintPlan(),
+        # parameterized_config('zeroshot', include_hint_workloads=True, stratified_workloads=True),
+
+        ZeroShotXLConfig(),
+
+        # Ablation Models (without postgres Estimates)
+        # QPPModelNoCostsConfig(),
+
+        # DACEModelNoCostsConfig(),
+        # DACEModelWHintsConfig(),
+        # DACEModelOnlyHints(),
+
+        # Ablation Models (actual cardinalities)
+        # FlatModelActCardModelConfig(),
+        # QPPModelActCardsConfig(),
+        # DACEModelActCardConfig(),
+        # ZeroShotModelActCardConfig(),
+        # T3ModelConfig(include_pg_opt_workloads=True),
+        # T3TreeModelConfig(include_pg_opt_workloads=True),
+        # T3FlatModelConfig(include_pg_opt_workloads=True),
+    ]
 
     runner = ExpRunner(replicate=False,
                        node_names=[node["hostname"] for node in nodes],
