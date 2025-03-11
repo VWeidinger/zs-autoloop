@@ -356,7 +356,8 @@ class ZeroShotModelConfig(ModelConfig):
     collator_func: Callable = postgres_plan_collator
     input_format: InputFormats = InputFormats.parsed
     device: str = "cuda:[socket]"  # Device selection is handled by octopus
-    skip_top_aggregation: bool = False
+    skip_top_aggregation: bool = False  # removes any aggregation node from the top of the tree
+    filter_inline_col_feats: bool = True  # by default zs is trained with inline column features
 
 
 @attrs.define(frozen=True, slots=False)
@@ -370,6 +371,7 @@ class ZeroShotXLConfig(ZeroShotModelConfig):
     include_scan_only_hint_workloads: bool = True
     include_hint_idx_workloads: bool = True
     include_complex_workloads: bool = True
+
 
 @attrs.define(frozen=True, slots=False)
 class ZSStratifiedModelConfig(ZeroShotModelConfig):

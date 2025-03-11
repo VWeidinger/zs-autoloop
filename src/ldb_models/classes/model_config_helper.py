@@ -3,9 +3,9 @@ import re
 from typing import Dict
 
 import classes.classes as cls
+import training.featurizations as fts
 from classes.classes import ModelConfig, Name
 from training.featurizations import Featurization
-import training.featurizations as fts
 
 
 def parameterized_config(base_config_name: str, **args):
@@ -96,14 +96,13 @@ def get_parameterized_model_config(model_name: str, m_args: Dict) -> ModelConfig
             args_dict['featurization'] = featurization_dict[arg]
             continue
 
-
         # check if arg ends with number and if so, split it
         param_name, number = split_if_ends_with_digits(arg)
 
-
-
         if number is not None:
             args_dict[param_name] = int(number)
+        elif param_name.endswith('False'):
+            args_dict[param_name.replace('False', '')] = False
         else:
             # it is a flag - make it a boolean
             args_dict[param_name] = True

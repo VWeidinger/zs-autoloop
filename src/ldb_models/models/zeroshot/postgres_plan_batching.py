@@ -1,5 +1,5 @@
 import collections
-from typing import List, Tuple
+from typing import List, Tuple, Dict
 
 import dgl
 import numpy as np
@@ -96,19 +96,22 @@ def assign_additional_plan_info(plan: dict, db_statistics: dict):
 
 def plan_to_graph(node, database_id, plan_depths, plan_features, plan_to_plan_edges, db_statistics, feature_statistics,
                   filter_to_plan_edges, predicate_col_features, output_column_to_plan_edges, output_column_features,
-                  column_to_output_column_edges, column_features, table_features, table_to_plan_edges,
+                  column_to_output_column_edges, column_to_filter_edges, column_features, table_features,
+                  table_to_plan_edges,
                   output_column_idx, column_idx, table_idx, plan_featurization, predicate_depths, intra_predicate_edges,
-                  logical_preds, parent_node_id=None, depth=0, skip_top_aggregation:bool=False):
-
+                  logical_preds, parent_node_id=None, depth=0, skip_top_aggregation: bool = False,
+                  filter_inline_col_feats: bool = True):
     plan_params = node["plan_parameters"]
 
     if 'Aggregate' in plan_params['op_name'] and skip_top_aggregation:
         assert len(node["children"]) == 1, f'Aggregation has more than one child: {node}'
         plan_to_graph(node["children"][0], database_id, plan_depths, plan_features, plan_to_plan_edges, db_statistics,
                       feature_statistics, filter_to_plan_edges, predicate_col_features, output_column_to_plan_edges,
-                      output_column_features, column_to_output_column_edges, column_features, table_features,
+                      output_column_features, column_to_output_column_edges, column_to_filter_edges, column_features,
+                      table_features,
                       table_to_plan_edges, output_column_idx, column_idx, table_idx, plan_featurization,
-                      predicate_depths, intra_predicate_edges, logical_preds, parent_node_id=parent_node_id, depth=depth, skip_top_aggregation=False)
+                      predicate_depths, intra_predicate_edges, logical_preds, parent_node_id=parent_node_id,
+                      depth=depth, skip_top_aggregation=False, filter_inline_col_feats=filter_inline_col_feats)
         return
 
     # add plan features
@@ -142,21 +145,12 @@ def plan_to_graph(node, database_id, plan_depths, plan_features, plan_to_plan_ed
                 db_column_features = db_statistics[database_id]["column_stats"]
                 assert db_column_features is not None
                 for column in output_column["columns"]:
-                    column_node_id = column_idx.get((str(column['col_id']), database_id))
-                    if column_node_id is None:
-                        assert isinstance(column, dict), f'Column is not a dict: {column} / {node}'
-                        try:
-                            curr_column_features = [
-                                encode(feature_name, db_column_features[column["col_id"]], feature_statistics)
-                                for feature_name in plan_featurization.COLUMN_FEATURES]
-                        except Exception as e:
-                            print(
-                                f'Error in column: {column} / {db_column_features[column["col_id"]]} / {str(feature_statistics)[:100]}',
-                                flush=True)
-                            raise e
-                        column_node_id = len(column_features)
-                        column_features.append(curr_column_features)
-                        column_idx[(str(column['col_id']), database_id)] = column_node_id
+                    # lookup column node id or create node if not yet existing
+                    column_node_id = get_or_add_col_id(column['col_id'], column_idx, database_id,
+                                                       db_column_features=db_column_features,
+                                                       feature_statistics=feature_statistics,
+                                                       plan_featurization=plan_featurization,
+                                                       column_features=column_features)
                     column_to_output_column_edges.append((column_node_id, output_column_node_id))
 
             # in any case add the corresponding edge
@@ -170,8 +164,12 @@ def plan_to_graph(node, database_id, plan_depths, plan_features, plan_to_plan_ed
         db_column_features = db_statistics[database_id]["column_stats"]
         try:
             parse_predicates(db_column_features, feature_statistics, filter, filter_to_plan_edges,
-                         plan_featurization, predicate_col_features, predicate_depths, intra_predicate_edges,
-                         logical_preds, plan_node_id=plan_node_id)
+                             column_to_filter_edges=column_to_filter_edges,
+                             plan_featurization=plan_featurization, predicate_col_features=predicate_col_features,
+                             predicate_depths=predicate_depths, intra_predicate_edges=intra_predicate_edges,
+                             logical_preds=logical_preds, column_features=column_features, column_idx=column_idx,
+                             database_id=database_id, plan_node_id=plan_node_id,
+                             inline_col_feats=filter_inline_col_feats, )
         except Exception as e:
             print(f'Error in filter: {filter}', flush=True)
             raise e
@@ -183,8 +181,13 @@ def plan_to_graph(node, database_id, plan_depths, plan_features, plan_to_plan_ed
         db_column_features = db_statistics[database_id]["column_stats"]
         try:
             parse_predicates(db_column_features, feature_statistics, join, filter_to_plan_edges,
-                         plan_featurization, predicate_col_features, predicate_depths, intra_predicate_edges,
-                         logical_preds, plan_node_id=plan_node_id, is_join=True)
+                             column_to_filter_edges=column_to_filter_edges,
+                             plan_featurization=plan_featurization,
+                             predicate_col_features=predicate_col_features,
+                             predicate_depths=predicate_depths, intra_predicate_edges=intra_predicate_edges,
+                             logical_preds=logical_preds, column_features=column_features, column_idx=column_idx,
+                             database_id=database_id, plan_node_id=plan_node_id, is_join=True,
+                             inline_col_feats=filter_inline_col_feats)
         except Exception as e:
             print(f'Error in join: {join}', flush=True)
             raise e
@@ -215,14 +218,37 @@ def plan_to_graph(node, database_id, plan_depths, plan_features, plan_to_plan_ed
     for c in node["children"]:
         plan_to_graph(c, database_id, plan_depths, plan_features, plan_to_plan_edges, db_statistics, feature_statistics,
                       filter_to_plan_edges, predicate_col_features, output_column_to_plan_edges, output_column_features,
-                      column_to_output_column_edges, column_features, table_features, table_to_plan_edges,
+                      column_to_output_column_edges, column_to_filter_edges, column_features, table_features,
+                      table_to_plan_edges,
                       output_column_idx, column_idx, table_idx, plan_featurization, predicate_depths,
-                      intra_predicate_edges, logical_preds, parent_node_id=plan_node_id, depth=depth + 1, skip_top_aggregation=skip_top_aggregation)
+                      intra_predicate_edges, logical_preds, parent_node_id=plan_node_id, depth=depth + 1,
+                      skip_top_aggregation=skip_top_aggregation, filter_inline_col_feats=filter_inline_col_feats)
 
 
-def parse_predicates(db_column_features, feature_statistics, filter, filter_to_plan_edges, plan_featurization,
-                     predicate_col_features, predicate_depths, intra_predicate_edges, logical_preds, plan_node_id=None,
-                     parent_filter_node_id=None, depth=0, is_join: bool = False):
+def get_or_add_col_id(column_id: int, column_idx: Dict, database_id: int, db_column_features: Dict,
+                      feature_statistics: Dict, plan_featurization, column_features: List):
+    column_node_id = column_idx.get((str(column_id), database_id))
+    if column_node_id is None:
+        try:
+            curr_column_features = [
+                encode(feature_name, db_column_features[column_id], feature_statistics)
+                for feature_name in plan_featurization.COLUMN_FEATURES]
+        except Exception as e:
+            print(
+                f'Error in column: {column_id} / {db_column_features[column_id]} / {str(feature_statistics)[:100]}',
+                flush=True)
+            raise e
+        column_node_id = len(column_features)
+        column_features.append(curr_column_features)
+        column_idx[(str(column_id), database_id)] = column_node_id
+
+    return column_node_id
+
+
+def parse_predicates(db_column_features, feature_statistics, filter, filter_to_plan_edges, column_to_filter_edges,
+                     plan_featurization, predicate_col_features, predicate_depths, intra_predicate_edges,
+                     logical_preds, column_features, column_idx: Dict, database_id: int, plan_node_id=None,
+                     parent_filter_node_id=None, depth=0, is_join: bool = False, inline_col_feats: bool = True):
     """
     Recursive parsing of predicate columns
 
@@ -247,22 +273,52 @@ def parse_predicates(db_column_features, feature_statistics, filter, filter_to_p
         curr_filter_features = [encode(feature_name, filter, feature_statistics)
                                 for feature_name in plan_featurization.FILTER_FEATURES]
 
-        if is_join:
-            filter['col_id'] = filter['col_id1']
+        if inline_col_feats:
+            # inline the column features to the filter features - do not add a separate node for the column
+            if is_join:
+                filter['col_id'] = filter['col_id1']
 
-        if 'col_name' in filter or 'column_name' in filter:
-            assert 'col_id' in filter, f'No col_id in filter: {filter}'
+            if 'col_name' in filter or 'column_name' in filter:
+                assert 'col_id' in filter, f'No col_id in filter: {filter}'
 
-        if 'col_id' in filter and filter['col_id'] is not None:
-            curr_filter_col_feats = [
-                encode(column, db_column_features[filter['col_id']], feature_statistics)
-                for column in plan_featurization.COLUMN_FEATURES]
-        # hack for cases in which we have no base filter column (e.g., in a having clause where the column is some
-        # result column of a subquery/groupby). In the future, this should be replaced by some graph model that also
-        # encodes the structure of this output column
+            if 'col_id' in filter and filter['col_id'] is not None:
+                curr_filter_col_feats = [
+                    encode(column, db_column_features[filter['col_id']], feature_statistics)
+                    for column in plan_featurization.COLUMN_FEATURES]
+            # hack for cases in which we have no base filter column (e.g., in a having clause where the column is some
+            # result column of a subquery/groupby). In the future, this should be replaced by some graph model that also
+            # encodes the structure of this output column
+            else:
+                curr_filter_col_feats = [0 for _ in plan_featurization.COLUMN_FEATURES]
+            curr_filter_features += curr_filter_col_feats
         else:
-            curr_filter_col_feats = [0 for _ in plan_featurization.COLUMN_FEATURES]
-        curr_filter_features += curr_filter_col_feats
+            if is_join:
+                col_id1 = filter['col_id1']
+                col_id2 = filter['col_id2']
+
+                # create col nodes or get existing ones
+                col_node_id1 = get_or_add_col_id(col_id1, column_idx=column_idx, database_id=database_id,
+                                                 db_column_features=db_column_features,
+                                                 feature_statistics=feature_statistics,
+                                                 plan_featurization=plan_featurization, column_features=column_features)
+                col_node_id2 = get_or_add_col_id(col_id2, column_idx=column_idx, database_id=database_id,
+                                                 db_column_features=db_column_features,
+                                                 feature_statistics=feature_statistics,
+                                                 plan_featurization=plan_featurization, column_features=column_features)
+
+                # add edge col to filter
+                column_to_filter_edges.append((col_node_id1, filter_node_id))
+                column_to_filter_edges.append((col_node_id2, filter_node_id))
+            else:
+                col_id = filter['col_id']
+                # create col nodes or get existing ones
+                col_node_id = get_or_add_col_id(col_id, column_idx=column_idx, database_id=database_id,
+                                                db_column_features=db_column_features,
+                                                feature_statistics=feature_statistics,
+                                                plan_featurization=plan_featurization, column_features=column_features)
+                # add edge col to filter
+                column_to_filter_edges.append((col_node_id, filter_node_id))
+
         logical_preds.append(False)
 
     else:
@@ -286,12 +342,17 @@ def parse_predicates(db_column_features, feature_statistics, filter, filter_to_p
     if 'children' in filter:
         for c in filter['children']:
             parse_predicates(db_column_features, feature_statistics, c, filter_to_plan_edges,
-                         plan_featurization, predicate_col_features, predicate_depths, intra_predicate_edges,
-                             logical_preds, parent_filter_node_id=filter_node_id, depth=depth + 1, is_join=is_join)
+                             column_to_filter_edges=column_to_filter_edges,
+                             plan_featurization=plan_featurization, predicate_col_features=predicate_col_features,
+                             predicate_depths=predicate_depths, intra_predicate_edges=intra_predicate_edges,
+                             logical_preds=logical_preds, column_features=column_features, column_idx=column_idx,
+                             database_id=database_id, parent_filter_node_id=filter_node_id, depth=depth + 1,
+                             is_join=is_join, inline_col_feats=inline_col_feats)
 
 
 def postgres_plan_collator(plans: List[Tuple], feature_statistics: dict[dict] = None, db_statistics: dict = None,
-                           plan_featurization: Featurization = None, test_mode: bool = False, skip_top_aggregation:bool=False):
+                           plan_featurization: Featurization = None, test_mode: bool = False,
+                           skip_top_aggregation: bool = False, filter_inline_col_feats: bool = True):
     """
     Combines physical plans into a large graph that can be fed into ML models.
     :return:
@@ -321,6 +382,7 @@ def postgres_plan_collator(plans: List[Tuple], feature_statistics: dict[dict] = 
     output_column_to_plan_edges = []
     output_column_features = []
     column_to_output_column_edges = []
+    column_to_filter_edges = []
     column_features = []
     table_features = []
     table_to_plan_edges = []
@@ -357,17 +419,17 @@ def postgres_plan_collator(plans: List[Tuple], feature_statistics: dict[dict] = 
             hints.append(p["hint"])
             assign_additional_plan_info(p, db_statistics)
             selectivity_list += p["selectivity"]
-            scan_op_list +=p["scan_op"]
-            join_op_list+= p["join_op"]
+            scan_op_list += p["scan_op"]
+            join_op_list += p["join_op"]
 
         # Parse the plan as graph
         plan_to_graph(p, p["database_id"], plan_depths, plan_features, plan_to_plan_edges, db_statistics,
                       feature_statistics, filter_to_plan_edges, filter_features, output_column_to_plan_edges,
-                      output_column_features, column_to_output_column_edges, column_features, table_features,
+                      output_column_features, column_to_output_column_edges, column_to_filter_edges, column_features,
+                      table_features,
                       table_to_plan_edges, output_column_idx, column_idx, table_idx,
                       plan_featurization, predicate_depths, intra_predicate_edges, logical_preds,
-                      skip_top_aggregation=skip_top_aggregation)
-
+                      skip_top_aggregation=skip_top_aggregation, filter_inline_col_feats=filter_inline_col_feats)
 
     assert len(labels) == len(plans)
     assert len(plan_depths) == len(plan_features)
@@ -390,7 +452,7 @@ def postgres_plan_collator(plans: List[Tuple], feature_statistics: dict[dict] = 
             no_filter_columns += 1
 
     adapt_predicate_edges(data_dict, filter_to_plan_edges, intra_predicate_edges, logical_preds, plan_dict, pred_dict,
-                          pred_node_type_id)
+                          pred_node_type_id, column_to_filter_edges)
 
     # we additionally have filters, tables, columns, output_columns and plan nodes as node types
     # Attention: The following code assumes that column_to_output_column_edges is not none. This
@@ -421,7 +483,7 @@ def postgres_plan_collator(plans: List[Tuple], feature_statistics: dict[dict] = 
     try:
         graph = dgl.heterograph(data_dict, num_nodes_dict=num_nodes_dict)
     except Exception as e:
-        print(f'Error in creating graph: {num_nodes_dict}')
+        # print(f'Error in creating graph: {num_nodes_dict} \n {data_dict}',flush=True)
         raise e
     graph.max_depth = max_depth
     graph.max_pred_depth = max_pred_depth
@@ -490,7 +552,7 @@ def get_depths(plan_depths, predicate_depths):
 
 
 def adapt_predicate_edges(data_dict, filter_to_plan_edges, intra_predicate_edges, logical_preds, plan_dict, pred_dict,
-                          pred_node_type_id_func):
+                          pred_node_type_id_func, column_to_filter_edges):
     # convert to plan edges
     for u, v in filter_to_plan_edges:
         # transform plan node to right id and depth
@@ -504,6 +566,10 @@ def adapt_predicate_edges(data_dict, filter_to_plan_edges, intra_predicate_edges
         u_node_type, u_node_id = pred_node_type_id_func(logical_preds, pred_dict, u)
         v_node_type, v_node_id = pred_node_type_id_func(logical_preds, pred_dict, v)
         data_dict[(u_node_type, 'intra_predicate', v_node_type)].append((u_node_id, v_node_id))
+
+    for u, v in column_to_filter_edges:
+        v_node_type, v_node_id = pred_node_type_id_func(logical_preds, pred_dict, v)
+        data_dict[('column', 'col_filter', v_node_type)].append((u, v_node_id))
 
 
 def create_node_types_per_depth(plan_depths, plan_to_plan_edges):

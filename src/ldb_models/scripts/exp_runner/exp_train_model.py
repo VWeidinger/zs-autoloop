@@ -8,7 +8,6 @@ from octopus.step import Rsync, KillAllScreens, SetupVenv, RsyncCurrentRepo, Set
 from classes.classes import ModelConfig, ModelType
 from classes.model_config_helper import parameterized_config
 from scripts.exp_runner.exp_runner import ExpRunner, TrainingServers
-from training.featurizations import PostgresEstWithIsJoinCond
 
 
 def generate_training_commands(datasets: List[Dataset], seeds: list[int], python_version: str, wandb_project: str,
@@ -224,8 +223,8 @@ if __name__ == '__main__':
         # TrainingServers.NODE05,
         # TrainingServers.NODE09,
     ]
-    sockets = [0, 1]
-    out_file_id_offset = 0
+    sockets = [1]
+    out_file_id_offset = 1
     num_parallel_screens = None
     num_parallel_jobs_dgx = 6
 
@@ -297,8 +296,12 @@ if __name__ == '__main__':
             #                      train_on_subplans=True,
             #                      limit_plans_per_file=5000,
             #                      **model_specific_args),  # w subplans
-            parameterized_config(model_type, wandb_group='wIsIdxFeat_complex',
-                                 featurization=PostgresEstWithIsJoinCond, include_complex_workloads=True,
+            # parameterized_config(model_type, wandb_group='wIsJoinCond_complex_pgopt_hintidx',
+            #                      featurization=PostgresEstWithIsJoinCond, include_complex_workloads=True,
+            #                      include_pg_opt_workloads=True, include_hint_idx_workloads=True,
+            #                      **model_specific_args) if model_type == 'zeroshot' else None,
+            parameterized_config(model_type, wandb_group='wColFilterEdges_complex_pgopt_hintidx',
+                                 filter_inline_col_feats=False, include_complex_workloads=True,
                                  include_pg_opt_workloads=True, include_hint_idx_workloads=True,
                                  **model_specific_args) if model_type == 'zeroshot' else None,
         ])
@@ -307,48 +310,48 @@ if __name__ == '__main__':
 
     # # Standard Models
     # model_configs = [
-        # ScaledPostgresModelConfig(),  # --> Working
-        # FlatModelConfig(),  # --> Working
-        # E2EModelConfig(),                   # --> ToDo: Adapt to new codebase and generate sentences
-        # QPPNetModelConfig(),                # --> Working?
-        # MSCNModelConfig(),                  # --> ToDo: Adapt to new codebase and generate sentences
-        # DACEModelConfig(),                  # --> Working
-        # QueryFormerModelConfig(),           # --> ToDo: Generate Sentences
-        # ZeroShotModelConfig(),  # --> Working
-        # ZSLearnFromTimeoutConfig(),         # --> Working
-        # ZSRankLossConfig(),                 # --> Working
+    # ScaledPostgresModelConfig(),  # --> Working
+    # FlatModelConfig(),  # --> Working
+    # E2EModelConfig(),                   # --> ToDo: Adapt to new codebase and generate sentences
+    # QPPNetModelConfig(),                # --> Working?
+    # MSCNModelConfig(),                  # --> ToDo: Adapt to new codebase and generate sentences
+    # DACEModelConfig(),                  # --> Working
+    # QueryFormerModelConfig(),           # --> ToDo: Generate Sentences
+    # ZeroShotModelConfig(),  # --> Working
+    # ZSLearnFromTimeoutConfig(),         # --> Working
+    # ZSRankLossConfig(),                 # --> Working
 
-        # Stratified Models
-        # FlatStratifiedModelConfig(),  # --> Working
-        # ZSStratifiedModelConfig(),  # --> Working
-        # DACEStratifiedModelConfig(),        # --> Working
-        # ScaledPostgresStratifiedModelConfig(),  # --> Working
+    # Stratified Models
+    # FlatStratifiedModelConfig(),  # --> Working
+    # ZSStratifiedModelConfig(),  # --> Working
+    # DACEStratifiedModelConfig(),        # --> Working
+    # ScaledPostgresStratifiedModelConfig(),  # --> Working
 
-        # ZeroShotWithPostgresConfig(),  # --> Working
-        # ZeroShotModelWHintsConfig(),  # --> Working
-        # ZeroShotModelOnlyHints(),
-        # ZeroShotModel2Dim(),
-        # ZSStratifiedPGCostWithHintPlan(),
-        # ZSPGCostWithHintPlan(),
-        # parameterized_config('zeroshot', include_hint_workloads=True, stratified_workloads=True),
+    # ZeroShotWithPostgresConfig(),  # --> Working
+    # ZeroShotModelWHintsConfig(),  # --> Working
+    # ZeroShotModelOnlyHints(),
+    # ZeroShotModel2Dim(),
+    # ZSStratifiedPGCostWithHintPlan(),
+    # ZSPGCostWithHintPlan(),
+    # parameterized_config('zeroshot', include_hint_workloads=True, stratified_workloads=True),
 
     # ZeroShotXLConfig(),
 
-        # Ablation Models (without postgres Estimates)
-        # QPPModelNoCostsConfig(),
+    # Ablation Models (without postgres Estimates)
+    # QPPModelNoCostsConfig(),
 
-        # DACEModelNoCostsConfig(),
-        # DACEModelWHintsConfig(),
-        # DACEModelOnlyHints(),
+    # DACEModelNoCostsConfig(),
+    # DACEModelWHintsConfig(),
+    # DACEModelOnlyHints(),
 
-        # Ablation Models (actual cardinalities)
-        # FlatModelActCardModelConfig(),
-        # QPPModelActCardsConfig(),
-        # DACEModelActCardConfig(),
-        # ZeroShotModelActCardConfig(),
-        # T3ModelConfig(include_pg_opt_workloads=True),
-        # T3TreeModelConfig(include_pg_opt_workloads=True),
-        # T3FlatModelConfig(include_pg_opt_workloads=True),
+    # Ablation Models (actual cardinalities)
+    # FlatModelActCardModelConfig(),
+    # QPPModelActCardsConfig(),
+    # DACEModelActCardConfig(),
+    # ZeroShotModelActCardConfig(),
+    # T3ModelConfig(include_pg_opt_workloads=True),
+    # T3TreeModelConfig(include_pg_opt_workloads=True),
+    # T3FlatModelConfig(include_pg_opt_workloads=True),
     # ]
 
     runner = ExpRunner(replicate=False,
