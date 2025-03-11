@@ -240,6 +240,8 @@ def parse_predicates(db_column_features, feature_statistics, filter, filter_to_p
 
     assert 'operator' in filter, f'No operator in filter: {filter}'
 
+    filter['is_join_cond'] = 1 if is_join else 0
+
     # gather features
     if filter['operator'] in {str(op) for op in list(Operator)}:
         curr_filter_features = [encode(feature_name, filter, feature_statistics)

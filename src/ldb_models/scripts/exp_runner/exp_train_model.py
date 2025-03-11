@@ -5,9 +5,10 @@ from ldb_schema.datasets import Dataset
 from ldb_schema.paths import ClusterPaths, LocalPaths
 from octopus.step import Rsync, KillAllScreens, SetupVenv, RsyncCurrentRepo, SetupRYEVenv
 
-from classes.classes import ModelConfig, ModelType, ZeroShotXLConfig
+from classes.classes import ModelConfig, ModelType
 from classes.model_config_helper import parameterized_config
 from scripts.exp_runner.exp_runner import ExpRunner, TrainingServers
+from training.featurizations import PostgresEstWithIsJoinCond
 
 
 def generate_training_commands(datasets: List[Dataset], seeds: list[int], python_version: str, wandb_project: str,
@@ -289,19 +290,23 @@ if __name__ == '__main__':
             # parameterized_config(model_type, wandb_group='notopaggr', include_pg_opt_workloads=True, include_scan_only_hint_workloads=True,
             #                      skip_top_aggregation=True,
             #                      **model_specific_args) if model_type == 'zeroshot' else None,
-            parameterized_config(model_type, wandb_group='wsubplans_pgopt_hintidx_complex',
-                                 include_complex_workloads=True,
-                                 include_pg_opt_workloads=True,
-                                 include_hint_idx_workloads=True,
-                                 train_on_subplans=True,
-                                 limit_plans_per_file=5000,
-                                 **model_specific_args),  # w subplans
+            # parameterized_config(model_type, wandb_group='wsubplans_pgopt_hintidx_complex',
+            #                      include_complex_workloads=True,
+            #                      include_pg_opt_workloads=True,
+            #                      include_hint_idx_workloads=True,
+            #                      train_on_subplans=True,
+            #                      limit_plans_per_file=5000,
+            #                      **model_specific_args),  # w subplans
+            parameterized_config(model_type, wandb_group='wIsIdxFeat_complex',
+                                 featurization=PostgresEstWithIsJoinCond, include_complex_workloads=True,
+                                 include_pg_opt_workloads=True, include_hint_idx_workloads=True,
+                                 **model_specific_args) if model_type == 'zeroshot' else None,
         ])
 
     model_configs = [model for model in model_configs if model is not None]
 
     # # Standard Models
-    model_configs = [
+    # model_configs = [
         # ScaledPostgresModelConfig(),  # --> Working
         # FlatModelConfig(),  # --> Working
         # E2EModelConfig(),                   # --> ToDo: Adapt to new codebase and generate sentences
@@ -327,7 +332,7 @@ if __name__ == '__main__':
         # ZSPGCostWithHintPlan(),
         # parameterized_config('zeroshot', include_hint_workloads=True, stratified_workloads=True),
 
-        ZeroShotXLConfig(),
+    # ZeroShotXLConfig(),
 
         # Ablation Models (without postgres Estimates)
         # QPPModelNoCostsConfig(),
@@ -344,7 +349,7 @@ if __name__ == '__main__':
         # T3ModelConfig(include_pg_opt_workloads=True),
         # T3TreeModelConfig(include_pg_opt_workloads=True),
         # T3FlatModelConfig(include_pg_opt_workloads=True),
-    ]
+    # ]
 
     runner = ExpRunner(replicate=False,
                        node_names=[node["hostname"] for node in nodes],

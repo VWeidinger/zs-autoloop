@@ -9,20 +9,26 @@ from ldb_schema.paths import LocalPaths
 
 load_dotenv()
 file_cache = dict()
+file_cache_parsed = dict()
 
 
 def load_job_file():
     job_file = 'imdb_scaled1/join_order_job_w_idxs_combined.json'
 
     if job_file in file_cache:
-        return file_cache[job_file]
+        return file_cache[job_file], file_cache_parsed[job_file]
 
     print(f'Loading job file {job_file}')
     with open(LocalPaths().Data.json_plans.as_posix() + '/' + job_file, 'r') as f:
         job_data = orjson.loads(f.read())
 
+    print(f'Loaded parsed job file {job_file}')
+    with open(LocalPaths().Data.parsed_plans.as_posix() + '/' + job_file, 'r') as f:
+        job_data_parsed = orjson.loads(f.read())
+
     file_cache[job_file] = job_data
-    return job_data
+    file_cache_parsed[job_file] = job_data_parsed
+    return job_data, job_data_parsed
 
 
 def create_explain_dalibo_entry(query, plan, title):
@@ -49,7 +55,7 @@ def create_explain_dalibo_entry(query, plan, title):
 
 
 def search_plan(target_sql, target_hint):
-    job_data = load_job_file()
+    job_data, job_data_parsed = load_job_file()
 
     matching_files = []
 
@@ -61,4 +67,13 @@ def search_plan(target_sql, target_hint):
         if sql == target_sql and hint == target_hint:
             matching_files.append(plan)
 
-    return matching_files
+    matching_parsed_plans = []
+    # find parsed plan
+    for plan in job_data_parsed['parsed_plans']:
+        sql = plan['sql']
+        hint = plan['hint']
+
+        if sql == target_sql and hint == target_hint:
+            matching_parsed_plans.append(plan)
+
+    return matching_files, matching_parsed_plans
