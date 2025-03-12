@@ -26,7 +26,9 @@ def validate_model(val_loader: DataLoader,
                    bound_predictions: bool = False,
                    prediction_bounder: Optional[PredictionBounder] = None,
                    log_prefix: str = 'val',
-                   update_metrics: bool = True) -> bool:
+                   update_metrics: bool = True,
+                   store_model_snapshot: bool = True,
+                   show_best_seen: bool = True) -> bool:
     model.eval()
 
     with torch.autograd.no_grad():
@@ -113,12 +115,13 @@ def validate_model(val_loader: DataLoader,
                         continue
 
                     best_seen = metric.evaluate(metrics_dict=metrics_dict,
-                                                model=model,
+                                                model=model if store_model_snapshot else None,
                                                 labels=labels,
                                                 preds=preds if not bound else bounded_preds,
                                                 probs=probs,
                                                 logging_suffix='bounded' if bound else None,
-                                                update_best_seen=not bound and update_metrics)
+                                                update_best_seen=not bound and update_metrics,
+                                                show_best_seen=show_best_seen)
 
                     if best_seen and metric.early_stopping_metric and not bound and update_metrics:
                         any_best_metric = True

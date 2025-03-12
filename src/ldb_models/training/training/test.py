@@ -31,14 +31,15 @@ def test_model(config: ModelConfig,
                is_per_epoch: bool = False):
     if test_loaders is not None:
         if not (model_dir is None or config.name.NAME is None):
+
+            # In case of retraining, do not load the totally best model but the latest one
+            if load_best_checkpoint:
+                early_stop_m = find_early_stopping_metric(metrics)
+                model.load_state_dict(early_stop_m.best_model)
+
             for test_path, test_loader in zip(test_csv_paths, test_loaders):
                 print(f"Starting validation for {test_path}")
                 test_stats = dict()
-
-                # In case of retraining, do not load the totally best model but the latest one
-                if load_best_checkpoint:
-                    early_stop_m = find_early_stopping_metric(metrics)
-                    model.load_state_dict(early_stop_m.best_model)
 
                 _, predictions_dict = validate_model(
                     val_loader=test_loader,
@@ -51,8 +52,10 @@ def test_model(config: ModelConfig,
                     target_path=test_path,
                     bound_predictions=bound_predictions,
                     prediction_bounder=prediction_bounder,
-                    update_metrics=False,
-                    log_prefix=log_prefix
+                    update_metrics=False,  # do not update best seen metrics - this is determined by val set
+                    store_model_snapshot=False,  # do not update best model snapshot - this is determined by val set
+                    log_prefix=log_prefix,
+                    show_best_seen=False,  # do not show - it was computed during val i.e. not relevant
                 )
 
                 # extract filename from path
@@ -71,8 +74,8 @@ def test_model(config: ModelConfig,
 
                 if "join_order" in filename:
                     if filename == 'join_order':
-                        wl_name = 'job_light' # job_light
-                    elif filename.startswith('join_order_job'): # could also be 'join_order_job_all_valid'
+                        wl_name = 'job_light'  # job_light
+                    elif filename.startswith('join_order_job'):  # could also be 'join_order_job_all_valid'
                         wl_name = 'job'
                     else:
                         raise ValueError(f"Unknown workload name: {filename}")

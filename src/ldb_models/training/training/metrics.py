@@ -6,6 +6,7 @@ import scipy
 import sklearn
 from sklearn.metrics import mean_squared_error
 
+
 class Metric:
     """
     Abstract class defining a metric used to evaluate the zero-shot cost model performance (e.g., Q-error)
@@ -22,7 +23,8 @@ class Metric:
         self.best_model = None
         self.early_stopping_metric = early_stopping_metric
 
-    def evaluate(self, model=None, metrics_dict=None, logging_suffix:str=None, update_best_seen:bool=True, **kwargs):
+    def evaluate(self, model=None, metrics_dict=None, logging_suffix: str = None, update_best_seen: bool = True,
+                 show_best_seen: bool = True, **kwargs):
 
         if logging_suffix is not None:
             metric_name = f'{self.metric_name}_{logging_suffix}'
@@ -36,7 +38,12 @@ class Metric:
             print(f"Observed ValueError for {metric_name} in calculation: {e}")
 
         metrics_dict[metric_name] = metric
-        print(f"{metric_name:<30}: {metric:<10.4f} [best: {self.best_seen_value:.4f}]")
+
+        # compose log string
+        log_string = f'{metric_name:<30}: {metric:<10.4f}'
+        if show_best_seen:
+            log_string += f' [best: {self.best_seen_value:.4f}]'
+        print(log_string)
 
         best_seen = False
         if update_best_seen:
