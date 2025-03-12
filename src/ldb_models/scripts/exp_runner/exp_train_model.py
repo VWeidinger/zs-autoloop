@@ -120,6 +120,7 @@ def generate_training_commands(datasets: List[Dataset], seeds: list[int], python
                 wandb_name = wandb_name.replace('PostgresEstWithIsJoinCond', 'isjoincond')
                 wandb_name = wandb_name.replace('filter_inline_col_featsFalse', 'nofiltercolinline')
                 wandb_name = wandb_name.replace('AdamWScheduleFree', 'AdamWSF')
+                wandb_name = wandb_name.replace('annotate_base_table_card_to_scan_op', 'tablecardatscan')
 
                 command = (f"python{python_version} main.py "
                            f"--mode train "
@@ -312,9 +313,19 @@ if __name__ == '__main__':
             #                      filter_inline_col_feats=False, include_complex_workloads=True,
             #                      include_pg_opt_workloads=True, include_hint_idx_workloads=True,
             #                      **model_specific_args) if model_type == 'zeroshot' else None,
-            parameterized_config(model_type, wandb_group='adamwschedulefree_complex_pgopt_hintidx',
-                                 optimizer_class_name='AdamWScheduleFree', include_complex_workloads=True,
-                                 include_pg_opt_workloads=True, include_hint_idx_workloads=True,
+            # parameterized_config(model_type, wandb_group='wColFilterEdges_wIsJoinCond_complex_pgopt_hintidx',
+            #                      filter_inline_col_feats=False, featurization=PostgresEstWithIsJoinCond,
+            #                      include_complex_workloads=True, include_pg_opt_workloads=True,
+            #                      include_hint_idx_workloads=True,
+            #                      **model_specific_args) if model_type == 'zeroshot' else None,
+            # parameterized_config(model_type, wandb_group='adamwschedulefree_complex_pgopt_hintidx',
+            #                      optimizer_class_name='AdamWScheduleFree', include_complex_workloads=True,
+            #                      include_pg_opt_workloads=True, include_hint_idx_workloads=True,
+            #                      **model_specific_args) if model_type == 'zeroshot' else None,
+            parameterized_config(model_type, wandb_group='tablecardatscan_complex_pgopt_hintidx',
+                                 annotate_base_table_card_to_scan_op=True,
+                                 include_complex_workloads=True, include_pg_opt_workloads=True,
+                                 include_hint_idx_workloads=True,
                                  **model_specific_args) if model_type == 'zeroshot' else None,
         ])
 

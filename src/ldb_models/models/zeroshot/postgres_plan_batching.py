@@ -100,7 +100,7 @@ def plan_to_graph(node, database_id, plan_depths, plan_features, plan_to_plan_ed
                   table_to_plan_edges,
                   output_column_idx, column_idx, table_idx, plan_featurization, predicate_depths, intra_predicate_edges,
                   logical_preds, parent_node_id=None, depth=0, skip_top_aggregation: bool = False,
-                  filter_inline_col_feats: bool = True):
+                  filter_inline_col_feats: bool = True, annotate_base_table_card_to_scan_op: bool = False):
     plan_params = node["plan_parameters"]
 
     if 'Aggregate' in plan_params['op_name'] and skip_top_aggregation:
@@ -111,12 +111,27 @@ def plan_to_graph(node, database_id, plan_depths, plan_features, plan_to_plan_ed
                       table_features,
                       table_to_plan_edges, output_column_idx, column_idx, table_idx, plan_featurization,
                       predicate_depths, intra_predicate_edges, logical_preds, parent_node_id=parent_node_id,
-                      depth=depth, skip_top_aggregation=False, filter_inline_col_feats=filter_inline_col_feats)
+                      depth=depth, skip_top_aggregation=False, filter_inline_col_feats=filter_inline_col_feats,
+                      annotate_base_table_card_to_scan_op=annotate_base_table_card_to_scan_op)
         return
 
+    is_scan_op = 'table_id' in plan_params
+
+    assert annotate_base_table_card_to_scan_op
+
     # add plan features
-    curr_plan_features = [encode(column, plan_params, feature_statistics) for column in
-                          plan_featurization.PLAN_FEATURES]
+    curr_plan_features = []
+    for feature_name in plan_featurization.PLAN_FEATURES:
+        if (feature_name in ['est_children_card', 'act_children_card'] and is_scan_op
+                and annotate_base_table_card_to_scan_op):
+            # extract base table card
+            base_table_card = db_statistics[database_id]['table_stats'][plan_params['table_id']]['reltuples']
+
+            # annotate base_case
+            curr_plan_features.append(base_table_card)
+        else:
+            curr_plan_features.append(encode(feature_name, plan_params, feature_statistics))
+
     plan_features.append(curr_plan_features)
 
     # compute plan node id
@@ -222,7 +237,8 @@ def plan_to_graph(node, database_id, plan_depths, plan_features, plan_to_plan_ed
                       table_to_plan_edges,
                       output_column_idx, column_idx, table_idx, plan_featurization, predicate_depths,
                       intra_predicate_edges, logical_preds, parent_node_id=plan_node_id, depth=depth + 1,
-                      skip_top_aggregation=skip_top_aggregation, filter_inline_col_feats=filter_inline_col_feats)
+                      skip_top_aggregation=skip_top_aggregation, filter_inline_col_feats=filter_inline_col_feats,
+                      annotate_base_table_card_to_scan_op=annotate_base_table_card_to_scan_op)
 
 
 def get_or_add_col_id(column_id: int, column_idx: Dict, database_id: int, db_column_features: Dict,
@@ -352,7 +368,8 @@ def parse_predicates(db_column_features, feature_statistics, filter, filter_to_p
 
 def postgres_plan_collator(plans: List[Tuple], feature_statistics: dict[dict] = None, db_statistics: dict = None,
                            plan_featurization: Featurization = None, test_mode: bool = False,
-                           skip_top_aggregation: bool = False, filter_inline_col_feats: bool = True):
+                           skip_top_aggregation: bool = False, filter_inline_col_feats: bool = True,
+                           annotate_base_table_card_to_scan_op: bool = False):
     """
     Combines physical plans into a large graph that can be fed into ML models.
     :return:
@@ -429,7 +446,8 @@ def postgres_plan_collator(plans: List[Tuple], feature_statistics: dict[dict] = 
                       table_features,
                       table_to_plan_edges, output_column_idx, column_idx, table_idx,
                       plan_featurization, predicate_depths, intra_predicate_edges, logical_preds,
-                      skip_top_aggregation=skip_top_aggregation, filter_inline_col_feats=filter_inline_col_feats)
+                      skip_top_aggregation=skip_top_aggregation, filter_inline_col_feats=filter_inline_col_feats,
+                      annotate_base_table_card_to_scan_op=annotate_base_table_card_to_scan_op)
 
     assert len(labels) == len(plans)
     assert len(plan_depths) == len(plan_features)

@@ -358,6 +358,7 @@ class ZeroShotModelConfig(ModelConfig):
     device: str = "cuda:[socket]"  # Device selection is handled by octopus
     skip_top_aggregation: bool = False  # removes any aggregation node from the top of the tree
     filter_inline_col_feats: bool = True  # by default zs is trained with inline column features
+    annotate_base_table_card_to_scan_op: bool = False  # annotate the base table card as children_card at scan ops (instead of setting it to 1 by default)
 
 
 @attrs.define(frozen=True, slots=False)

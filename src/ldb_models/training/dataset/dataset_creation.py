@@ -385,7 +385,8 @@ def create_zeroshot_dataloader(workload_runs: WorkloadRuns,
                                              plan_featurization=model_config.featurization,
                                              test_mode=False,
                                              skip_top_aggregation=model_config.skip_top_aggregation,
-                                             filter_inline_col_feats=model_config.filter_inline_col_feats)
+                                             filter_inline_col_feats=model_config.filter_inline_col_feats,
+                                             annotate_base_table_card_to_scan_op=model_config.annotate_base_table_card_to_scan_op)
 
         dataloader_args.update(collate_fn=train_collate_fn)
         train_loader: DataLoader = DataLoader(train_dataset, **dataloader_args)
@@ -414,7 +415,8 @@ def create_zeroshot_dataloader(workload_runs: WorkloadRuns,
                                                 plan_featurization=model_config.featurization,
                                                 test_mode=True,
                                                 skip_top_aggregation=model_config.skip_top_aggregation,
-                                                filter_inline_col_feats=model_config.filter_inline_col_feats)
+                                                filter_inline_col_feats=model_config.filter_inline_col_feats,
+                                                annotate_base_table_card_to_scan_op=model_config.annotate_base_table_card_to_scan_op)
 
             # previously shuffle=False but this resulted in bugs
             dataloader_args.update(collate_fn=test_collate_fn)
