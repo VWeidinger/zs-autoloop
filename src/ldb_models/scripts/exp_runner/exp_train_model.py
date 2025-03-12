@@ -225,17 +225,17 @@ if __name__ == '__main__':
 
     seeds = [1]
     nodes = [
-        # TrainingServers.NODE00,
-        TrainingServers.NODE02,
+        TrainingServers.NODE00,
+        # TrainingServers.NODE02,
         # TrainingServers.NODE03,
         # TrainingServers.NODE04,
         # TrainingServers.NODE05,
         # TrainingServers.NODE09,
     ]
-    sockets = [1]
+    sockets = [0]
     out_file_id_offset = 0
     num_parallel_screens = None
-    num_parallel_jobs_dgx = 6
+    num_parallel_jobs_dgx = 1
 
     # ===================
     # CONFIGS
@@ -322,8 +322,13 @@ if __name__ == '__main__':
             #                      optimizer_class_name='AdamWScheduleFree', include_complex_workloads=True,
             #                      include_pg_opt_workloads=True, include_hint_idx_workloads=True,
             #                      **model_specific_args) if model_type == 'zeroshot' else None,
-            parameterized_config(model_type, wandb_group='tablecardatscan_complex_pgopt_hintidx',
-                                 annotate_base_table_card_to_scan_op=True,
+            # parameterized_config(model_type, wandb_group='tablecardatscan_complex_pgopt_hintidx',
+            #                      annotate_base_table_card_to_scan_op=True,
+            #                      include_complex_workloads=True, include_pg_opt_workloads=True,
+            #                      include_hint_idx_workloads=True,
+            #                      **model_specific_args) if model_type == 'zeroshot' else None,
+            parameterized_config(model_type, wandb_group='submonloss_complex_pgopt_hintidx',
+                                 subplan_monotonicity_loss=True,
                                  include_complex_workloads=True, include_pg_opt_workloads=True,
                                  include_hint_idx_workloads=True,
                                  **model_specific_args) if model_type == 'zeroshot' else None,

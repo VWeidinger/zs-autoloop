@@ -89,6 +89,7 @@ def train_model(csv_stats: List,
                         optimizer=optimizer,
                         max_epoch_tuples=config.max_epoch_tuples,
                         custom_batch_to=config.batch_to_func,
+                        model_config=config,
                         profiler=prof)
 
         # validate model
@@ -104,7 +105,8 @@ def train_model(csv_stats: List,
             target_path=None,
             bound_predictions=bound_predictions,
             prediction_bounder=prediction_bounder,
-            log_prefix='epoch_val'
+            log_prefix='epoch_val',
+            model_config=config,
         )
         any_best_metric = any_best_metric or new_best_metric_seen
 

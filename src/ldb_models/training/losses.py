@@ -49,7 +49,10 @@ class QLoss(nn.Module):
         self.penalty_negative = penalty_negative
         super().__init__()
 
-    def forward(self, input, target):
+    def forward(self, input: torch.Tensor, target: torch.Tensor):
+        assert isinstance(input, torch.Tensor), f'Input is not a tensor, but {type(input)}'
+        assert isinstance(target, torch.Tensor), f'Target is not a tensor, but {type(target)}'
+
         input_zero_mask = input == 0
         target_zero_mask = target == 0
 
@@ -203,4 +206,9 @@ class RankLoss(nn.Module):
         return corr
 
 
+class LessThanLoss(nn.Module):
+    def __init__(self, **kwargs):
+        super().__init__()
 
+    def forward(self, input1, input2):
+        return F.relu(input1 - input2).mean()

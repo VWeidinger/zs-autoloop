@@ -12,7 +12,8 @@ class ZeroShotModelEncoder(FcOutModel):
     """
 
     def __init__(self, model_config: ZeroShotModelConfig, feature_statistics=None,
-                 add_tree_model_types=None, prepasses=None, plan_featurization=None, encoders=None, label_norm=None):
+                 add_tree_model_types=None, prepasses=None, plan_featurization=None, encoders=None, label_norm=None,
+                 return_all_node_states: bool = False):
 
         super().__init__(output_dim=model_config.output_dim,
                          input_dim=model_config.hidden_dim,
@@ -26,6 +27,7 @@ class ZeroShotModelEncoder(FcOutModel):
         self.skip_message_passing = False
         self.device = model_config.device
         self.hidden_dim = model_config.hidden_dim
+        self.return_all_node_states = return_all_node_states
 
         # use different models per edge type
         tree_model_types = add_tree_model_types + ['to_plan', 'intra_plan', 'intra_pred']
@@ -74,11 +76,15 @@ class ZeroShotModelEncoder(FcOutModel):
         """
         graph, features = input
         features = self.encode_node_types(graph, features)
-        out = self.message_passing(graph, features)
 
-        return out
+        if not self.return_all_node_states:
+            out = self.message_passing(graph, features)
+            return out
+        else:
+            out, all_out = self.message_passing(graph, features, return_all_nodestates=True)
+            return out, all_out
 
-    def message_passing(self, g, feat_dict):
+    def message_passing(self, g, feat_dict, return_all_nodestates: bool = False):
         """
         Bottom-up message passing on the graph encoding of the queries in the batch. Returns the hidden states of the
         root nodes.
@@ -130,8 +136,12 @@ class ZeroShotModelEncoder(FcOutModel):
         # compute top nodes of dags
         out = feat_dict['plan0']
 
-        # return graph representation
-        return out
+        if return_all_nodestates:
+            # return the node state of root, and of all other nodes
+            return out, feat_dict
+        else:
+            # return graph representation
+            return out
 
 
 class PassDirection:

@@ -117,8 +117,6 @@ def plan_to_graph(node, database_id, plan_depths, plan_features, plan_to_plan_ed
 
     is_scan_op = 'table_id' in plan_params
 
-    assert annotate_base_table_card_to_scan_op
-
     # add plan features
     curr_plan_features = []
     for feature_name in plan_featurization.PLAN_FEATURES:

@@ -9,17 +9,20 @@ from torch.optim import Optimizer
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
+from classes.classes import ModelConfig
 from models.qppnet.qppnet_model import QPPNet
 from models.query_former.model import QueryFormer
 from models.workload_driven.model.e2e_model import E2EModel
 from models.workload_driven.model.mscn_model import MSCNModel
 from models.zeroshot.specific_models.postgres_zero_shot import PostgresZeroShotModel
+from models.zeroshot.subplan_runtime_helper import extract_smaller_larger_preds_tensor_for_subplan_graphs
 from training.batch_to_funcs import batch_to
+from training.losses import LessThanLoss
 
 
 def train_epoch(epoch_stats: dict, train_loader: DataLoader, model: nn.Module,
-                optimizer: Optimizer, max_epoch_tuples: int, custom_batch_to=batch_to,
-                profiler: Optional[torch.profiler.profile] = None):
+                optimizer: Optimizer, max_epoch_tuples: int, model_config: ModelConfig,
+                custom_batch_to=batch_to, profiler: Optional[torch.profiler.profile] = None):
     model.train()
     if isinstance(optimizer, AdamWScheduleFree):
         # set into train mode
@@ -28,7 +31,16 @@ def train_epoch(epoch_stats: dict, train_loader: DataLoader, model: nn.Module,
     # run remaining batches
     train_start_t = time.perf_counter()
     losses = []
+    monotonicity_losses = []
     errs = []
+
+    if hasattr(model_config, 'subplan_monotonicity_loss') and model_config.subplan_monotonicity_loss:
+        perform_subplan_monotonicity_loss = True
+        subplan_monotonicity_loss = LessThanLoss()
+    else:
+        perform_subplan_monotonicity_loss = False
+        subplan_monotonicity_loss = None
+
     for batch_idx, batch in enumerate(tqdm(train_loader)):
         if max_epoch_tuples is not None and batch_idx * train_loader.batch_size > max_epoch_tuples:
             break
@@ -43,8 +55,28 @@ def train_epoch(epoch_stats: dict, train_loader: DataLoader, model: nn.Module,
         # Forward pass
         output = model(input_model)
 
+        if perform_subplan_monotonicity_loss:
+            assert len(output) == 3
+            output, subplan_graphs, subplan_predictions_dict = output
+
+            # extract smaller and larger tensors - input for our monotonicity loss
+            smaller_tensor, larger_tensor = extract_smaller_larger_preds_tensor_for_subplan_graphs(subplan_graphs,
+                                                                                                   subplan_predictions_dict)
+
+            # Loss computation
+            monotonicity_loss = subplan_monotonicity_loss(smaller_tensor, larger_tensor)
+            monotonicity_losses.append(monotonicity_loss.detach().cpu().numpy())
+
+        else:
+            monotonicity_loss = None
+
         # Loss computation
         loss = model.loss_fxn(output, label)
+
+        if perform_subplan_monotonicity_loss:
+            # add monotonicity loss to the total loss
+            loss += monotonicity_loss
+
         if torch.isnan(loss):
             raise ValueError('Loss was NaN')
 
@@ -75,6 +107,9 @@ def train_epoch(epoch_stats: dict, train_loader: DataLoader, model: nn.Module,
     # print(f"Train Loss: {mean_loss:.2f}")
     # print(f"Train RMSE: {mean_rmse:.2f}")
     epoch_stats.update(train_time=time.perf_counter() - train_start_t, mean_loss=mean_loss, mean_rmse=mean_rmse)
+
+    if perform_subplan_monotonicity_loss:
+        epoch_stats.update(monotonicity_loss=np.mean(monotonicity_losses))
 
     if isinstance(optimizer, AdamWScheduleFree):
         # deactivate train mode

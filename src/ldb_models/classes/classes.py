@@ -359,6 +359,7 @@ class ZeroShotModelConfig(ModelConfig):
     skip_top_aggregation: bool = False  # removes any aggregation node from the top of the tree
     filter_inline_col_feats: bool = True  # by default zs is trained with inline column features
     annotate_base_table_card_to_scan_op: bool = False  # annotate the base table card as children_card at scan ops (instead of setting it to 1 by default)
+    subplan_monotonicity_loss: bool = False  # add a loss term that enforces the subplan runtime to be monotonically increasing
 
 
 @attrs.define(frozen=True, slots=False)

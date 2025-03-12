@@ -1,6 +1,7 @@
 from torch import nn
 
 from classes.classes import ZeroShotModelConfig
+from models.zeroshot.subplan_runtime_helper import compute_subplan_runtimes
 from models.zeroshot.utils.fc_out_model import FcOutModel
 from models.zeroshot.zero_shot_model import ZeroShotModelEncoder
 from training.losses import create_loss
@@ -12,7 +13,10 @@ class PostgresZeroShotModel(nn.Module):
 
         self.label_norm = None
         self.device = model_config.device
-        self.encoder = PostgresZeroShotModelEncoder(model_config, feature_statistics, **zero_shot_kwargs)
+
+        self.encoder = PostgresZeroShotModelEncoder(model_config, feature_statistics,
+                                                    return_all_node_states=model_config.subplan_monotonicity_loss,
+                                                    **zero_shot_kwargs)
         self.decoder = FcOutModel(output_dim=model_config.output_dim, input_dim=model_config.hidden_dim,
                                   final_out_layer=True, **model_config.final_mlp_kwargs)
 
@@ -21,8 +25,20 @@ class PostgresZeroShotModel(nn.Module):
 
     def forward(self, model_input):
         g, features = model_input
-        hidden_states = self.encoder((g, features))
-        return self.decoder.fcout(hidden_states)
+
+        if self.encoder.return_all_node_states:
+            hidden_states, all_node_states = self.encoder((g, features))
+
+            # compute predictions of full plans
+            root_predictions = self.decoder.fcout(hidden_states)
+
+            # compute subplan predictions
+            subplan_graphs, subplan_predictions_dict = compute_subplan_runtimes(g, all_node_states, self.decoder.fcout)
+
+            return root_predictions, subplan_graphs, subplan_predictions_dict
+        else:
+            hidden_states = self.encoder((g, features))
+            return self.decoder.fcout(hidden_states)
 
 
 class PostgresZeroShotModelEncoder(ZeroShotModelEncoder):
@@ -30,7 +46,8 @@ class PostgresZeroShotModelEncoder(ZeroShotModelEncoder):
     Zero-shot cost estimation model encoder for postgres.
     """
 
-    def __init__(self, model_config: ZeroShotModelConfig, feature_statistics: dict, **zero_shot_kwargs):
+    def __init__(self, model_config: ZeroShotModelConfig, feature_statistics: dict, return_all_node_states: bool,
+                 **zero_shot_kwargs):
         plan_featurization, encoders = None, None
         if model_config.featurization is not None:
             plan_featurization = model_config.featurization
@@ -69,4 +86,6 @@ class PostgresZeroShotModelEncoder(ZeroShotModelEncoder):
                          prepasses=prepasses,
                          add_tree_model_types=tree_model_types,
                          model_config=model_config,
-                         feature_statistics=feature_statistics, **zero_shot_kwargs)
+                         feature_statistics=feature_statistics,
+                         return_all_node_states=return_all_node_states,
+                         **zero_shot_kwargs)

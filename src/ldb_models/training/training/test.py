@@ -56,6 +56,7 @@ def test_model(config: ModelConfig,
                     store_model_snapshot=False,  # do not update best model snapshot - this is determined by val set
                     log_prefix=log_prefix,
                     show_best_seen=False,  # do not show - it was computed during val i.e. not relevant
+                    model_config=config
                 )
 
                 # extract filename from path

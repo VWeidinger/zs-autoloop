@@ -8,8 +8,11 @@ from torch import nn
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
+from classes.classes import ModelConfig
+from models.zeroshot.subplan_runtime_helper import extract_smaller_larger_preds_tensor_for_subplan_graphs
 from training.batch_to_funcs import batch_to
 from training.bound_predictions_with_history import PredictionBounder, bound_predictions_helper
+from training.losses import LessThanLoss
 from training.training.checkpoint import save_csv
 from training.training.metrics import Metric, RankAccuracy, QError
 
@@ -28,11 +31,14 @@ def validate_model(val_loader: DataLoader,
                    log_prefix: str = 'val',
                    update_metrics: bool = True,
                    store_model_snapshot: bool = True,
-                   show_best_seen: bool = True) -> bool:
+                   show_best_seen: bool = True,
+                   model_config: ModelConfig = None, ) -> bool:
     model.eval()
 
     with torch.autograd.no_grad():
         val_loss = torch.Tensor([0])
+        monotonicity_loss = torch.Tensor([0])
+
         labels = []
         preds = []
         probs = []
@@ -42,6 +48,13 @@ def validate_model(val_loader: DataLoader,
         all_selectivity = []
         all_scan_op = []
         all_join_op = []
+
+        if hasattr(model_config, 'subplan_monotonicity_loss') and model_config.subplan_monotonicity_loss:
+            perform_subplan_monotonicity_loss = True
+            subplan_monotonicity_loss = LessThanLoss()
+        else:
+            perform_subplan_monotonicity_loss = False
+            subplan_monotonicity_loss = None
 
         # evaluate test set using model
         test_start_t = time.perf_counter()
@@ -60,6 +73,21 @@ def validate_model(val_loader: DataLoader,
 
             sample_idxs += sample_idxs_batch
             output = model(input_model)
+
+            if perform_subplan_monotonicity_loss:
+                assert len(output) == 3
+                output, subplan_graphs, subplan_predictions_dict = output
+
+                # extract smaller and larger tensors - input for our monotonicity loss
+                smaller_tensor, larger_tensor = extract_smaller_larger_preds_tensor_for_subplan_graphs(subplan_graphs,
+                                                                                                       subplan_predictions_dict)
+
+                # Loss computation
+                loss = subplan_monotonicity_loss(smaller_tensor, larger_tensor).cpu()
+
+                # sum up
+                monotonicity_loss += loss
+                val_loss += loss
 
             # sum up mean batch losses
             val_loss += model.loss_fxn(output, label).cpu()
@@ -91,6 +119,11 @@ def validate_model(val_loader: DataLoader,
             val_loss = (val_loss.cpu() / len(val_loader)).item()
             print(f'{log_prefix}_loss epoch {epoch}: {val_loss}')
             epoch_stats[f'{log_prefix}_loss'] = val_loss
+
+            if perform_subplan_monotonicity_loss:
+                monotonicity_loss = (monotonicity_loss.cpu() / len(val_loader)).item()
+                print(f'{log_prefix}_monotonicity_loss epoch {epoch}: {monotonicity_loss}')
+                epoch_stats[f'{log_prefix}_monotonicity_loss'] = monotonicity_loss
 
         labels = np.concatenate(labels, axis=0)
         preds = np.concatenate(preds, axis=0)
