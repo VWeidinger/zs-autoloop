@@ -98,7 +98,12 @@ def generate_training_commands(datasets: List[Dataset], seeds: list[int], python
                 if use_romans_runs:
                     model_suffix += '_romans'
 
-                wandb_name = f"{name}{model_suffix}/{target_dataset.db_name}/{seed}"
+                if name == 'zeroshot':
+                    name_short = 'zs'
+                else:
+                    name_short = name
+
+                wandb_name = f"{name_short}{model_suffix}/{target_dataset.db_name}/{seed}"
 
                 if is_pretrained:
                     wandb_name += '_pretrained'
@@ -112,6 +117,8 @@ def generate_training_commands(datasets: List[Dataset], seeds: list[int], python
                 wandb_name = wandb_name.replace('train_on_subplans', 'subplans')
                 wandb_name = wandb_name.replace('PostgresEstWithIsIndexCond', 'FeatPGEstIsIdxC')
                 wandb_name = wandb_name.replace('limit_plans_per_file', 'limitpf')
+                wandb_name = wandb_name.replace('PostgresEstWithIsJoinCond', 'isjoincond')
+                wandb_name = wandb_name.replace('filter_inline_col_featsFalse', 'nofiltercolinline')
 
                 command = (f"python{python_version} main.py "
                            f"--mode train "
