@@ -98,8 +98,8 @@ def generate_training_commands(datasets: List[Dataset], seeds: list[int], python
                 if use_romans_runs:
                     model_suffix += '_romans'
 
-                if name == 'zeroshot':
-                    name_short = 'zs'
+                if 'zeroshot' in name:
+                    name_short = name.replace('zeroshot', 'zs')
                 else:
                     name_short = name
 
@@ -119,6 +119,7 @@ def generate_training_commands(datasets: List[Dataset], seeds: list[int], python
                 wandb_name = wandb_name.replace('limit_plans_per_file', 'limitpf')
                 wandb_name = wandb_name.replace('PostgresEstWithIsJoinCond', 'isjoincond')
                 wandb_name = wandb_name.replace('filter_inline_col_featsFalse', 'nofiltercolinline')
+                wandb_name = wandb_name.replace('AdamWScheduleFree', 'AdamWSF')
 
                 command = (f"python{python_version} main.py "
                            f"--mode train "
@@ -192,7 +193,7 @@ if __name__ == '__main__':
                                      force=False,
                                      ))
     if install_rye:
-        setup_steps.append(SetupRYEVenv())
+        setup_steps.append(SetupRYEVenv(no_lock=False))
 
     purge_steps = [KillAllScreens()]
     pickup_steps = [Rsync(src=[ClusterPaths().Data.runs.as_posix()], dest=[LocalPaths().data], put=False, update=True,
@@ -231,7 +232,7 @@ if __name__ == '__main__':
         # TrainingServers.NODE09,
     ]
     sockets = [1]
-    out_file_id_offset = 1
+    out_file_id_offset = 0
     num_parallel_screens = None
     num_parallel_jobs_dgx = 6
 
@@ -243,9 +244,9 @@ if __name__ == '__main__':
     test_against = 'imdb'  # if not set, will test against all in an leave one out style
     ft_with_ranking = False  # fine-tune with ranking (pretrains a model and then fine-tunes it with ranking)
     bound_predictions = False  # bound predictions to the range of the training data and output them as separate metrics - at the moment not competitive
-    eval_join_order = True  # evaluate join order using JOB-Light runs with exhaustive join orders
-    eval_access_path = True  # evaluate access path selection (Idx Scan vs. SeqScan)
-    eval_physical_operator = True  # evaluate physical operator selection
+    eval_join_order = True and not quick_run  # evaluate join order using JOB-Light runs with exhaustive join orders
+    eval_access_path = True and not quick_run  # evaluate access path selection (Idx Scan vs. SeqScan)
+    eval_physical_operator = True and not quick_run  # evaluate physical operator selection
     qo_eval_after_each_epoch = True  # if True, will run a full QO evaluation after each epoch
     use_romans_runs = False
     is_pretrained = False  # if True, assumes that the model is pretrained and does not train it
@@ -307,8 +308,12 @@ if __name__ == '__main__':
             #                      featurization=PostgresEstWithIsJoinCond, include_complex_workloads=True,
             #                      include_pg_opt_workloads=True, include_hint_idx_workloads=True,
             #                      **model_specific_args) if model_type == 'zeroshot' else None,
-            parameterized_config(model_type, wandb_group='wColFilterEdges_complex_pgopt_hintidx',
-                                 filter_inline_col_feats=False, include_complex_workloads=True,
+            # parameterized_config(model_type, wandb_group='wColFilterEdges_complex_pgopt_hintidx',
+            #                      filter_inline_col_feats=False, include_complex_workloads=True,
+            #                      include_pg_opt_workloads=True, include_hint_idx_workloads=True,
+            #                      **model_specific_args) if model_type == 'zeroshot' else None,
+            parameterized_config(model_type, wandb_group='adamwschedulefree_complex_pgopt_hintidx',
+                                 optimizer_class_name='AdamWScheduleFree', include_complex_workloads=True,
                                  include_pg_opt_workloads=True, include_hint_idx_workloads=True,
                                  **model_specific_args) if model_type == 'zeroshot' else None,
         ])

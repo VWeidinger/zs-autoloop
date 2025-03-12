@@ -3,6 +3,7 @@ from typing import Optional
 
 import numpy as np
 import torch
+from schedulefree import AdamWScheduleFree
 from torch import nn
 from torch.optim import Optimizer
 from torch.utils.data import DataLoader
@@ -20,6 +21,9 @@ def train_epoch(epoch_stats: dict, train_loader: DataLoader, model: nn.Module,
                 optimizer: Optimizer, max_epoch_tuples: int, custom_batch_to=batch_to,
                 profiler: Optional[torch.profiler.profile] = None):
     model.train()
+    if isinstance(optimizer, AdamWScheduleFree):
+        # set into train mode
+        optimizer.train()
 
     # run remaining batches
     train_start_t = time.perf_counter()
@@ -71,3 +75,7 @@ def train_epoch(epoch_stats: dict, train_loader: DataLoader, model: nn.Module,
     # print(f"Train Loss: {mean_loss:.2f}")
     # print(f"Train RMSE: {mean_rmse:.2f}")
     epoch_stats.update(train_time=time.perf_counter() - train_start_t, mean_loss=mean_loss, mean_rmse=mean_rmse)
+
+    if isinstance(optimizer, AdamWScheduleFree):
+        # deactivate train mode
+        optimizer.eval()

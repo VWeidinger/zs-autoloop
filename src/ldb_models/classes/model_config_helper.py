@@ -2,6 +2,8 @@ import inspect
 import re
 from typing import Dict
 
+import torch.optim as opt
+
 import classes.classes as cls
 import training.featurizations as fts
 from classes.classes import ModelConfig, Name
@@ -22,6 +24,8 @@ def parameterized_config(base_config_name: str, **args):
             arg_string_list.append(key)
         elif key == 'featurization':
             arg_string_list.append(value.__name__)
+        elif key == 'optimizer_class_name':
+            arg_string_list.append(value)
         else:
             arg_string_list.append(f"{key}{value}")
     model_name = f'pm-{base_config_name}-{"-".join(arg_string_list)}'
@@ -63,7 +67,6 @@ def get_model_config(model_type: str, m_args: dict) -> ModelConfig:
     if len(m_args) == 0:
         return classes_dict[model_type]()
 
-
     return classes_dict[model_type](**m_args)
 
 
@@ -88,12 +91,15 @@ def get_parameterized_model_config(model_name: str, m_args: Dict) -> ModelConfig
 
     # featurziation dict
     featurization_dict = get_featurization_dict()
-    print(featurization_dict,flush=True)
+    print(featurization_dict, flush=True)
 
     for arg in args:
         # check if arg is a featurization
         if arg in featurization_dict.keys():
             args_dict['featurization'] = featurization_dict[arg]
+            continue
+        if arg in opt.__dict__.keys() or arg in ['AdamWScheduleFree']:
+            args_dict['optimizer_class_name'] = arg
             continue
 
         # check if arg ends with number and if so, split it
@@ -110,6 +116,7 @@ def get_parameterized_model_config(model_name: str, m_args: Dict) -> ModelConfig
     args_dict['name'] = Name(model_name, model_name)
 
     return get_model_config(model_type, args_dict)
+
 
 def get_featurization_dict():
     featurization_dict = dict()

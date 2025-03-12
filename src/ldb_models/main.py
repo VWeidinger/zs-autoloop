@@ -8,6 +8,7 @@ import numpy as np
 import torch
 import torch.optim as opt
 import wandb
+from schedulefree import AdamWScheduleFree
 from torch import nn
 from torch.optim.optimizer import Optimizer
 from torch.utils.data import DataLoader
@@ -194,7 +195,10 @@ def use_model(mode: str,
         model = model.to(model.device)
 
         # Init optimizer
-        optimizer: Optimizer = opt.__dict__[config.optimizer_class_name](model.parameters(),
+        if config.optimizer_class_name == 'AdamWScheduleFree':
+            optimizer: Optimizer = AdamWScheduleFree(model.parameters(), **config.optimizer_kwargs)
+        else:
+            optimizer: Optimizer = opt.__dict__[config.optimizer_class_name](model.parameters(),
                                                                          **config.optimizer_kwargs)
 
         print(f"Try to load model with name {config.name.NAME} and seed {config.seed} from {model_dir}",flush=True)
