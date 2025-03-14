@@ -8,7 +8,7 @@ from octopus.step import Rsync, KillAllScreens, SetupVenv, RsyncCurrentRepo, Set
 from classes.classes import ModelConfig, ModelType
 from classes.model_config_helper import parameterized_config
 from scripts.exp_runner.exp_runner import ExpRunner, TrainingServers
-from training.featurizations import PostgresEstWithIsIndexCond
+from training.featurizations import PostgresEstWithAdditionalFeats
 
 
 def generate_training_commands(datasets: List[Dataset], seeds: list[int], python_version: str, wandb_project: str,
@@ -227,9 +227,9 @@ if __name__ == '__main__':
     seeds = [1]
     nodes = [
         # TrainingServers.NODE00,
-        TrainingServers.NODE02,
+        # TrainingServers.NODE02,
         # TrainingServers.NODE03,
-        # TrainingServers.NODE04,
+        TrainingServers.NODE04,
         # TrainingServers.NODE05,
         # TrainingServers.NODE09,
     ]
@@ -323,27 +323,35 @@ if __name__ == '__main__':
             #                      optimizer_class_name='AdamWScheduleFree', include_complex_workloads=True,
             #                      include_pg_opt_workloads=True, include_hint_idx_workloads=True,
             #                      **model_specific_args) if model_type == 'zeroshot' else None,
-            parameterized_config(model_type, wandb_group='tablecardatscan_complex_pgopt_hintidx',
-                                 annotate_base_table_card_to_scan_op=True,
-                                 include_complex_workloads=True, include_pg_opt_workloads=True,
-                                 include_hint_idx_workloads=True,
-                                 **model_specific_args) if model_type == 'zeroshot' else None,
+            # parameterized_config(model_type, wandb_group='tablecardatscan_complex_pgopt_hintidx',
+            #                      annotate_base_table_card_to_scan_op=True,
+            #                      include_complex_workloads=True, include_pg_opt_workloads=True,
+            #                      include_hint_idx_workloads=True,
+            #                      **model_specific_args) if model_type == 'zeroshot' else None,
             # parameterized_config(model_type, wandb_group='submonloss_complex_pgopt_hintidx',
             #                      subplan_monotonicity_loss=True,
             #                      include_complex_workloads=True, include_pg_opt_workloads=True,
             #                      include_hint_idx_workloads=True,
             #                      **model_specific_args) if model_type == 'zeroshot' else None,
-            parameterized_config(model_type, wandb_group='isidxcond_tablecardatscan_complex_pgopt_hintidx',
-                                 annotate_base_table_card_to_scan_op=True,
-                                 featurization=PostgresEstWithIsIndexCond,
-                                 include_complex_workloads=True, include_pg_opt_workloads=True,
-                                 include_hint_idx_workloads=True,
-                                 **model_specific_args) if model_type == 'zeroshot' else None,
+            # parameterized_config(model_type, wandb_group='isidxcond_tablecardatscan_complex_pgopt_hintidx',
+            #                      annotate_base_table_card_to_scan_op=True,
+            #                      featurization=PostgresEstWithIsIndexCond,
+            #                      include_complex_workloads=True, include_pg_opt_workloads=True,
+            #                      include_hint_idx_workloads=True,
+            #                      **model_specific_args) if model_type == 'zeroshot' else None,
             # parameterized_config(model_type, wandb_group='numloops_complex_pgopt_hintidx',
             #                      featurization=PostgresEstWithNumLoops,
             #                      include_complex_workloads=True, include_pg_opt_workloads=True,
             #                      include_hint_idx_workloads=True,
             #                      **model_specific_args) if model_type == 'zeroshot' else None,
+            parameterized_config(model_type,
+                                 wandb_group='isidxcond_isjoincond_numloops_wcolfilteredges_tablecardatscan_complex_pgopt_hintidx',
+                                 annotate_base_table_card_to_scan_op=True,
+                                 featurization=PostgresEstWithAdditionalFeats,
+                                 filter_inline_col_feats=False,
+                                 include_complex_workloads=True, include_pg_opt_workloads=True,
+                                 include_hint_idx_workloads=True, include_scan_only_hint_workloads=True,
+                                 **model_specific_args) if model_type == 'zeroshot' else None,
         ])
 
     model_configs = [model for model in model_configs if model is not None]
