@@ -498,6 +498,7 @@ def postgres_plan_collator(plans: List[Tuple], feature_statistics: dict[dict] = 
     # However, another fix would be to add a check here and
     # adapt the Message Passing scheme for the case of missing column-nodes
     data_dict[('column', 'col_output_col', 'output_column')] = column_to_output_column_edges
+
     for u, v in output_column_to_plan_edges:
         v_node_id, d_v = plan_dict[v]
         data_dict[('output_column', 'to_plan', f'plan{d_v}')].append((u, v_node_id))
@@ -575,8 +576,6 @@ def postprocess_feats(features, num_nodes_dict):
 def update_node_counts(max_depth, max_pred_depth, nodes_per_depth, nodes_per_pred_depth, num_nodes_dict):
     num_nodes_dict.update({f'plan{d}': nodes_per_depth[d] for d in range(max_depth + 1)})
     num_nodes_dict.update({f'logical_pred_{d}': nodes_per_pred_depth[d] for d in range(max_pred_depth + 1)})
-    # filter out any node type with zero nodes
-    num_nodes_dict = {k: v for k, v in num_nodes_dict.items() if v > 0}
     return num_nodes_dict
 
 

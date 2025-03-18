@@ -1,4 +1,6 @@
+import concurrent.futures
 import functools
+import time
 from json import JSONDecodeError
 from pathlib import Path
 from typing import List, Optional, Dict
@@ -13,9 +15,22 @@ from tqdm import tqdm
 from classes.classes import ZeroShotModelConfig, DataLoaderOptions, ModelConfig, InputFormats
 from classes.workload_runs import WorkloadRuns
 from models.zeroshot.postgres_plan_batching import postgres_plan_collator
-from training.dataset.plan_dataset import PlanDataset
+from training.dataset.plan_dataset import PlanDataset, OHEMPlanDataset
 from training.dataset.statification import stratify_plans
 
+
+# worker fn to read a file
+def read_fn(path: str, ):
+    if path is None or str(path) == 'None':
+        return None
+
+    try:
+        run = load_json(str(path))
+    except JSONDecodeError:
+        print(f'Error reading {path} - skip')
+        return None
+
+    return run
 
 def read_workload_runs(workload_run_paths: List[Path],
                        limit_plans_per_file: int,
@@ -26,27 +41,26 @@ def read_workload_runs(workload_run_paths: List[Path],
                        include_zero_card_queries: bool = False,
                        stratify_per_wl_file: bool = False,
                        stratify_dataset: bool = False,
-                       augment_with_subplans: bool = False) -> (List[dict], dict):
+                       augment_with_subplans: bool = False,
+                       return_per_file: bool = False) -> (List[dict], dict):
     # reads several workload runs
     plans = []
     database_statistics = dict()
 
-    timeout_thresholds = []
+    timeout_thresholds_set = set()
 
     stratify_file_blacklist = ['join_order', 'physical_operator', 'access_path_selection']
     limit_plans_blacklist = ['join_order', 'physical_operator', 'access_path_selection']
 
-    for path_index, path in enumerate(workload_run_paths):
-        if path is None or str(path) == 'None':
-            continue
+    # load the workload runs in parallel
+    t0 = time.perf_counter()
+    print(f'Start loading workload runs in parallel', flush=True)
+    with concurrent.futures.ProcessPoolExecutor(max_workers=10) as executor:
+        run_list = list(executor.map(read_fn, workload_run_paths))
+    print(f'Loaded {len(run_list)} files in {time.perf_counter() - t0:.2f}s', flush=True)
 
-        per_file_plans = []
-
-        try:
-            run = load_json(str(path))
-        except JSONDecodeError:
-            print(f'Error reading {path} - skip')
-            continue
+    assert len(run_list) == len(workload_run_paths)
+    for path_index, (path, run) in enumerate(zip(workload_run_paths, run_list)):
         database_statistics[path_index] = run["database_stats"]
 
         if input_format == InputFormats.parsed:
@@ -72,6 +86,7 @@ def read_workload_runs(workload_run_paths: List[Path],
         hint_not_obeyed_ctr = 0
         timeout_ctr = 0
         include_zero_card_queries_ctr = 0
+        per_file_plans = []
 
         for p_id, plan in enumerate(file_plans):
             if input_format == InputFormats.parsed:
@@ -109,11 +124,11 @@ def read_workload_runs(workload_run_paths: List[Path],
                 break
 
         # extract the timeout thresholds used during query execution
-        per_file_timeout_thresholds = [p['timeout_threshold'] for p in per_file_plans]  # in ms
-        if len(set(per_file_timeout_thresholds)) != 1:
-            print(f"Multiple timeout thresholds in {path}: {set(per_file_timeout_thresholds)}")
+        per_file_timeout_thresholds = set([p['timeout_threshold'] for p in per_file_plans])  # in ms
+        if len(per_file_timeout_thresholds) != 1:
+            print(f"Multiple timeout thresholds in {path}: {per_file_timeout_thresholds}")
 
-        timeout_thresholds.append(per_file_timeout_thresholds[0])
+        timeout_thresholds_set.update(per_file_timeout_thresholds)
 
         if augment_with_subplans:
             # augment the plans with subplans
@@ -159,7 +174,10 @@ def read_workload_runs(workload_run_paths: List[Path],
             f' include invalid hint: {include_hint_not_obeyed_queries} (excluded: {hint_not_obeyed_ctr}), include zero card: {include_zero_card_queries} (excluded: {include_zero_card_queries_ctr}), file in limit blacklist: {file_in_limit_blacklist}, limit file: {limit_plans_per_file})',
             flush=True)
 
-        plans.extend(per_file_plans)
+        if return_per_file:
+            plans.append(per_file_plans)
+        else:
+            plans.extend(per_file_plans)
 
     if len(workload_run_paths) == 1 and any(
             [blacklist in str(workload_run_paths[0]) for blacklist in stratify_file_blacklist]):
@@ -167,17 +185,19 @@ def read_workload_runs(workload_run_paths: List[Path],
         pass
     elif stratify_dataset:
         # ideally there is just a single timeout threshold
-        if len(set(timeout_thresholds)) > 1:
+        if len(timeout_thresholds_set) > 1:
             print(
-                f"Multiple timeout thresholds in dataset: {set(timeout_thresholds)}. Continuing stratification with max threshold.")
-        max_runtime = max(timeout_thresholds)
+                f"Multiple timeout thresholds in dataset: {timeout_thresholds_set}. Continuing stratification with max threshold.")
+        max_runtime = max(timeout_thresholds_set)
 
+        assert not return_per_file, f'Not yet implemented for return_per_file=True'
         plans = stratify_plans(
             plans=plans, max_runtime_ms=max_runtime, output_identifier_hint="overall", print_distr_stats=True,
             shuffle_before=True
         )
 
     if limit_plans_overall is not None:
+        assert not return_per_file, f'Not yet implemented for return_per_file=True'
         # shuffle plans
         np.random.shuffle(plans)
         plans = plans[:limit_plans_overall]
@@ -266,28 +286,11 @@ def _inv_log1p(x):
     return np.exp(x) - 1
 
 
-def create_datasets(workload_run_paths,
-                    model_config: ModelConfig,
-                    val_ratio=0.15,
-                    shuffle_before_split=True, is_test_dataset: bool = False,
-                    do_not_limit_file: bool = False,
-                    stratify_dataset: bool = False, stratify_per_wl_file: bool = False, inject_plans: List[Dict] = None,
-                    inject_database_statistics: Dict = None) -> (
-        Pipeline, PlanDataset, PlanDataset, PlanDataset, dict):
-    if inject_plans is None or inject_database_statistics is None:
-        plans, database_statistics = read_workload_runs(workload_run_paths=workload_run_paths,
-                                                        limit_plans_per_file=model_config.limit_plans_per_file if not do_not_limit_file else None,
-                                                        limit_plans_overall=model_config.limit_plans_overall if not do_not_limit_file else None,
-                                                        input_format=model_config.input_format,
-                                                        include_timeout_queries=model_config.include_timeout_queries and not is_test_dataset,
-                                                        stratify_dataset=stratify_dataset,
-                                                        stratify_per_wl_file=stratify_per_wl_file,
-                                                        augment_with_subplans=model_config.train_on_subplans and not is_test_dataset)
-    else:
-        plans = inject_plans
-        database_statistics = inject_database_statistics
-
+def split_plans_in_train_val(plans: List[dict], val_ratio: float, shuffle_before_split: bool,
+                             cap_training_samples: int) -> (List[dict], List[dict]):
+    # default behavior
     no_plans = len(plans)
+
     plan_indexes = list(range(no_plans))
     if shuffle_before_split:
         np.random.shuffle(plan_indexes)
@@ -296,22 +299,120 @@ def create_datasets(workload_run_paths,
     split_train = int(no_plans * train_ratio)
     train_indexes = plan_indexes[:split_train]
     # Limit number of training samples. To have comparable batch sizes, replicate remaining indexes.
-    if model_config.cap_training_samples is not None:
-        print(f'Limiting dataset to {model_config.cap_training_samples}')
+    if cap_training_samples is not None:
+        print(f'Limiting dataset to {cap_training_samples}')
         prev_train_length = len(train_indexes)
-        train_indexes = train_indexes[:model_config.cap_training_samples]
+        train_indexes = train_indexes[:cap_training_samples]
         replicate_factor = max(prev_train_length // len(train_indexes), 1)
         train_indexes = train_indexes * replicate_factor
 
-    train_dataset = PlanDataset([plans[i] for i in train_indexes], train_indexes)
+    if val_ratio > 0:
+        val_indexes = plan_indexes[split_train:]
+    else:
+        val_indexes = None
+
+    return train_indexes, val_indexes
+
+
+def create_datasets(workload_run_paths,
+                    model_config: ModelConfig,
+                    val_ratio=0.15,
+                    shuffle_before_split=True, is_test_dataset: bool = False,
+                    do_not_limit_file: bool = False,
+                    stratify_dataset: bool = False, stratify_per_wl_file: bool = False, inject_plans: List[Dict] = None,
+                    inject_database_statistics: Dict = None) -> (
+        Pipeline, PlanDataset, PlanDataset, PlanDataset, dict):
+    # check if we need to apply OHEM
+    apply_ohem = model_config.online_hard_example_mining and not is_test_dataset  # do not apply OHEM on test datasets - we want to have a static dataset
+
+    if inject_plans is None or inject_database_statistics is None:
+        plans, database_statistics = read_workload_runs(workload_run_paths=workload_run_paths,
+                                                        limit_plans_per_file=model_config.limit_plans_per_file if not do_not_limit_file and not apply_ohem else None,
+                                                        limit_plans_overall=model_config.limit_plans_overall if not do_not_limit_file and not apply_ohem else None,
+                                                        input_format=model_config.input_format,
+                                                        include_timeout_queries=model_config.include_timeout_queries and not is_test_dataset,
+                                                        stratify_dataset=stratify_dataset,
+                                                        stratify_per_wl_file=stratify_per_wl_file,
+                                                        augment_with_subplans=model_config.train_on_subplans and not is_test_dataset,
+                                                        return_per_file=apply_ohem
+                                                        )
+    else:
+        plans = inject_plans
+        database_statistics = inject_database_statistics
+
+    if apply_ohem:
+        # special case handling for OHEM
+
+        # do the train/val split for each file separately
+        train_indexes_lists = []
+        val_indexes_lists = []
+
+        for plan_list in plans:
+            train_indexes, val_indexes = split_plans_in_train_val(plans=plan_list, val_ratio=val_ratio,
+                                                                  shuffle_before_split=shuffle_before_split,
+                                                                  cap_training_samples=model_config.cap_training_samples)
+            train_indexes_lists.append(train_indexes)
+            val_indexes_lists.append(val_indexes)
+
+        # overwrite global args
+        train_indexes = train_indexes_lists  # this is now a list of lists!
+        val_indexes = val_indexes_lists  # this is now a list of lists!
+
+    else:
+        train_indexes, val_indexes = split_plans_in_train_val(plans=plans, val_ratio=val_ratio,
+                                                              shuffle_before_split=shuffle_before_split,
+                                                              cap_training_samples=model_config.cap_training_samples)
+
+    def create_dataset(plans, indexes, is_validation_set: bool = False):
+        if apply_ohem:
+
+            assert model_config.cap_training_samples is None, f'ensuring that always this number of samples is included is not yet supported - this would require replication in case the limit is too high! - not yet implemented'
+
+            # gather plans using indexes
+            gathered_plans = []
+            for p_list, idx_list in zip(plans, indexes):
+                gathered_plans.append([p_list[i] for i in idx_list])
+
+            if is_validation_set:
+                # since we limit the datasets after we do the split into train/val, we need to adjust the val_ratio
+                # otherwise we would have a different ratio in the validation set
+                ratio = val_ratio / (1 - val_ratio)
+            else:
+                ratio = 1
+
+            # compute limit values
+            l_plans_per_file, l_plans_overall = None, None
+            if not do_not_limit_file and model_config.limit_plans_per_file is not None:
+                l_plans_per_file = int(model_config.limit_plans_per_file * ratio)
+            if not do_not_limit_file and model_config.limit_plans_overall is not None:
+                l_plans_overall = int(model_config.limit_plans_overall * ratio)
+
+            # use a different dataset
+            dataset = OHEMPlanDataset(plan_lists=gathered_plans, plan_idxs_lists=indexes,
+                                      workload_file_names=workload_run_paths,
+                                      limit_plans_per_file=l_plans_per_file, limit_plans_overall=l_plans_overall,
+                                      slice_by=model_config.ohem_slice_by)
+        else:
+            # apply gather operation on the plans - necessary for replication / shuffling (see above)
+            dataset = PlanDataset([plans[i] for i in indexes], indexes)
+
+        return dataset
+
+    train_dataset = create_dataset(plans, train_indexes)
 
     val_dataset = None
     if val_ratio > 0:
-        val_indexes = plan_indexes[split_train:]
-        val_dataset = PlanDataset([plans[i] for i in val_indexes], val_indexes)
+        val_dataset = create_dataset(plans, val_indexes, is_validation_set=True)
 
     # derive label normalization
-    runtimes = np.array([p["plan_runtime_ms"] / 1000 for p in plans if not p['timeout']])
+    if apply_ohem:
+        # flatten list[list[plan]] to list[plan]
+        runtime_plans = []
+        for p_list in plans:
+            runtime_plans.extend(p_list)
+    else:
+        runtime_plans = plans
+    runtimes = np.array([p["plan_runtime_ms"] / 1000 for p in runtime_plans if not p['timeout']])
     label_norm = derive_label_normalizer(model_config.loss_class_name, runtimes)
 
     return label_norm, train_dataset, val_dataset, database_statistics
@@ -392,9 +493,18 @@ def create_zeroshot_dataloader(workload_runs: WorkloadRuns,
         train_loader: DataLoader = DataLoader(train_dataset, **dataloader_args)
         val_loader: DataLoader = DataLoader(val_dataset, **dataloader_args)
 
-        print(f"Created datasets of size: "
+        # update ohem dataset if necessary - this is done post creation of the dataset! (this is a bit hacky, information was at init time not available)
+        if model_config.online_hard_example_mining:
+            train_dataset.dataloader_args = dataloader_args.copy()  # create copy, because following test dataset will reference and overwrite dataloader_args
+            val_dataset.dataloader_args = dataloader_args.copy()
+
+        try:
+            print(f"Created datasets of size: "
               f"train {len(train_dataset)}, "
               f"validation: {len(val_dataset)}")
+        except Exception as e:
+            print(e)
+            print(f'Problem retrieving size of train or val dataset')
     else:
         train_loader, val_loader = None, None
 
@@ -407,8 +517,11 @@ def create_zeroshot_dataloader(workload_runs: WorkloadRuns,
                                                                            model_config=model_config,
                                                                            shuffle_before_split=False,
                                                                            val_ratio=0.0,
-                                                                           is_test_dataset=True)
-            # test dataset
+                                                                           is_test_dataset=True,
+                                                                           do_not_limit_file=True,
+                                                                           # do not limit test files - e.g. for QO we need scores for all plans
+                                                                           )
+
             test_collate_fn = functools.partial(plan_collator,
                                                 db_statistics=test_database_statistics,
                                                 feature_statistics=feature_statistics,
@@ -422,6 +535,10 @@ def create_zeroshot_dataloader(workload_runs: WorkloadRuns,
             dataloader_args.update(collate_fn=test_collate_fn)
             test_loader = DataLoader(test_dataset, **dataloader_args)
             test_loaders.append(test_loader)
+
+            # update ohem dataset if necessary - this is done post creation of the dataset! (this is a bit hacky, information was at init time not available)
+            if model_config.online_hard_example_mining:
+                test_dataset.dataloader_args = dataloader_args.copy()
 
             print(f"Created datasets of size: "
                   f"test: {len(test_dataset)}")

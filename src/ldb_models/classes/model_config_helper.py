@@ -105,6 +105,9 @@ def get_parameterized_model_config(model_name: str, m_args: Dict) -> ModelConfig
         if arg in opt.__dict__.keys() or arg in ['AdamWScheduleFree']:
             args_dict['optimizer_class_name'] = arg
             continue
+        if arg.startswith('ohem_slice_by'):
+            args_dict['ohem_slice_by'] = arg.replace('ohem_slice_by', '')
+            continue
 
         # check if arg ends with number and if so, split it
         param_name, number = split_if_ends_with_digits(arg)

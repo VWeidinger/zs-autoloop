@@ -59,6 +59,12 @@ class NodeTypeEncoder(FcOutModel):
         if self.no_input_required:
             return self.replacement_param.repeat(input.shape[0], 1)
 
+        if len(input.shape) != 2:
+            raise ValueError(f"Expected 2D input, got {len(input.shape)}D / shape {input.shape}")
+
+        if input.shape[0] == 0:
+            return torch.reshape(input, (0, self.output_dim))
+
         assert input.shape[1] == self.input_feature_idx
         encoded_input = []
         for feat, feat_type, feat_idxs in zip(self.features, self.feature_types, self.feature_idxs):

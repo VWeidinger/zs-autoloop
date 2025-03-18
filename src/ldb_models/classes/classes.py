@@ -76,6 +76,26 @@ class ModelType:
     WL_AGNOSTIC = "wl_agnostic"
 
 
+def shorten_model_name(name: str) -> str:
+    # shorten wandb name
+    name = name.replace('include_complex_workloads', 'complex')
+    name = name.replace('include_pg_opt_workloads', 'pgopt')
+    name = name.replace('include_hint_workloads', 'hint')
+    name = name.replace('include_hint_idx_workloads', 'hintidx')
+    name = name.replace('include_scan_only_hint_workloads', 'scanhint')
+    name = name.replace('train_on_subplans', 'subplans')
+    name = name.replace('PostgresEstWithIsIndexCond', 'FeatPGEstIsIdxC')
+    name = name.replace('limit_plans_per_file', 'limitpf')
+    name = name.replace('PostgresEstWithIsJoinCond', 'isjoincond')
+    name = name.replace('filter_inline_col_featsFalse', 'nofiltercolinline')
+    name = name.replace('AdamWScheduleFree', 'AdamWSF')
+    name = name.replace('annotate_base_table_card_to_scan_op', 'tablecardatscan')
+    name = name.replace('online_hard_example_mining', 'ohem')
+    name = name.replace('ohem_initialize_difficulty', 'ohem_init')
+
+    return name
+
+
 @attrs.define(frozen=True, slots=False)
 class ModelConfig:
     name: Name = field(default=None)
@@ -105,19 +125,29 @@ class ModelConfig:
     include_hint_idx_workloads: bool = False
     include_gt30_hints: bool = False
     include_scan_only_hint_workloads: bool = False
-    wandb_group: str = field(default=None)
     include_complex_workloads: bool = False
+    wandb_group: str = field(default=None)
     train_on_subplans: bool = False
 
     # model should be pretrained
     pretrained_model_dir: str = None
     pretrained_model_name: str = None
 
+    # OHEM - online hard example mining
+    online_hard_example_mining: bool = False
+    ohem_initialize_difficulty: bool = False  # initialize difficulty for OHEM with model before first epoch - otherwise all inf
+    ohem_resort_after_num_epochs: int = 2  # resort OHEM dataset after this number of epochs
+    ohem_slice_by: str = 'file'  # file, dataset, none
+
     def get_model_dir(self, source_path: Paths, database: Dataset) -> Path:
-        return source_path.Data.models / self.name.NAME / database.db_name
+        # shorten model name - otherwise we are hitting file-name limits
+        model_name = shorten_model_name(self.name.NAME)
+        return source_path.Data.models / model_name / database.db_name
 
     def get_eval_dir(self, source_path: Paths, database: Dataset) -> Path:
-        return source_path.Data.evaluation / self.name.NAME / database.db_name
+        # shorten model name - otherwise we are hitting file-name limits
+        model_name = shorten_model_name(self.name.NAME)
+        return source_path.Data.evaluation / model_name / database.db_name
 
     def get_statistics(self, source_path: Paths, dataset: Dataset, format: InputFormats) -> Path:
         # if self.name in [ModelName.MSCN, ModelName.QUERY_FORMER]:

@@ -163,6 +163,13 @@ def train_model(csv_stats: List,
         if wandb_run:
             wandb_run.log(epoch_stats, step=epoch)
 
+        if config.online_hard_example_mining:
+            if epoch % config.ohem_resort_after_num_epochs == 0:
+                print(f'Resorting OHEM dataset...')
+                train_loader.dataset.update_difficulty()
+                val_loader.dataset.update_difficulty()
+
+
         epoch += 1
         if stop_early:
             print(f"Early stopping kicked in due to no improvement in {config.early_stopping_patience} epochs")

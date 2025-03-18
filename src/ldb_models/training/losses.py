@@ -51,7 +51,7 @@ class QLoss(nn.Module):
         self.penalty_negative = penalty_negative
         super().__init__()
 
-    def forward(self, input: torch.Tensor, target: torch.Tensor):
+    def forward(self, input: torch.Tensor, target: torch.Tensor, return_aggregated: bool = True):
         assert isinstance(input, torch.Tensor), f'Input is not a tensor, but {type(input)}'
         assert isinstance(target, torch.Tensor), f'Target is not a tensor, but {type(target)}'
 
@@ -80,8 +80,20 @@ class QLoss(nn.Module):
         q_error = torch.add(q_error, torch.max(torch.div(input_masked, target.reshape((-1, 1))),
                                                torch.div(target_masked, input)))
 
-        loss = torch.mean(q_error)
-        return loss
+        if return_aggregated:
+            loss = torch.mean(q_error)
+            return loss
+        else:
+            return q_error
+
+
+class QLogSqLoss(nn.Module):
+    def __init__(self, **kwargs):
+        super().__init__()
+        self.qloss = QLoss(**kwargs)
+
+    def forward(self, input, target, return_aggregated: bool = True):
+        return torch.log(self.qloss(input, target, return_aggregated=return_aggregated)) ** 2
 
 
 class DaceLoss(nn.Module):
