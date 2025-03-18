@@ -170,6 +170,10 @@ def generate_training_commands(datasets: List[Dataset], seeds: list[int], python
                 if is_pretrained:
                     command += " --is_pretrained"
 
+                if target_model.pretrained_model_dir is not None:
+                    command += f" --pretrained_model_dir {target_model.pretrained_model_dir} "
+                    command += f" --pretrained_model_name {target_model.pretrained_model_name} "
+
                 commands.append(command)
 
     return commands

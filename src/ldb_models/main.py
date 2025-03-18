@@ -140,7 +140,9 @@ def use_model(mode: str,
               pt_profiler: bool,
               bound_predictions: bool,
               is_pretrained: bool,
-              run_qo_test_pipeline_after_each_epoch: bool = True,):
+              run_qo_test_pipeline_after_each_epoch: bool = True,
+              pretrained_model_dir: Optional[str] = None,
+              pretrained_model_name: Optional[str] = None):
     # Seed for reproducibility
     print(f"Found model config {config}")
     torch.manual_seed(config.seed)
@@ -191,7 +193,7 @@ def use_model(mode: str,
 
     if model is not None:
         # Move model to device
-        print(f"Model device: {model.device}",flush=True)
+        print(f"Model device: {model.device}", flush=True)
         model = model.to(model.device)
 
         # Init optimizer
@@ -199,9 +201,9 @@ def use_model(mode: str,
             optimizer: Optimizer = AdamWScheduleFree(model.parameters(), **config.optimizer_kwargs)
         else:
             optimizer: Optimizer = opt.__dict__[config.optimizer_class_name](model.parameters(),
-                                                                         **config.optimizer_kwargs)
+                                                                             **config.optimizer_kwargs)
 
-        print(f"Try to load model with name {config.name.NAME} and seed {config.seed} from {model_dir}",flush=True)
+        print(f"Try to load model with name {config.name.NAME} and seed {config.seed} from {model_dir}", flush=True)
         csv_stats, epochs_wo_improvement, epoch, model, optimizer, metrics, finished, found, rank_found = \
             load_checkpoint(model=model,
                             target_path=model_dir,
@@ -209,12 +211,30 @@ def use_model(mode: str,
                             optimizer=optimizer,
                             metrics=metrics,
                             filetype='.pt',
-                            prefer_ft_rank=ft_with_ranking)
+                            prefer_ft_rank=ft_with_ranking,
+                            load_last_checkpoint=True)
 
         if rank_found:
-            print("Found pretrained model (trained with ranking)",flush=True)
+            print("Found pretrained model (trained with ranking)", flush=True)
         if found:
-            print("Found pretrained model",flush=True)
+            print("Found pretrained model", flush=True)
+
+        if not found and pretrained_model_dir is not None:
+            # no checkpoint found, try to load the model from the pretrained_model_dir
+            print(f"Try to initialize model from {pretrained_model_dir}/{pretrained_model_name}", flush=True)
+            _, _, _, model, _, _, _, found, _ = \
+                load_checkpoint(model=model,
+                                manual_model_dir=pretrained_model_dir,
+                                manual_model_name=pretrained_model_name,
+                                config=None,
+                                optimizer=None,
+                                metrics=copy.deepcopy(metrics),
+                                filetype='.pt',
+                                prefer_ft_rank=ft_with_ranking,
+                                load_last_checkpoint=False,
+                                target_path=None)  # load best checkpoint
+
+            assert found, f"Pretrained model not found in {pretrained_model_dir}/{pretrained_model_name}"
 
     if is_pretrained and not isinstance(config, TabularModelConfig):
         assert found
@@ -275,12 +295,12 @@ def use_model(mode: str,
                 # check if model is already pre-trained -> do not execute this
                 if not is_pretrained:
                     model = train_tabular_model(workload_runs=wl_runs,
-                                    config=config,
-                                    statistics_file=statistics_file,
-                                    model_dir=model_dir,
-                                    bound_predictions=False,
-                                    prediction_bounder=prediction_bounder,
-                                    dataloader_options=DataLoaderOptions())
+                                                config=config,
+                                                statistics_file=statistics_file,
+                                                model_dir=model_dir,
+                                                bound_predictions=False,
+                                                prediction_bounder=prediction_bounder,
+                                                dataloader_options=DataLoaderOptions())
             else:
                 train_model(model_dir=model_dir,
                             train_loader=train_loader,
@@ -386,6 +406,11 @@ if __name__ == '__main__':
     parser.add_argument('--bound_predictions', action='store_true')
     parser.add_argument('--qo_eval_after_each_epoch', action='store_true')
     parser.add_argument('--is_pretrained', action='store_true')
+
+    # pre-trained model, used to initialize weights
+    parser.add_argument('--pretrained_model_dir', default=None)
+    parser.add_argument('--pretrained_model_name', default=None)
+
     args = parser.parse_args()
 
     assert args.device == 'cpu' or args.device.startswith('cuda'), "Device must be either 'cpu' or 'cuda'"
@@ -416,17 +441,6 @@ if __name__ == '__main__':
     runs = WorkloadRuns(train_workload_runs=train_runs, test_workload_runs=test_runs)
 
     model_config = get_model_config(model_type=args.model_type, m_args=model_args)
-
-    ## If retraining, set specific model parameters
-    # if args.mode == "retrain":
-    #     model_config = evolve(model_config, epochs=model_config.epochs + 100)
-    #     # Disable penalty for small values in case of retraining
-    #     if model_config.loss_class_name == "QLoss":
-    #         final_mlp_kwargs = model_config.final_mlp_kwargs
-    #         loss_class_kwargs = final_mlp_kwargs.pop('loss_class_kwargs')
-    #         loss_class_kwargs.update(penalty_negative=0)
-    #         final_mlp_kwargs.update(loss_class_kwargs=loss_class_kwargs)
-    #         model_config = evolve(model_config, final_mlp_kwargs=final_mlp_kwargs)
 
     # extract model_type information
     model_type = args.model_type
@@ -474,7 +488,10 @@ if __name__ == '__main__':
         bound_predictions=args.bound_predictions,
         wandb_run=wandb_run,
         run_qo_test_pipeline_after_each_epoch=args.qo_eval_after_each_epoch,
-    is_pretrained=args.is_pretrained)
+        is_pretrained=args.is_pretrained,
+        pretrained_model_dir=args.pretrained_model_dir,
+        pretrained_model_name=args.pretrained_model_name,
+    )
 
     use_model(**args)
 

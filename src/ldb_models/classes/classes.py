@@ -109,6 +109,10 @@ class ModelConfig:
     include_complex_workloads: bool = False
     train_on_subplans: bool = False
 
+    # model should be pretrained
+    pretrained_model_dir: str = None
+    pretrained_model_name: str = None
+
     def get_model_dir(self, source_path: Paths, database: Dataset) -> Path:
         return source_path.Data.models / self.name.NAME / database.db_name
 
@@ -373,6 +377,7 @@ class ZeroShotXLConfig(ZeroShotModelConfig):
     include_scan_only_hint_workloads: bool = True
     include_hint_idx_workloads: bool = True
     include_complex_workloads: bool = True
+    loss_class_name: str = 'QLogSqLoss'
 
 
 @attrs.define(frozen=True, slots=False)

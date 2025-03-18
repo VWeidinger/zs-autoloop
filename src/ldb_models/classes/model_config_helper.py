@@ -26,6 +26,10 @@ def parameterized_config(base_config_name: str, **args):
             arg_string_list.append(value.__name__)
         elif key == 'optimizer_class_name':
             arg_string_list.append(value)
+        elif key in ['pretrained_model_dir', 'pretrained_model_name']:
+            # skip these
+            # make sure they are passed via call argument - otherwise it will not be used on the cluster!
+            continue
         else:
             arg_string_list.append(f"{key}{value}")
     model_name = f'pm-{base_config_name}-{"-".join(arg_string_list)}'

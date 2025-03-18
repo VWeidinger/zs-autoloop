@@ -56,7 +56,7 @@ class Metric:
         return best_seen
 
 def init_metrics(loss_class_name: str) -> List[Metric]:
-    if loss_class_name in ['QLoss', 'QPPLoss', 'DaceLoss']:
+    if loss_class_name in ['QLoss', 'QPPLoss', 'DaceLoss', 'QLogSqLoss']:
         metrics: List[Metric] = [RMSE(),
                                  MAPE(),
                                  QError(percentile=50, early_stopping_metric=True),
@@ -81,7 +81,7 @@ def init_metrics(loss_class_name: str) -> List[Metric]:
             SpearmanRank(early_stopping_metric=True),
         ]
     else:
-        raise Exception("Loss class not supported")
+        raise Exception(f'Loss class not supported: {loss_class_name}')
     return metrics
 
 class MAPE(Metric):

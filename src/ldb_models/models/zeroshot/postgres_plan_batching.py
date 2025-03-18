@@ -262,6 +262,8 @@ def get_or_add_col_id(column_id: int, column_idx: Dict, database_id: int, db_col
                       feature_statistics: Dict, plan_featurization, column_features: List):
     column_node_id = column_idx.get((str(column_id), database_id))
     if column_node_id is None:
+        assert column_id < len(
+            db_column_features), f'Column {column_id} w. db id: {database_id} not in db_column_features: {len(db_column_features)} / {db_column_features}'
         try:
             curr_column_features = [
                 encode(feature_name, db_column_features[column_id], feature_statistics)
@@ -518,7 +520,7 @@ def postgres_plan_collator(plans: List[Tuple], feature_statistics: dict[dict] = 
     try:
         graph = dgl.heterograph(data_dict, num_nodes_dict=num_nodes_dict)
     except Exception as e:
-        # print(f'Error in creating graph: {num_nodes_dict} \n {data_dict}',flush=True)
+        print(f'Error in creating graph: {num_nodes_dict} \n {data_dict.keys()}', flush=True)
         raise e
     graph.max_depth = max_depth
     graph.max_pred_depth = max_pred_depth

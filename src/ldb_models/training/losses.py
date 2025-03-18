@@ -11,6 +11,8 @@ def create_loss(loss_name: str, loss_kwargs: Dict):
         loss = MSELoss(**loss_kwargs)
     elif loss_name == 'QLoss':
         loss = QLoss(**loss_kwargs)
+    elif loss_name == 'QLogSqLoss':
+        loss = QLogSqLoss(**loss_kwargs)
     elif loss_name == 'DaceLoss':
         loss = DaceLoss(**loss_kwargs)
     elif loss_name == 'QPPLoss':

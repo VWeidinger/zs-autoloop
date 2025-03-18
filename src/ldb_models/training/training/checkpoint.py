@@ -9,6 +9,7 @@ import torch
 from torch import nn
 
 from classes.classes import ModelConfig
+from training.training.utils import find_early_stopping_metric
 
 
 def torch_save(checkpoint, target_path, model_name, postfix='', filetype='.m'):
@@ -96,7 +97,8 @@ def load_checkpoint(model: nn.Module,
                     metrics = None,
                     prefer_ft_rank:bool = False,
                     manual_model_dir:str=None,
-                    manual_model_name:str=None):
+                    manual_model_name: str = None,
+                    load_last_checkpoint: bool = True):
     """
     Load all training state from a checkpoint. Does not work across devices (e.g., GPU->CPU).
     """
@@ -129,7 +131,10 @@ def load_checkpoint(model: nn.Module,
 
             epochs_wo_improvement = checkpoint['epochs_wo_improvement']
             epoch = checkpoint['epoch']
-            model.load_state_dict(checkpoint['model'])
+
+            if load_last_checkpoint:
+                # load last checkpoint
+                model.load_state_dict(checkpoint['model'])
 
             # read label normalizer
             label_norm_path = os.path.join(target_path, f'{model_name}_label_norm.pkl')
@@ -144,6 +149,12 @@ def load_checkpoint(model: nn.Module,
                 for m in metrics:
                     m.best_model = checkpoint[m.metric_name + '_best_model']
                     m.best_seen_value = checkpoint[m.metric_name + '_best_seen_value']
+
+            if not load_last_checkpoint:
+                # load best checkpoint
+                assert metrics is not None
+                early_stop_m = find_early_stopping_metric(metrics)
+                model.load_state_dict(early_stop_m.best_model)
 
             target_csv_path = os.path.join(target_path, f'{model_name}.csv')
             csv_stats = load_stats_csv(target_csv_path)
