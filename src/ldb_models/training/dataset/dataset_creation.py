@@ -98,7 +98,8 @@ def read_workload_runs(workload_run_paths: List[Path],
             else:
                 raise ValueError(f"Input format {input_format} not supported")
 
-            assert plan['plan_runtime_ms'] is not None, f"Missing plan_runtime_ms in {path} for {plan}"
+            # timeout queries do not have a runtime
+            # assert plan['plan_runtime_ms'] is not None, f"Missing plan_runtime_ms in {path} for {plan}"
 
             plan["database_id"] = path_index
             per_file_plans.append(plan)
