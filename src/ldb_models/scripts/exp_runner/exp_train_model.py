@@ -368,8 +368,7 @@ if __name__ == '__main__':
                                  # pretrained_model_dir='/mnt/labstore/SIGs/ML/learned_db/models/pm-zeroshot-include_complex_workloads-include_hint_idx_workloads/imdb/',
                                  # pretrained_model_name='pm-zeroshot-include_complex_workloads-include_hint_idx_workloads_1',
                                  pretrained_model_dir='/mnt/labstore/SIGs/ML/learned_db/models/pm-zeroshot-annotate_base_table_card_to_scan_op-PostgresEstWithAdditionalFeats-filter_inline_col_featsFalse-include_complex_workloads-include_pg_opt_workloads-include_hint_idx_workloads-include_scan_only_hint_workloads/imdb/',
-                                 pretrained_model_name='pm-zeroshot-annotate_base_table_card_to_scan_op-PostgresEstWithAdditionalFeats-filter_inline_col_featsFalse-include_complex_workloads-include_pg_opt_workloads-include_hint_idx_workloads-include_scan_only_hint_workloads_1',
-                                 **model_specific_args) if model_type == 'zeroshot' else None,
+                                 pretrained_model_name='pm-zeroshot-annotate_base_table_card_to_scan_op-PostgresEstWithAdditionalFeats-filter_inline_col_featsFalse-include_complex_workloads-include_pg_opt_workloads-include_hint_idx_workloads-include_scan_only_hint_workloads_1') if model_type == 'zeroshot' else None,
         ])
 
     model_configs = [
@@ -392,7 +391,8 @@ if __name__ == '__main__':
                              # pretrained_model_dir='/mnt/labstore/SIGs/ML/learned_db/models/pm-zeroshot-include_complex_workloads-include_hint_idx_workloads/imdb/',
                              # pretrained_model_name='pm-zeroshot-include_complex_workloads-include_hint_idx_workloads_1',
                              pretrained_model_dir='/mnt/labstore/SIGs/ML/learned_db/models/pm-zeroshot_xl-annotate_base_table_card_to_scan_op-PostgresEstWithAdditionalFeats-filter_inline_col_featsFalse-include_complex_workloads-include_pg_opt_workloads-include_hint_idx_workloads-include_scan_only_hint_workloads/imdb/',
-                             pretrained_model_name='pm-zeroshot_xl-annotate_base_table_card_to_scan_op-PostgresEstWithAdditionalFeats-filter_inline_col_featsFalse-include_complex_workloads-include_pg_opt_workloads-include_hint_idx_workloads-include_scan_only_hint_workloads_1',
+                             pretrained_model_name='pm-zeroshot_xl-annotate_base_table_card_to_scan_op-PostgresEstWithAdditionalFeats-filter_inline_col_featsFalse-include_complex_workloads-include_pg_opt_workloads-include_hint_idx_workloads-include_scan_only_hint_workloads_1', )
+    ]
 
 #     model_configs = [
 #         parameterized_config('zeroshot_learn_from_timeout',
@@ -403,8 +403,7 @@ if __name__ == '__main__':
 #                              include_complex_workloads=True, include_pg_opt_workloads=True,
 #                              include_hint_idx_workloads=True, include_scan_only_hint_workloads=True,
 #                              pretrained_model_dir='/mnt/labstore/SIGs/ML/learned_db/models/pm-zeroshot-annotate_base_table_card_to_scan_op-PostgresEstWithAdditionalFeats-filter_inline_col_featsFalse-include_complex_workloads-include_pg_opt_workloads-include_hint_idx_workloads-include_scan_only_hint_workloads/imdb/',
-#                              pretrained_model_name='pm-zeroshot-annotate_base_table_card_to_scan_op-PostgresEstWithAdditionalFeats-filter_inline_col_featsFalse-include_complex_workloads-include_pg_opt_workloads-include_hint_idx_workloads-include_scan_only_hint_workloads_1',
-#                              **model_specific_args)
+    #                              pretrained_model_name='pm-zeroshot-annotate_base_table_card_to_scan_op-PostgresEstWithAdditionalFeats-filter_inline_col_featsFalse-include_complex_workloads-include_pg_opt_workloads-include_hint_idx_workloads-include_scan_only_hint_workloads_1')
 #     ]
 
     model_configs = [model for model in model_configs if model is not None]
