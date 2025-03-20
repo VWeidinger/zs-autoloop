@@ -46,6 +46,7 @@ class ModelName:
     ZS_RANK_LOSS = Name('zeroshot_rank_loss', 'Zero-Shot (Rank Loss)')
     ZS_STRATIFIED = Name("zeroshot_stratified", "Zero-Shot (stratified)")
     ZS_XL = Name("zeroshot_xl", "Zero-Shot (XL)")
+    ZS_LAYER_NORM = Name("zeroshot_layer_norm", "Zero-Shot (Layer Norm)")
     ZS_PGCOST = Name("zeroshot_pgcost", "Zero-Shot (pgcost)")
     ZS_WITH_HINTS = Name("zeroshot_with_hints", "Zero-Shot (with hints)")
     ZS_ONLY_HINTS = Name("zeroshot_only_hints", "Zero-Shot (only hints)")
@@ -409,6 +410,16 @@ class ZeroShotXLConfig(ZeroShotModelConfig):
     include_complex_workloads: bool = True
     loss_class_name: str = 'QLogSqLoss'
 
+
+@attrs.define(frozen=True, slots=False)
+class ZeroShotLayerNormConfig(ZeroShotModelConfig):
+    name: Name = ModelName.ZS_LAYER_NORM
+    tree_layer_kwargs: dict = dict(width_factor=0.6,
+                                   n_layers=2, layer_norm=True, **ZeroShotModelConfig().fc_out_kwargs)
+
+    include_scan_only_hint_workloads: bool = True
+    include_hint_idx_workloads: bool = True
+    include_complex_workloads: bool = True
 
 @attrs.define(frozen=True, slots=False)
 class ZSStratifiedModelConfig(ZeroShotModelConfig):
