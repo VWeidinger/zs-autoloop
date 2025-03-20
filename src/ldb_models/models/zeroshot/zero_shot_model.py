@@ -1,3 +1,4 @@
+import torch
 from torch import nn
 
 from classes.classes import ZeroShotModelConfig
@@ -66,6 +67,11 @@ class ZeroShotModelEncoder(FcOutModel):
                     node_type_m = self.node_type_encoders['plan']
             else:
                 node_type_m = self.node_type_encoders[node_type]
+
+            if len(input_features) == 0:
+                # make 2 dimensional
+                input_features = torch.reshape(input_features, (0, 0))
+
             hidden_dict[node_type] = node_type_m(input_features)
 
         return hidden_dict

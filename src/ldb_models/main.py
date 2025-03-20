@@ -1,5 +1,6 @@
 import argparse
 import copy
+import functools
 from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
@@ -33,6 +34,7 @@ from models.zeroshot.specific_models.postgres_zero_shot import PostgresZeroShotM
 from train import train_model
 from training.bound_predictions_with_history import PredictionBounder
 from training.dataset.dataset_creation import create_zeroshot_dataloader
+from training.dataset.plan_dataset import OHEMPlanDataset
 from training.training.checkpoint import load_checkpoint
 from training.training.metrics import Metric, RankAccuracy, init_metrics
 from training.training.test import test_model
@@ -49,7 +51,7 @@ def init_model(statistics_file: Path,
             create_zeroshot_dataloader(workload_runs=workload_runs,
                                        statistics_file=statistics_file,
                                        model_config=config,
-                                       data_loader_options=DataLoaderOptions())
+                                       data_loader_options=DataLoaderOptions(), )
 
         model: nn.Module = PostgresZeroShotModel(model_config=config,
                                                  feature_statistics=feature_statistics,
@@ -117,12 +119,14 @@ def init_model(statistics_file: Path,
         print(f"Timeout count: {timeout_count} of {overall_count} "
               f"({timeout_count / overall_count * 100:.2f}%) in {string}")
 
-    if train_loader:
-        gather_dataloader_stats(train_loader, "train_loader")
-        gather_dataloader_stats(val_loader, "val_loader")
-    if test_loaders:
-        for test_loader in test_loaders:
-            gather_dataloader_stats(test_loader, "test_loader")
+    if not config.online_hard_example_mining:
+        assert not config.online_hard_example_mining, f'datasets will be instantiated later -> deferred_setup()'
+        if train_loader:
+            gather_dataloader_stats(train_loader, "train_loader")
+            gather_dataloader_stats(val_loader, "val_loader")
+        if test_loaders:
+            for test_loader in test_loaders:
+                gather_dataloader_stats(test_loader, "test_loader")
     print('\n')
 
     return model, train_loader, val_loader, test_loaders, feature_statistics
@@ -244,6 +248,24 @@ def use_model(mode: str,
                 'Pretrained model not finished. Though still considering it as finished because of `is_pretrained` flag is set.',
                 flush=True)
         finished = True
+
+    ###
+    # Do deferred setup of OHEM - it was easier to do it here, because we need the model and criterion (not yet available during dataset creation)
+    ###
+    if config.online_hard_example_mining:
+        assert isinstance(config, ZeroShotModelConfig), "OHEM is only supported for ZeroShot at the moment"
+        loss_fn = functools.partial(model.loss_fxn, return_aggregated=False)
+
+        # update datasets with model / criterion information
+        train_loader.dataset.deferred_setup(model=model, criterion=loss_fn,
+                                            initialize_difficulty=config.ohem_initialize_difficulty)
+        val_loader.dataset.deferred_setup(model=model, criterion=loss_fn,
+                                          initialize_difficulty=config.ohem_initialize_difficulty)
+
+        for test_loader in test_loaders:
+            if isinstance(test_loader, OHEMPlanDataset):
+                test_loader.dataset.deferred_setup(model=model, criterion=loss_fn,
+                                                   initialize_difficulty=config.ohem_initialize_difficulty)
 
     # prepare the prediction bounder
     if bound_predictions:

@@ -8,7 +8,7 @@ import joblib
 import torch
 from torch import nn
 
-from classes.classes import ModelConfig
+from classes.classes import ModelConfig, shorten_model_name
 from training.training.utils import find_early_stopping_metric
 
 
@@ -68,6 +68,9 @@ def save_checkpoint(epochs_wo_improvement, epoch, model, optimizer, target_path,
     else:
         model_name = f'{config.name.NAME}_{config.seed}'
 
+    # shorten model name - otherwise we are hitting file-name limits
+    model_name = shorten_model_name(model_name)
+
     torch_save(checkpoint, target_path, model_name, filetype='.pt')
 
     if not (target_path is None or config.name.NAME is None):
@@ -116,6 +119,9 @@ def load_checkpoint(model: nn.Module,
             if os.path.exists(checkpoint_file):
                 # we found a rank model checkpoint
                 model_name = rank_model_name
+
+        # shorten model name - otherwise we are hitting file-name limits
+        model_name = shorten_model_name(model_name)
     else:
         model_name = manual_model_name
 

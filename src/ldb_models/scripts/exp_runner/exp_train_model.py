@@ -5,7 +5,7 @@ from ldb_schema.datasets import Dataset
 from ldb_schema.paths import ClusterPaths, LocalPaths
 from octopus.step import Rsync, KillAllScreens, SetupVenv, RsyncCurrentRepo, SetupRYEVenv
 
-from classes.classes import ModelConfig, ModelType
+from classes.classes import ModelConfig, ModelType, shorten_model_name
 from classes.model_config_helper import parameterized_config
 from scripts.exp_runner.exp_runner import ExpRunner, TrainingServers
 from training.featurizations import PostgresEstWithAdditionalFeats
@@ -110,18 +110,7 @@ def generate_training_commands(datasets: List[Dataset], seeds: list[int], python
                     wandb_name += '_pretrained'
 
                 # shorten wandb name
-                wandb_name = wandb_name.replace('include_complex_workloads', 'complex')
-                wandb_name = wandb_name.replace('include_pg_opt_workloads', 'pgopt')
-                wandb_name = wandb_name.replace('include_hint_workloads', 'hint')
-                wandb_name = wandb_name.replace('include_hint_idx_workloads', 'hintidx')
-                wandb_name = wandb_name.replace('include_scan_only_hint_workloads', 'scanhint')
-                wandb_name = wandb_name.replace('train_on_subplans', 'subplans')
-                wandb_name = wandb_name.replace('PostgresEstWithIsIndexCond', 'FeatPGEstIsIdxC')
-                wandb_name = wandb_name.replace('limit_plans_per_file', 'limitpf')
-                wandb_name = wandb_name.replace('PostgresEstWithIsJoinCond', 'isjoincond')
-                wandb_name = wandb_name.replace('filter_inline_col_featsFalse', 'nofiltercolinline')
-                wandb_name = wandb_name.replace('AdamWScheduleFree', 'AdamWSF')
-                wandb_name = wandb_name.replace('annotate_base_table_card_to_scan_op', 'tablecardatscan')
+                wandb_name = shorten_model_name(wandb_name)
 
                 command = (f"python{python_version} main.py "
                            f"--mode train "
@@ -263,7 +252,8 @@ if __name__ == '__main__':
     for model_type in [
         # 'postgres',
         # 'zeroshot',
-        'zeroshot_timeout',
+        # 'zeroshot_xl'
+        # 'zeroshot_timeout',
         # 'dace',
         # 'flat',
         # 't3'
@@ -356,22 +346,65 @@ if __name__ == '__main__':
             #                      filter_inline_col_feats=False,
             #                      include_complex_workloads=True, include_pg_opt_workloads=True,
             #                      include_hint_idx_workloads=True, include_scan_only_hint_workloads=True,
-            #                      **model_specific_args) if model_type == 'zeroshot' else None,
+            #                      **model_specific_args) if model_type in ['zeroshot','zeroshot_xl'] else None,
 
+            # OHEM test
+            parameterized_config(model_type,
+                                 wandb_group='ohem',
+                                 include_pg_opt_workloads=True,
+                                 include_scan_only_hint_workloads=True,
+                                 include_complex_workloads=True,
+                                 include_hint_workloads=True,
+                                 include_hint_idx_workloads=True,
+                                 online_hard_example_mining=True,
+                                 ohem_initialize_difficulty=True,
+                                 include_gt30_hints=True,
+                                 limit_plans_per_file=10000,  # means here limit plans per slice
+                                 ohem_resort_after_num_epochs=1,
+                                 ohem_slice_by='dataset',
+                                 featurization=PostgresEstWithAdditionalFeats,
+                                 filter_inline_col_feats=False,
+                                 annotate_base_table_card_to_scan_op=True,
+                                 # pretrained_model_dir='/mnt/labstore/SIGs/ML/learned_db/models/pm-zeroshot-include_complex_workloads-include_hint_idx_workloads/imdb/',
+                                 # pretrained_model_name='pm-zeroshot-include_complex_workloads-include_hint_idx_workloads_1',
+                                 pretrained_model_dir='/mnt/labstore/SIGs/ML/learned_db/models/pm-zeroshot-annotate_base_table_card_to_scan_op-PostgresEstWithAdditionalFeats-filter_inline_col_featsFalse-include_complex_workloads-include_pg_opt_workloads-include_hint_idx_workloads-include_scan_only_hint_workloads/imdb/',
+                                 pretrained_model_name='pm-zeroshot-annotate_base_table_card_to_scan_op-PostgresEstWithAdditionalFeats-filter_inline_col_featsFalse-include_complex_workloads-include_pg_opt_workloads-include_hint_idx_workloads-include_scan_only_hint_workloads_1') if model_type == 'zeroshot' else None,
         ])
 
     model_configs = [
-        parameterized_config('zeroshot_learn_from_timeout',
-                             wandb_group='zs_from_timeout',
-                             annotate_base_table_card_to_scan_op=True,
+        parameterized_config('zeroshot_xl',
+                             wandb_group='ohem',
+                             include_pg_opt_workloads=True,
+                             include_scan_only_hint_workloads=True,
+                             include_complex_workloads=True,
+                             include_hint_workloads=True,
+                             include_hint_idx_workloads=True,
+                             online_hard_example_mining=True,
+                             ohem_initialize_difficulty=True,
+                             include_gt30_hints=True,
+                             limit_plans_per_file=10000,  # means here limit plans per slice
+                             ohem_resort_after_num_epochs=1,
+                             ohem_slice_by='dataset',
                              featurization=PostgresEstWithAdditionalFeats,
                              filter_inline_col_feats=False,
-                             include_complex_workloads=True, include_pg_opt_workloads=True,
-                             include_hint_idx_workloads=True, include_scan_only_hint_workloads=True,
-                             pretrained_model_dir='/mnt/labstore/SIGs/ML/learned_db/models/pm-zeroshot-annotate_base_table_card_to_scan_op-PostgresEstWithAdditionalFeats-filter_inline_col_featsFalse-include_complex_workloads-include_pg_opt_workloads-include_hint_idx_workloads-include_scan_only_hint_workloads/imdb/',
-                             pretrained_model_name='pm-zeroshot-annotate_base_table_card_to_scan_op-PostgresEstWithAdditionalFeats-filter_inline_col_featsFalse-include_complex_workloads-include_pg_opt_workloads-include_hint_idx_workloads-include_scan_only_hint_workloads_1',
-                             **model_specific_args)
+                             annotate_base_table_card_to_scan_op=True,
+                             # pretrained_model_dir='/mnt/labstore/SIGs/ML/learned_db/models/pm-zeroshot-include_complex_workloads-include_hint_idx_workloads/imdb/',
+                             # pretrained_model_name='pm-zeroshot-include_complex_workloads-include_hint_idx_workloads_1',
+                             pretrained_model_dir='/mnt/labstore/SIGs/ML/learned_db/models/pm-zeroshot_xl-annotate_base_table_card_to_scan_op-PostgresEstWithAdditionalFeats-filter_inline_col_featsFalse-include_complex_workloads-include_pg_opt_workloads-include_hint_idx_workloads-include_scan_only_hint_workloads/imdb/',
+                             pretrained_model_name='pm-zeroshot_xl-annotate_base_table_card_to_scan_op-PostgresEstWithAdditionalFeats-filter_inline_col_featsFalse-include_complex_workloads-include_pg_opt_workloads-include_hint_idx_workloads-include_scan_only_hint_workloads_1', )
     ]
+
+#     model_configs = [
+#         parameterized_config('zeroshot_learn_from_timeout',
+#                              wandb_group='zs_from_timeout',
+#                              annotate_base_table_card_to_scan_op=True,
+#                              featurization=PostgresEstWithAdditionalFeats,
+#                              filter_inline_col_feats=False,
+#                              include_complex_workloads=True, include_pg_opt_workloads=True,
+#                              include_hint_idx_workloads=True, include_scan_only_hint_workloads=True,
+#                              pretrained_model_dir='/mnt/labstore/SIGs/ML/learned_db/models/pm-zeroshot-annotate_base_table_card_to_scan_op-PostgresEstWithAdditionalFeats-filter_inline_col_featsFalse-include_complex_workloads-include_pg_opt_workloads-include_hint_idx_workloads-include_scan_only_hint_workloads/imdb/',
+    #                              pretrained_model_name='pm-zeroshot-annotate_base_table_card_to_scan_op-PostgresEstWithAdditionalFeats-filter_inline_col_featsFalse-include_complex_workloads-include_pg_opt_workloads-include_hint_idx_workloads-include_scan_only_hint_workloads_1')
+#     ]
 
     model_configs = [model for model in model_configs if model is not None]
 
