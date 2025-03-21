@@ -100,8 +100,7 @@ def plan_to_graph(node, database_id, plan_depths, plan_features, plan_to_plan_ed
                   table_to_plan_edges,
                   output_column_idx, column_idx, table_idx, plan_featurization, predicate_depths, intra_predicate_edges,
                   logical_preds, parent_node_id=None, depth=0, skip_top_aggregation: bool = False,
-                  filter_inline_col_feats: bool = True, annotate_base_table_card_to_scan_op: bool = False,
-                  est_num_loops: int = None):
+                  filter_inline_col_feats: bool = True, annotate_base_table_card_to_scan_op: bool = False):
     plan_params = node["plan_parameters"]
 
     if 'Aggregate' in plan_params['op_name'] and skip_top_aggregation:
@@ -113,7 +112,7 @@ def plan_to_graph(node, database_id, plan_depths, plan_features, plan_to_plan_ed
                       table_to_plan_edges, output_column_idx, column_idx, table_idx, plan_featurization,
                       predicate_depths, intra_predicate_edges, logical_preds, parent_node_id=parent_node_id,
                       depth=depth, skip_top_aggregation=False, filter_inline_col_feats=filter_inline_col_feats,
-                      annotate_base_table_card_to_scan_op=annotate_base_table_card_to_scan_op, est_num_loops=0)
+                      annotate_base_table_card_to_scan_op=annotate_base_table_card_to_scan_op)
         return
 
     is_scan_op = 'table_id' in plan_params
@@ -131,10 +130,6 @@ def plan_to_graph(node, database_id, plan_depths, plan_features, plan_to_plan_ed
 
             # annotate base_case
             curr_plan_features.append(enc_value)
-        elif feature_name == 'est_num_loops':
-            # manually add estimated number of loops to the plan
-            plan_params['est_num_loops'] = est_num_loops
-            curr_plan_features.append(encode(feature_name, plan_params, feature_statistics))
         else:
             curr_plan_features.append(encode(feature_name, plan_params, feature_statistics))
 
@@ -235,16 +230,6 @@ def plan_to_graph(node, database_id, plan_depths, plan_features, plan_to_plan_ed
     if parent_node_id is not None:
         plan_to_plan_edges.append((plan_node_id, parent_node_id))
 
-    # annotate num loops for NLJ / INLJ child
-    if plan_params['op_name'] in ['Nested Loop', 'Index Nested Loop']:
-        # get left card
-        assert len(node['children']) == 2
-        left_card = node['children'][0]['plan_parameters']['est_card']
-
-        right_num_loops = left_card
-    else:
-        right_num_loops = 0
-
     # continue recursively
     for i, c in enumerate(node["children"]):
         plan_to_graph(c, database_id, plan_depths, plan_features, plan_to_plan_edges, db_statistics, feature_statistics,
@@ -254,8 +239,7 @@ def plan_to_graph(node, database_id, plan_depths, plan_features, plan_to_plan_ed
                       output_column_idx, column_idx, table_idx, plan_featurization, predicate_depths,
                       intra_predicate_edges, logical_preds, parent_node_id=plan_node_id, depth=depth + 1,
                       skip_top_aggregation=skip_top_aggregation, filter_inline_col_feats=filter_inline_col_feats,
-                      annotate_base_table_card_to_scan_op=annotate_base_table_card_to_scan_op,
-                      est_num_loops=0 if i == 0 else right_num_loops)
+                      annotate_base_table_card_to_scan_op=annotate_base_table_card_to_scan_op, )
 
 
 def get_or_add_col_id(column_id: int, column_idx: Dict, database_id: int, db_column_features: Dict,

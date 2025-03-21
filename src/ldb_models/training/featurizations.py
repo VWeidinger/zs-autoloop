@@ -174,12 +174,12 @@ class PostgresEstWithIsJoinCond(PostgresEstSystemCardDetail):
     FILTER_FEATURES = ['operator', 'is_join_cond']
 
 class PostgresEstWithNumLoops(PostgresEstSystemCardDetail):
-    PLAN_FEATURES = ['est_card', 'est_width', 'op_name', 'est_children_card', 'est_num_loops']
+    PLAN_FEATURES = ['est_card', 'est_width', 'op_name', 'est_children_card', 'est_loops']
 
 
 class PostgresEstWithAdditionalFeats(PostgresEstSystemCardDetail):
     FILTER_FEATURES = ['operator', 'is_index_cond', 'is_join_cond']
-    PLAN_FEATURES = ['est_card', 'est_width', 'op_name', 'est_children_card', 'est_num_loops']
+    PLAN_FEATURES = ['est_card', 'est_width', 'op_name', 'est_children_card', 'est_loops']
 
 
 class PostgresEstWithPGCost(PostgresEstSystemCardDetail):

@@ -232,7 +232,7 @@ class ModelConfig:
             if self.input_format == InputFormats.baseline_parsed:
                 raise NotImplementedError("ToDo")
             elif self.input_format == InputFormats.parsed:
-                return ClusterPaths().Data.parsed_plans_stratified
+                return ClusterPaths().Data.parsed_plans_stratified2
             elif self.input_format == InputFormats.json:
                 raise NotImplementedError("ToDo")
         else:
@@ -240,7 +240,7 @@ class ModelConfig:
                 return ClusterPaths().Data.augmented_plans
             elif self.input_format == InputFormats.parsed:
                 if not romans_runs:
-                    return ClusterPaths().Data.parsed_plans
+                    return ClusterPaths().Data.parsed_plans2
                 else:
                     return ClusterPaths().Data.root / "runs_roman" / "parsed_plans"
             elif self.input_format == InputFormats.json:
