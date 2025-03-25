@@ -495,10 +495,18 @@ if __name__ == '__main__':
         wandb_name = args.wandb_name
         if wandb_name.startswith('pm-'):  # remove the pm- prefix
             wandb_name = wandb_name[3:]
+
+        config_dict = attrs.asdict(model_config)
+        config_dict['name'] = wandb_name
+        config_dict['model_type'] = model_type
+        config_dict['seed'] = args.seed
+        config_dict['quick_run'] = args.quick_run
+        config_dict['device'] = args.device
+
         wandb_run = wandb.init(entity=args.wandb_entity,
                                project=args.wandb_project,
                                name=wandb_name,
-                               config=attrs.asdict(model_config),
+                               config=config_dict,
                                group=args.wandb_group,
                                tags=[model_type])
 
@@ -520,13 +528,7 @@ if __name__ == '__main__':
         pretrained_model_dir=args.pretrained_model_dir,
         pretrained_model_name=args.pretrained_model_name,
     )
-    try:
-        use_model(**args)
-        if wandb_run:
-            wandb_run.finish()
-    except Exception as e:
-        print(e)
-        # print stacktrace
-        import traceback
 
-        traceback.print_exc()
+    use_model(**args)
+    if wandb_run:
+        wandb_run.finish()

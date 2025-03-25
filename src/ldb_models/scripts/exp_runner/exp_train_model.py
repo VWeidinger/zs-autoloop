@@ -220,17 +220,17 @@ if __name__ == '__main__':
     seeds = [3]
     nodes = [
         TrainingServers.NODE00,
-        # TrainingServers.NODE01,
+        TrainingServers.NODE01,
         # TrainingServers.NODE02,
         # TrainingServers.NODE03,
-        TrainingServers.NODE04,
+        # TrainingServers.NODE04,
         # TrainingServers.NODE05,
         # TrainingServers.NODE09,
     ]
-    sockets = [1]
+    sockets = [0, 1]
     out_file_id_offset = 0
     num_parallel_screens = None
-    num_parallel_jobs_dgx = 3
+    num_parallel_jobs_dgx = 2
 
     # ===================
     # CONFIGS
@@ -271,6 +271,9 @@ if __name__ == '__main__':
             #                      include_pg_opt_workloads=True, **model_specific_args),  # hint
             parameterized_config(model_type, wandb_group='whint_hintidx', include_pg_opt_workloads=True,
                                  include_hint_workloads=True, include_hint_idx_workloads=True, **model_specific_args),
+            parameterized_config(model_type, wandb_group='whint_hintidx_mergenlj', include_pg_opt_workloads=True,
+                                 include_hint_workloads=True, include_hint_idx_workloads=True,
+                                 merge_nlj_and_inlj_to_same_op=True, **model_specific_args),
             # hint + idx
             # parameterized_config(model_type, wandb_group='whintidx', include_hint_idx_workloads=True,
             #                      include_pg_opt_workloads=True,
@@ -409,57 +412,7 @@ if __name__ == '__main__':
     #                              pretrained_model_name='pm-zeroshot-annotate_base_table_card_to_scan_op-PostgresEstWithAdditionalFeats-filter_inline_col_featsFalse-include_complex_workloads-include_pg_opt_workloads-include_hint_idx_workloads-include_scan_only_hint_workloads_1')
 #     ]
 
-    # model_configs = [
-    #     ZeroShotXLLayerNormConfig()
-    # ]
-
     model_configs = [model for model in model_configs if model is not None]
-
-    # # Standard Models
-    # model_configs = [
-    # ScaledPostgresModelConfig(),  # --> Working
-    # FlatModelConfig(),  # --> Working
-    # E2EModelConfig(),                   # --> ToDo: Adapt to new codebase and generate sentences
-    # QPPNetModelConfig(),                # --> Working?
-    # MSCNModelConfig(),                  # --> ToDo: Adapt to new codebase and generate sentences
-    # DACEModelConfig(),                  # --> Working
-    # QueryFormerModelConfig(),           # --> ToDo: Generate Sentences
-    # ZeroShotModelConfig(),  # --> Working
-    # ZSLearnFromTimeoutConfig(),         # --> Working
-    # ZSRankLossConfig(),                 # --> Working
-
-    # Stratified Models
-    # FlatStratifiedModelConfig(),  # --> Working
-    # ZSStratifiedModelConfig(),  # --> Working
-    # DACEStratifiedModelConfig(),        # --> Working
-    # ScaledPostgresStratifiedModelConfig(),  # --> Working
-
-    # ZeroShotWithPostgresConfig(),  # --> Working
-    # ZeroShotModelWHintsConfig(),  # --> Working
-    # ZeroShotModelOnlyHints(),
-    # ZeroShotModel2Dim(),
-    # ZSStratifiedPGCostWithHintPlan(),
-    # ZSPGCostWithHintPlan(),
-    # parameterized_config('zeroshot', include_hint_workloads=True, stratified_workloads=True),
-
-    # ZeroShotXLConfig(),
-
-    # Ablation Models (without postgres Estimates)
-    # QPPModelNoCostsConfig(),
-
-    # DACEModelNoCostsConfig(),
-    # DACEModelWHintsConfig(),
-    # DACEModelOnlyHints(),
-
-    # Ablation Models (actual cardinalities)
-    # FlatModelActCardModelConfig(),
-    # QPPModelActCardsConfig(),
-    # DACEModelActCardConfig(),
-    # ZeroShotModelActCardConfig(),
-    # T3ModelConfig(include_pg_opt_workloads=True),
-    # T3TreeModelConfig(include_pg_opt_workloads=True),
-    # T3FlatModelConfig(include_pg_opt_workloads=True),
-    # ]
 
     runner = ExpRunner(replicate=False,
                        node_names=[node["hostname"] for node in nodes],
@@ -468,6 +421,7 @@ if __name__ == '__main__':
                        num_parallel_screens_or_jobs=num_parallel_screens,
                        dgx_num_parallel_screens_or_jobs=num_parallel_jobs_dgx,
                        ssh_path=ssh_path,
+                       stop_on_error=False,
                        )
 
     # for dataset in datasets:

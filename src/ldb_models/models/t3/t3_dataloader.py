@@ -395,22 +395,20 @@ def gen_t3_dataset(workload_runs: List[Path],
                    statistics_file: Path,
                    cap_training_samples: Optional[bool],
                    featurization: Featurization,
-                   limit_plans_per_file: int,
-                   limit_plans_overall: int,
                    val_ratio: float = 0.15,
                    shuffle: bool = True,
-                   include_timeout_queries: bool = False,
                    model_config: T3ModelConfig = None,
                    verbose: bool = False,
                    return_dataset: bool = True,
-                   augment_with_subplans: bool = False,
+                   is_test: bool = False
                    ):
     # read files
     plans, db_statistics = read_workload_runs(workload_run_paths=workload_runs,
-                                              include_timeout_queries=include_timeout_queries,
-                                              limit_plans_per_file=limit_plans_per_file,
-                                              limit_plans_overall=limit_plans_overall,
-                                              augment_with_subplans=augment_with_subplans)
+                                              include_timeout_queries=model_config.include_timeout_queries and not is_test,
+                                              limit_plans_per_file=model_config.limit_plans_per_file,
+                                              limit_plans_overall=model_config.limit_plans_overall,
+                                              augment_with_subplans=model_config.train_on_subplans and not is_test,
+                                              merge_nlj_and_inlj_to_same_op=model_config.merge_nlj_and_inlj_to_same_op, )
 
     # augment database statistics
     for db_id, stats in db_statistics.items():

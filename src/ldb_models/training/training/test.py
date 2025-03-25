@@ -29,6 +29,18 @@ def test_model(config: ModelConfig,
                load_best_checkpoint: bool = True,
                log_prefix: str = 'test',
                is_per_epoch: bool = False):
+    # initialize variables for aggregated reporting across all experiments
+    job_total_selected_runtime = -1
+    job_total_slowdown = None
+    joblight_total_selected_runtime = -1
+    joblight_total_slowdown = None
+    physop_total_selected_runtime = -1
+    physop_total_slowdown = None
+    physopidx_total_selected_runtime = -1
+    physopidx_total_slowdown = None
+    accesspath_total_selected_runtime = -1
+    accesspath_total_slowdown = None
+
     if test_loaders is not None:
         if not (model_dir is None or config.name.NAME is None):
 
@@ -80,13 +92,60 @@ def test_model(config: ModelConfig,
                         wl_name = 'job'
                     else:
                         raise ValueError(f"Unknown workload name: {filename}")
-                    evaluate_join_order(predictions=predictions_dict, is_per_epoch=is_per_epoch, epoch=epoch,
+                    rt, slowdown = evaluate_join_order(predictions=predictions_dict, is_per_epoch=is_per_epoch,
+                                                       epoch=epoch,
                                         wandb_run=wandb_run, wl_name=wl_name)
+
+                    if wl_name == 'job':
+                        job_total_selected_runtime = rt
+                        job_total_slowdown = slowdown
+                    elif wl_name == 'job_light':
+                        joblight_total_selected_runtime = rt
+                        joblight_total_slowdown = slowdown
+                    else:
+                        raise ValueError(f"Unknown workload name: {wl_name}")
+
+
                 if "physical_operator" in str(test_path):
-                    evaluate_physical_plan_selection(predictions=predictions_dict, with_idxs='_w_idx' in str(test_path),
-                                                     is_per_epoch=is_per_epoch, epoch=epoch, wandb_run=wandb_run)
+                    with_idxs = '_w_idx' in str(test_path)
+                    rt, slowdown = evaluate_physical_plan_selection(predictions=predictions_dict, with_idxs=with_idxs,
+                                                                    is_per_epoch=is_per_epoch, epoch=epoch,
+                                                                    wandb_run=wandb_run)
+                    if with_idxs:
+                        physopidx_total_selected_runtime = rt
+                        physopidx_total_slowdown = slowdown
+                    else:
+                        physop_total_selected_runtime = rt
+                        physop_total_slowdown = slowdown
+
                 if "access_path_selection" in str(test_path):
-                    evaluate_access_path_selection(predictions=predictions_dict, is_per_epoch=is_per_epoch, epoch=epoch,
-                                                   wandb_run=wandb_run)
+                    accesspath_total_selected_runtime, accesspath_total_slowdown = evaluate_access_path_selection(
+                        predictions=predictions_dict, is_per_epoch=is_per_epoch, epoch=epoch,
+                        wandb_run=wandb_run)
         else:
             print("Skipping saving the test stats")
+
+    # aggregate metrics
+    if job_total_selected_runtime != -1 and joblight_total_selected_runtime != -1 and physop_total_selected_runtime != -1 and physopidx_total_selected_runtime != -1 and accesspath_total_selected_runtime != -1:
+        # if not all 5 workloads are present, do not aggregate
+        assert job_total_selected_runtime is not None
+        assert joblight_total_selected_runtime is not None
+        assert physop_total_selected_runtime is not None
+        assert physopidx_total_selected_runtime is not None
+        assert accesspath_total_selected_runtime is not None
+
+        total_selected_runtime = job_total_selected_runtime + joblight_total_selected_runtime + physop_total_selected_runtime + physopidx_total_selected_runtime + accesspath_total_selected_runtime
+        avg_total_slowdown = (
+                                         job_total_slowdown + joblight_total_slowdown + physop_total_slowdown + physopidx_total_slowdown + accesspath_total_slowdown) / 5
+
+        if wandb_run is not None:
+            if is_per_epoch:
+                wandb_run.log({
+                    'qo_total/selected_runtime': total_selected_runtime,
+                    'qo_total/avg_slowdown': avg_total_slowdown
+                }, step=epoch)
+            else:
+                wandb_run.summary.update({
+                    'qo_total/selected_runtime': total_selected_runtime,
+                    'qo_total/avg_slowdown': avg_total_slowdown
+                })

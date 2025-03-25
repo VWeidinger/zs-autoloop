@@ -32,6 +32,16 @@ def read_fn(path: str, ):
 
     return run
 
+
+def recursively_rewrite_inlj_to_nlj(plan: Dict):
+    if plan['plan_parameters']['op_name'] == 'Index Nested Loop':
+        plan['plan_parameters']['op_name'] = 'Nested Loop'
+
+    if 'children' in plan:
+        for child in plan['children']:
+            recursively_rewrite_inlj_to_nlj(child)
+
+
 def read_workload_runs(workload_run_paths: List[Path],
                        limit_plans_per_file: int,
                        limit_plans_overall: int,
@@ -42,7 +52,8 @@ def read_workload_runs(workload_run_paths: List[Path],
                        stratify_per_wl_file: bool = False,
                        stratify_dataset: bool = False,
                        augment_with_subplans: bool = False,
-                       return_per_file: bool = False) -> (List[dict], dict):
+                       return_per_file: bool = False,
+                       merge_nlj_and_inlj_to_same_op: bool = False) -> (List[dict], dict):
     # reads several workload runs
     plans = []
     database_statistics = dict()
@@ -121,10 +132,12 @@ def read_workload_runs(workload_run_paths: List[Path],
             else:
                 raise ValueError(f"Input format {input_format} not supported")
 
-            # timeout queries do not have a runtime
-            # assert plan['plan_runtime_ms'] is not None, f"Missing plan_runtime_ms in {path} for {plan}"
-
             plan["database_id"] = path_index
+
+            if merge_nlj_and_inlj_to_same_op:
+                # replace Index Nested Loop with Nested Loop Join
+                recursively_rewrite_inlj_to_nlj(plan)
+
             per_file_plans.append(plan)
 
             if limit_plans_per_file is not None and len(
@@ -343,7 +356,8 @@ def create_datasets(workload_run_paths,
                                                         stratify_dataset=stratify_dataset,
                                                         stratify_per_wl_file=stratify_per_wl_file,
                                                         augment_with_subplans=model_config.train_on_subplans and not is_test_dataset,
-                                                        return_per_file=apply_ohem
+                                                        return_per_file=apply_ohem,
+                                                        merge_nlj_and_inlj_to_same_op=model_config.merge_nlj_and_inlj_to_same_op
                                                         )
     else:
         plans = inject_plans

@@ -41,12 +41,14 @@ def evaluate_join_order(predictions, wl_name: str, is_per_epoch: bool = False, e
         # print(f"Found {len(group_df)} predictions for SQL query in {sql}")
 
         if len(group_df) == 1:
-            print(f'Join order evaluation: Skipping SQL query in {sql} as only one plan was predicted')
+            print(f'Join order evaluation: Skipping SQL query in as only one plan was predicted {sql}')
             continue
 
         if pd.isna(SpearmanRank().evaluate_metric(preds=preds, labels=labels)):
-            print(f'Join order evaluation: Skipping SQL query in {sql} as Spearman correlation is invalid/NaN')
-            continue
+            print(f'Join order evaluation: found Spearman correlation is invalid/NaN - try to fix / {sql}')
+
+            # replace inf/nan with value
+            preds = preds.replace([np.inf, -np.inf], np.nan).fillna(1000000)
 
         for key, metric in metrics.items():
             aggregated_results[key].append(metric.evaluate_metric(preds=preds, labels=labels))
@@ -126,7 +128,8 @@ def evaluate_join_order(predictions, wl_name: str, is_per_epoch: bool = False, e
                                                                     title="JOB - Picked vs. Optimal Runtimes",
                                                                     xname="Query ID", )})
 
-    return
+    # return absolute runtime selection and relative slowdown
+    return total_selected_runtime, total_selected_runtime / total_optimal_runtime
 
 
 def evaluate_physical_plan_selection(predictions: dict, with_idxs: bool = False, is_per_epoch: bool = False,
@@ -259,7 +262,7 @@ def evaluate_physical_plan_selection(predictions: dict, with_idxs: bool = False,
         else:
             wandb_run.log({f'{log_prefix}/join_op_confusion': wandb.Image(plt)})
 
-    return
+    return total_selected_runtime, total_selected_runtime / total_optimal_runtime
 
 
 def create_confusion_matrix_from_str_list(labels, predictions):
@@ -496,3 +499,5 @@ def evaluate_access_path_selection(predictions: dict, is_per_epoch: bool = False
             wandb_run.log({f'{prefix}/scan_op_confusion': wandb.Image(plt)}, step=epoch)
         else:
             wandb_run.log({f'{prefix}/scan_op_confusion': wandb.Image(plt)})
+
+    return total_selected_runtime, total_selected_runtime / total_optimal_runtime

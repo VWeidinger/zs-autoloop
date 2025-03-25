@@ -132,6 +132,7 @@ class ModelConfig:
     include_complex_workloads: bool = False
     wandb_group: str = field(default=None)
     train_on_subplans: bool = False
+    merge_nlj_and_inlj_to_same_op: bool = False  # merge NLJ and INLJ to the same operator / do not differentiate between them
 
     # model should be pretrained
     pretrained_model_dir: str = None

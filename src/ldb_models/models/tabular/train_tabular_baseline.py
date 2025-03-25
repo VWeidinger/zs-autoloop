@@ -64,7 +64,7 @@ def train_tabular_model(workload_runs: WorkloadRuns,
     elif isinstance(config, AnalyticalActCardModelConfig):
         gen_dataset_func = functools.partial(gen_analytical_flattened_dataset, act_card=True)
     elif isinstance(config, T3ModelConfig):
-        gen_dataset_func = functools.partial(gen_t3_dataset, model_config=config, verbose=verbose)
+        gen_dataset_func = functools.partial(gen_t3_dataset, verbose=verbose)
     else:
         raise RuntimeError("Not supported")
 
@@ -76,9 +76,7 @@ def train_tabular_model(workload_runs: WorkloadRuns,
                                                                   shuffle=True,
                                                                   stratify_dataset=dataloader_options.stratify_dataset,
                                                                   stratify_per_wl_file=dataloader_options.stratify_per_wl_file,
-                                                                  limit_plans_per_file=config.limit_plans_per_file,
-                                                                  limit_plans_overall=config.limit_plans_overall,
-                                                                  augment_with_subplans=config.train_on_subplans)
+                                                                  model_config=config)
         raise NotImplementedError("This needs to be solved for workload driven model due to the correct split")
     elif config.type == 'wl_agnostic':
 
@@ -93,9 +91,7 @@ def train_tabular_model(workload_runs: WorkloadRuns,
             featurization=featurization,
             val_ratio=0.20,
             shuffle=True,
-            limit_plans_per_file=config.limit_plans_per_file,
-            limit_plans_overall=config.limit_plans_overall,
-            augment_with_subplans=config.train_on_subplans,
+            model_config=config
         )
     else:
         raise RuntimeError("Not supported")
@@ -140,7 +136,7 @@ def train_tabular_model(workload_runs: WorkloadRuns,
                 print(i + 1, bst.eval_train(), bst.eval_valid())
 
         # assemble model path
-        model_path = f'{model_dir}_{config.seed}_{config.name}.txt'
+        model_path = f'{model_dir}_{config.seed}_{config.name.NAME}.txt'
         bst.save_model(model_path)
         print(f'Model saved to {model_dir}_{config.seed}.txt')
 
@@ -158,7 +154,7 @@ def train_tabular_model(workload_runs: WorkloadRuns,
                       no_train_points=len(x_train) if isinstance(x_train, list) else -1,
                       no_val_points=len(x_test) if isinstance(x_test, list) else -1, )
 
-    save_csv([param_dict], str(model_dir) + f'_{config.seed}_{config.name}_params.csv')
+    save_csv([param_dict], str(model_dir) + f'_{config.seed}_{config.name.NAME}_params.csv')
     return model
 
 
@@ -219,16 +215,26 @@ def predict_tabular_model(config: ModelConfig,
                                featurization=featurization,
                                val_ratio=0,
                                shuffle=False,
-                               include_timeout_queries=False,
-                               limit_plans_overall=config.limit_plans_overall,
-                               limit_plans_per_file=config.limit_plans_per_file,
-                               augment_with_subplans=False,  # nether augment test dataset
+                               model_config=config,
+                               is_test=True
                                )
         test_datasets.append(
             (x_test, y_test, test_sqls, test_hints, test_selectivities, test_scan_op_list, test_join_op_list))
 
     # retrieve metrics similar to the ones used for QLoss
     metrics = init_metrics('QLoss')
+
+    # initialize variables for aggregated reporting across all experiments
+    job_total_selected_runtime = -1
+    job_total_slowdown = None
+    joblight_total_selected_runtime = -1
+    joblight_total_slowdown = None
+    physop_total_selected_runtime = -1
+    physop_total_slowdown = None
+    physopidx_total_selected_runtime = -1
+    physopidx_total_slowdown = None
+    accesspath_total_selected_runtime = -1
+    accesspath_total_slowdown = None
 
     for (x_test, y_test, sqls, hints, selectivities, scan_ops, join_ops), test_path in zip(test_datasets,
                                                                                            workload_runs.target_test_csv_paths):
@@ -279,12 +285,49 @@ def predict_tabular_model(config: ModelConfig,
                 wl_name = 'job'
             else:
                 raise ValueError(f"Unknown workload name: {test_file_name}")
-            evaluate_join_order(predictions=rows, wandb_run=wandb_run, wl_name=wl_name)
+            rt, slowdown = evaluate_join_order(predictions=rows, wandb_run=wandb_run, wl_name=wl_name)
+            if wl_name == 'job':
+                job_total_selected_runtime = rt
+                job_total_slowdown = slowdown
+            elif wl_name == 'job_light':
+                joblight_total_selected_runtime = rt
+                joblight_total_slowdown = slowdown
+            else:
+                raise ValueError(f"Unknown workload name: {wl_name}")
+
         if "physical_operator" in str(test_path):
-            evaluate_physical_plan_selection(predictions=rows, wandb_run=wandb_run,
-                                             with_idxs='_w_idx' in str(test_path))
+            with_idxs = '_w_idx' in str(test_path)
+            rt, slowdown = evaluate_physical_plan_selection(predictions=rows, wandb_run=wandb_run,
+                                                            with_idxs=with_idxs)
+            if with_idxs:
+                physopidx_total_selected_runtime = rt
+                physopidx_total_slowdown = slowdown
+            else:
+                physop_total_selected_runtime = rt
+                physop_total_slowdown = slowdown
         if "access_path_selection" in str(test_path):
-            evaluate_access_path_selection(predictions=rows, wandb_run=wandb_run)
+            accesspath_total_selected_runtime, accesspath_total_slowdown = evaluate_access_path_selection(
+                predictions=rows, wandb_run=wandb_run)
+
+    # aggregate metrics
+    if job_total_selected_runtime != -1 and joblight_total_selected_runtime != -1 and physop_total_selected_runtime != -1 and physopidx_total_selected_runtime != -1 and accesspath_total_selected_runtime != -1:
+        # if not all 5 workloads are present, do not aggregate
+        assert job_total_selected_runtime is not None
+        assert joblight_total_selected_runtime is not None
+        assert physop_total_selected_runtime is not None
+        assert physopidx_total_selected_runtime is not None
+        assert accesspath_total_selected_runtime is not None
+
+        total_selected_runtime = (job_total_selected_runtime + joblight_total_selected_runtime +
+                                  physop_total_selected_runtime + physopidx_total_selected_runtime + accesspath_total_selected_runtime)
+        avg_total_slowdown = (job_total_slowdown + joblight_total_slowdown + physop_total_slowdown +
+                              physopidx_total_slowdown + accesspath_total_slowdown) / 5
+
+        if wandb_run is not None:
+            wandb_run.summary.update({
+                'qo_total/selected_runtime': total_selected_runtime,
+                'qo_total/avg_slowdown': avg_total_slowdown
+            })
     return
 
 
@@ -293,19 +336,19 @@ def gen_postgres_cost_dataset(workload_runs: List[Path],
                               statistics_file: Path,
                               featurization: Optional,
                               shuffle: bool,
-                              limit_plans_overall: int,
-                              limit_plans_per_file: int,
+                              model_config: ModelConfig,
                               val_ratio: float = 0.15,
-                              include_timeout_queries: bool = False,
                               stratify_dataset: bool = False,
                               stratify_per_wl_file: bool = False,
-                              augment_with_subplans: bool = False, ) -> Tuple[np.ndarray]:
-    plans, database_statistics = read_workload_runs(workload_runs, include_timeout_queries=include_timeout_queries,
+                              is_test: bool = False
+                              ) -> Tuple[np.ndarray]:
+    plans, database_statistics = read_workload_runs(workload_runs,
+                                                    include_timeout_queries=model_config.include_timeout_queries and not is_test,
                                                     stratify_dataset=stratify_dataset,
                                                     stratify_per_wl_file=stratify_per_wl_file,
-                                                    limit_plans_overall=limit_plans_overall,
-                                                    limit_plans_per_file=limit_plans_per_file,
-                                                    augment_with_subplans=augment_with_subplans)
+                                                    limit_plans_overall=model_config.limit_plans_overall,
+                                                    limit_plans_per_file=model_config.limit_plans_per_file,
+                                                    augment_with_subplans=model_config.train_on_subplans and not is_test)
     feature_vecs = []
     labels = []
     sqls, hints = [], []  # Required to later evaluate against join order
@@ -336,20 +379,20 @@ def gen_flattened_dataset(workload_runs: List[Path],
                           statistics_file: Path,
                           cap_training_samples: Optional[bool],
                           featurization: Featurization,
-                          limit_plans_per_file: int,
-                          limit_plans_overall: int,
+                          model_config: ModelConfig,
                           val_ratio: float = 0.15,
                           shuffle: bool = True,
-                          include_timeout_queries: bool = False,
-                          augment_with_subplans: bool = False,
+                          is_test: bool = False
                           ):
     feature_statistics = load_json(str(statistics_file), namespace=False)
     op_idx_dict = feature_statistics['op_name']['value_dict']
     no_ops = len(op_idx_dict)
-    plans, database_statistics = read_workload_runs(workload_runs, include_timeout_queries=include_timeout_queries,
-                                                    limit_plans_per_file=limit_plans_per_file,
-                                                    limit_plans_overall=limit_plans_overall,
-                                                    augment_with_subplans=augment_with_subplans)
+    plans, database_statistics = read_workload_runs(workload_runs,
+                                                    include_timeout_queries=model_config.include_timeout_queries and not is_test,
+                                                    limit_plans_per_file=model_config.limit_plans_per_file,
+                                                    limit_plans_overall=model_config.limit_plans_overall,
+                                                    augment_with_subplans=model_config.train_on_subplans and not is_test,
+                                                    merge_nlj_and_inlj_to_same_op=model_config.merge_nlj_and_inlj_to_same_op)
     feature_vecs = []
     labels = []
     selectivities = []
@@ -418,21 +461,23 @@ def extract_card(p, act_card):
     return card
 
 
-def gen_analytical_flattened_dataset(workload_runs, statistics_file, cap_training_samples, val_ratio=0.15,
-                                     act_card=False, include_timeout_queries: bool = False,
+def gen_analytical_flattened_dataset(workload_runs, statistics_file, cap_training_samples, model_config: ModelConfig,
+                                     val_ratio=0.15,
+                                     act_card=False,
                                      stratify_dataset: bool = False, stratify_per_wl_file: bool = False,
-                                     limit_plans_per_file: int = None, limit_plans_overall: int = None,
-                                     augment_with_subplans: bool = False):
+                                     is_test: bool = False
+                                     ):
     feature_statistics = load_json(str(statistics_file), namespace=False)
     op_idx_dict = feature_statistics['op_name']['value_dict']
     no_ops = len(op_idx_dict)
     plans, database_statistics = read_workload_runs(workload_run_paths=workload_runs,
-                                                    include_timeout_queries=include_timeout_queries,
+                                                    include_timeout_queries=model_config.include_timeout_queries and not is_test,
                                                     stratify_dataset=stratify_dataset,
                                                     stratify_per_wl_file=stratify_per_wl_file,
-                                                    limit_plans_per_file=limit_plans_per_file,
-                                                    limit_plans_overall=limit_plans_overall,
-                                                    augment_with_subplans=augment_with_subplans)
+                                                    limit_plans_per_file=model_config.limit_plans_per_file,
+                                                    limit_plans_overall=model_config.limit_plans_overall,
+                                                    augment_with_subplans=model_config.train_on_subplans,
+                                                    merge_nlj_and_inlj_to_same_op=model_config.merge_nlj_and_inlj_to_same_op and not is_test)
     feature_vecs = []
     labels = []
     for plan in plans:

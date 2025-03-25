@@ -38,7 +38,8 @@ class ExpRunner:
                  available_sockets: List[int] = [0, 1],  # this does not apply to dgx: dgx automatically select socket 0
                  num_parallel_screens_or_jobs: int = None,
                  dgx_num_parallel_screens_or_jobs: int = None,
-                 ssh_path: str = 'ssh'
+                 ssh_path: str = 'ssh',
+                 stop_on_error: bool = True,
                  ):
 
         if num_parallel_screens_or_jobs is not None:
@@ -74,7 +75,7 @@ class ExpRunner:
         # Set shell options
         # -e: exit immediately if a command exits with a non-zero status
         # -x: print commands and their arguments as they are executed
-        if args.stop_on_error:
+        if stop_on_error:
             self.prefix = f"set -e; set -x; cd {self.root_path}/src/ldb_models \n"
         else:
             self.prefix = f"set -x; cd {self.root_path}/src/ldb_models \n"
@@ -155,8 +156,4 @@ class ExpRunner:
                             choices=list(ExperimentTask),
                             default=[ExperimentTask.PRINT],
                             nargs='+', help='type of tasks which should be executed', required=True)
-        parser.add_argument('--stop_on_error',
-                            action='store_true',
-                            help='stop when error detected',
-                            default=True)
         return parser.parse_args()
