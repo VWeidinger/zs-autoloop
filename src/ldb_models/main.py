@@ -300,6 +300,11 @@ def use_model(mode: str,
             else:
                 rerun_predict = True
 
+        try:
+            wandb_run.watch(model, log='all')
+        except Exception:
+            print("Could not watch model with wandb")
+
         for train_w_rank_model in todo_list:
             print(f'Train Model using ranking: {train_w_rank_model}')
 
@@ -515,8 +520,13 @@ if __name__ == '__main__':
         pretrained_model_dir=args.pretrained_model_dir,
         pretrained_model_name=args.pretrained_model_name,
     )
+    try:
+        use_model(**args)
+        if wandb_run:
+            wandb_run.finish()
+    except Exception as e:
+        print(e)
+        # print stacktrace
+        import traceback
 
-    use_model(**args)
-
-    if wandb_run:
-        wandb_run.finish()
+        traceback.print_exc()

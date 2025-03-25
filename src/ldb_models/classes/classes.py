@@ -46,6 +46,7 @@ class ModelName:
     ZS_RANK_LOSS = Name('zeroshot_rank_loss', 'Zero-Shot (Rank Loss)')
     ZS_STRATIFIED = Name("zeroshot_stratified", "Zero-Shot (stratified)")
     ZS_XL = Name("zeroshot_xl", "Zero-Shot (XL)")
+    ZS_XL_LAYER_NORM = Name("zeroshot_xl_layer_norm", "Zero-Shot (XL, Layer Norm)")
     ZS_LAYER_NORM = Name("zeroshot_layer_norm", "Zero-Shot (Layer Norm)")
     ZS_PGCOST = Name("zeroshot_pgcost", "Zero-Shot (pgcost)")
     ZS_WITH_HINTS = Name("zeroshot_with_hints", "Zero-Shot (with hints)")
@@ -93,6 +94,8 @@ def shorten_model_name(name: str) -> str:
     name = name.replace('annotate_base_table_card_to_scan_op', 'tablecardatscan')
     name = name.replace('online_hard_example_mining', 'ohem')
     name = name.replace('ohem_initialize_difficulty', 'ohem_init')
+    name = name.replace('tablecardatscan', 'tcardscan')
+    name = name.replace('PostgresEstWithAdditionalFeats', 'addfeats')
 
     return name
 
@@ -203,7 +206,7 @@ class ModelConfig:
                     for wl in workload_names:
                         path = self.get_data_base_dir(
                             stratified_workloads=stratified_workload,
-                            romans_runs=romans_runs) / f"{db.db_name}_scaled{db.scale}" / f"{wl}.json"
+                            romans_runs=romans_runs) / f"{db.db_name}_scaled{db.scale}" / f"{wl}.json.gz"
                         training_workloads.append(path.as_posix())
 
             # assert len(training_workloads) == 19, f"Found {len(training_workloads)}, but it should be 19"
@@ -215,14 +218,14 @@ class ModelConfig:
             for wl in workload_names:
                 path = self.get_data_base_dir(
                     stratified_workloads=stratified_workload,
-                    romans_runs=romans_runs) / f"{target_dataset.db_name}_scaled{target_dataset.scale}" / f"{wl}.json"
+                    romans_runs=romans_runs) / f"{target_dataset.db_name}_scaled{target_dataset.scale}" / f"{wl}.json.gz"
                 training_workloads.append(path.as_posix())
             assert len(training_workloads) > 0, f'No training workloads found for {self.name.NAME}'
             return training_workloads
 
     def assemble_wl_path(self, target_db: Dataset, wl_name, stratified_workloads: bool = True,
                          romans_runs: bool = False) -> str:
-        return f'{self.get_data_base_dir(stratified_workloads=stratified_workloads, romans_runs=romans_runs).as_posix()}/{target_db.db_name}_scaled{target_db.scale}/{wl_name}.json'
+        return f'{self.get_data_base_dir(stratified_workloads=stratified_workloads, romans_runs=romans_runs).as_posix()}/{target_db.db_name}_scaled{target_db.scale}/{wl_name}.json.gz'
 
     def get_test_workloads(self, target_db: Dataset, romans_runs: bool) -> str:
         return self.assemble_wl_path(target_db, "workload_200k_s1", stratified_workloads=True, romans_runs=romans_runs)
@@ -409,6 +412,13 @@ class ZeroShotXLConfig(ZeroShotModelConfig):
     include_hint_idx_workloads: bool = True
     include_complex_workloads: bool = True
     loss_class_name: str = 'QLogSqLoss'
+
+
+@attrs.define(frozen=True, slots=False)
+class ZeroShotXLLayerNormConfig(ZeroShotXLConfig):
+    name: Name = ModelName.ZS_XL_LAYER_NORM
+    tree_layer_kwargs: dict = dict(width_factor=1.2,
+                                   n_layers=4, layer_norm=True, **ZeroShotModelConfig().fc_out_kwargs)
 
 
 @attrs.define(frozen=True, slots=False)

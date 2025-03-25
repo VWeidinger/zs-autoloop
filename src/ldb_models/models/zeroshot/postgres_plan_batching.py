@@ -208,6 +208,9 @@ def plan_to_graph(node, database_id, plan_depths, plan_features, plan_to_plan_ed
             print(f'Error in join: {join}', flush=True)
             raise e
 
+    assert not (
+                filter is not None and join is not None), f'Filter and join in same plan node: {node} - the parser should prevent that! In this cases messages will get averaged. If this is wanted, please add automatic creation of a logical plan node that combines both filters and joins.'
+
     # tables
     table_id = plan_params.get('table_id')
     if 'Scan' in plan_params['op_name'] and plan_params['op_name'] != 'Bitmap Index Scan':

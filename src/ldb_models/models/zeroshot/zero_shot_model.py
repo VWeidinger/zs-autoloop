@@ -14,7 +14,7 @@ class ZeroShotModelEncoder(FcOutModel):
 
     def __init__(self, model_config: ZeroShotModelConfig, feature_statistics=None,
                  add_tree_model_types=None, prepasses=None, plan_featurization=None, encoders=None, label_norm=None,
-                 return_all_node_states: bool = False):
+                 return_all_node_states: bool = False, run_with_assertions: bool = False):
 
         super().__init__(output_dim=model_config.output_dim,
                          input_dim=model_config.hidden_dim,
@@ -29,6 +29,7 @@ class ZeroShotModelEncoder(FcOutModel):
         self.device = model_config.device
         self.hidden_dim = model_config.hidden_dim
         self.return_all_node_states = return_all_node_states
+        self.run_with_assertions = run_with_assertions
 
         # use different models per edge type
         tree_model_types = add_tree_model_types + ['to_plan', 'intra_plan', 'intra_pred']
@@ -71,6 +72,10 @@ class ZeroShotModelEncoder(FcOutModel):
             if len(input_features) == 0:
                 # make 2 dimensional
                 input_features = torch.reshape(input_features, (0, 0))
+
+            if self.run_with_assertions:
+                # ensure that result is not NaN / inf
+                assert torch.isfinite(input_features).all(), f"input_features for {node_type} contain NaN or inf"
 
             hidden_dict[node_type] = node_type_m(input_features)
 
@@ -137,10 +142,17 @@ class ZeroShotModelEncoder(FcOutModel):
                                                                out_node_types=pd.out_types,
                                                                feat_dict=feat_dict)
                     for out_type, hidden_out in out_dict.items():
+                        if self.run_with_assertions:
+                            # ensure that result is not NaN / inf
+                            assert torch.isfinite(hidden_out).all(), f"hidden_out for {out_type} contain NaN or inf"
                         feat_dict[out_type] = hidden_out
 
         # compute top nodes of dags
         out = feat_dict['plan0']
+
+        if self.run_with_assertions:
+            # ensure that result is not NaN / inf
+            assert torch.isfinite(out).all(), f"out contain NaN or inf"
 
         if return_all_nodestates:
             # return the node state of root, and of all other nodes

@@ -54,9 +54,17 @@ def read_workload_runs(workload_run_paths: List[Path],
 
     # load the workload runs in parallel
     t0 = time.perf_counter()
-    print(f'Start loading workload runs in parallel', flush=True)
-    with concurrent.futures.ProcessPoolExecutor(max_workers=10) as executor:
-        run_list = list(executor.map(read_fn, workload_run_paths))
+    parallelize = True
+
+    if parallelize:
+        num_workers = 10
+        print(f'Start loading workload runs in parallel ({num_workers} workers, {len(workload_run_paths)} files)',
+              flush=True)
+        with concurrent.futures.ProcessPoolExecutor(max_workers=num_workers) as executor:
+            run_list = list(executor.map(read_fn, workload_run_paths))
+    else:
+        run_list = [read_fn(path) for path in tqdm(workload_run_paths)]
+
     print(f'Loaded {len(run_list)} files in {time.perf_counter() - t0:.2f}s', flush=True)
 
     assert len(run_list) == len(workload_run_paths)

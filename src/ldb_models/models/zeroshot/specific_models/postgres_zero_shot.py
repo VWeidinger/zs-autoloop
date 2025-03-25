@@ -88,4 +88,5 @@ class PostgresZeroShotModelEncoder(ZeroShotModelEncoder):
                          model_config=model_config,
                          feature_statistics=feature_statistics,
                          return_all_node_states=return_all_node_states,
+                         run_with_assertions=True,
                          **zero_shot_kwargs)

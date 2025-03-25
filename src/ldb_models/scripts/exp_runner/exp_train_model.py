@@ -217,20 +217,20 @@ if __name__ == '__main__':
         Dataset('fhnk', scale=2)
     ]
 
-    seeds = [2]
+    seeds = [3]
     nodes = [
-        # TrainingServers.NODE00,
-        TrainingServers.NODE01,
+        TrainingServers.NODE00,
+        # TrainingServers.NODE01,
         # TrainingServers.NODE02,
         # TrainingServers.NODE03,
-        # TrainingServers.NODE04,
+        TrainingServers.NODE04,
         # TrainingServers.NODE05,
         # TrainingServers.NODE09,
     ]
-    sockets = [0, 1]
+    sockets = [1]
     out_file_id_offset = 0
     num_parallel_screens = None
-    num_parallel_jobs_dgx = 1
+    num_parallel_jobs_dgx = 3
 
     # ===================
     # CONFIGS
@@ -252,7 +252,7 @@ if __name__ == '__main__':
     model_configs = []
     for model_type in [
         # 'postgres',
-        # 'zeroshot',
+        'zeroshot',
         'zeroshot_xl',
         # 'zeroshot_timeout',
         'dace',
@@ -408,6 +408,10 @@ if __name__ == '__main__':
 #                              pretrained_model_dir='/mnt/labstore/SIGs/ML/learned_db/models/pm-zeroshot-annotate_base_table_card_to_scan_op-PostgresEstWithAdditionalFeats-filter_inline_col_featsFalse-include_complex_workloads-include_pg_opt_workloads-include_hint_idx_workloads-include_scan_only_hint_workloads/imdb/',
     #                              pretrained_model_name='pm-zeroshot-annotate_base_table_card_to_scan_op-PostgresEstWithAdditionalFeats-filter_inline_col_featsFalse-include_complex_workloads-include_pg_opt_workloads-include_hint_idx_workloads-include_scan_only_hint_workloads_1')
 #     ]
+
+    # model_configs = [
+    #     ZeroShotXLLayerNormConfig()
+    # ]
 
     model_configs = [model for model in model_configs if model is not None]
 

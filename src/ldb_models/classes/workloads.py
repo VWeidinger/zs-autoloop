@@ -15,7 +15,7 @@ class EvaluationWorkload:
     wl_name: Optional[str] = None
 
     def get_workload_path(self, base_path: Path) -> Path:
-        return Path(base_path) / self.Dataset.db_name / self.folder / f'{self.get_workload_name()}.json'
+        return Path(base_path) / self.Dataset.db_name / self.folder / f'{self.get_workload_name()}.json.gz'
 
     def get_sql_path(self, base_path: Path) -> Path:
         return Path(base_path) / self.Dataset.db_name / self.folder / f'{self.get_workload_name()}.sql'

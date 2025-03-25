@@ -17,13 +17,15 @@ class WorkloadRuns:
     def update_test_workloads(self, target_dir: Path, seed: int) -> None:
         if self.test_workload_runs:
             for test_path in self.test_workload_runs:
-                test_workload = os.path.basename(test_path).replace('.json', '')
+                test_workload = os.path.basename(test_path).replace('.json.gz', '')
+                test_workload = os.path.basename(test_workload).replace('.json', '')
                 self.target_test_csv_paths.append(Path(target_dir) / f'{test_workload}_{seed}')
         else:
             # When no test paths are given, this is a workload driven model,
             # and we use the training workload as test workload
             for test_path in self.train_workload_runs:
-                test_workload = os.path.basename(test_path).replace('.json', '')
+                test_workload = os.path.basename(test_path).replace('.json.gz', '')
+                test_workload = os.path.basename(test_workload).replace('.json', '')
                 self.target_test_csv_paths.append(Path(target_dir) / f'{test_workload}_{seed}')
 
     def check_if_done(self, model_name: str) -> bool:
