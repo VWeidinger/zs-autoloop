@@ -104,7 +104,8 @@ def create_datasets(workload_run_paths,
                                                     include_timeout_queries=model_config.include_timeout_queries and not is_test_dataset,
                                                     stratify_dataset=stratify_dataset,
                                                     stratify_per_wl_file=stratify_per_wl_file,
-                                                    merge_nlj_and_inlj_to_same_op=model_config.merge_nlj_and_inlj_to_same_op)
+                                                    merge_nlj_and_inlj_to_same_op=model_config.merge_nlj_and_inlj_to_same_op,
+                                                    remove_join_cond_from_plan=model_config.remove_join_cond_from_plan, )
 
     no_plans = len(plans)
     plan_indexes = list(range(no_plans))

@@ -84,6 +84,7 @@ def create_dace_datasets(workload_run_paths,
                                               limit_plans_per_file=model_config.limit_plans_per_file,
                                               limit_plans_overall=model_config.limit_plans_overall,
                                               merge_nlj_and_inlj_to_same_op=model_config.merge_nlj_and_inlj_to_same_op,
+                                              remove_join_cond_from_plan=model_config.remove_join_cond_from_plan,
                                               augment_with_subplans=model_config.train_on_subplans and not is_test)
 
     no_plans = len(plans)

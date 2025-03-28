@@ -130,9 +130,11 @@ class ModelConfig:
     include_gt30_hints: bool = False
     include_scan_only_hint_workloads: bool = False
     include_complex_workloads: bool = False
+    include_complex_ranking_workloads: bool = False
     wandb_group: str = field(default=None)
     train_on_subplans: bool = False
     merge_nlj_and_inlj_to_same_op: bool = False  # merge NLJ and INLJ to the same operator / do not differentiate between them
+    remove_join_cond_from_plan: bool = False  # remove join conditions from the plan / i.e. train without join conditions
 
     # model should be pretrained
     pretrained_model_dir: str = None
@@ -198,6 +200,9 @@ class ModelConfig:
 
         if self.include_scan_only_hint_workloads:
             workload_names.append('scan_only_s1_access_path_hints')
+
+        if self.include_complex_ranking_workloads:
+            workload_names.append('full_qo_complex_workload_200k_s1')
 
         if self.type == ModelType.WL_AGNOSTIC:
             training_workloads = []
@@ -431,6 +436,7 @@ class ZeroShotLayerNormConfig(ZeroShotModelConfig):
     include_scan_only_hint_workloads: bool = True
     include_hint_idx_workloads: bool = True
     include_complex_workloads: bool = True
+
 
 @attrs.define(frozen=True, slots=False)
 class ZSStratifiedModelConfig(ZeroShotModelConfig):

@@ -42,6 +42,15 @@ def recursively_rewrite_inlj_to_nlj(plan: Dict):
             recursively_rewrite_inlj_to_nlj(child)
 
 
+def recursively_remove_join_cond_from_plan(plan: Dict):
+    if 'join' in plan['plan_parameters']:
+        plan['plan_parameters'].pop('join')
+
+    if 'children' in plan:
+        for child in plan['children']:
+            recursively_remove_join_cond_from_plan(child)
+
+
 def read_workload_runs(workload_run_paths: List[Path],
                        limit_plans_per_file: int,
                        limit_plans_overall: int,
@@ -53,7 +62,8 @@ def read_workload_runs(workload_run_paths: List[Path],
                        stratify_dataset: bool = False,
                        augment_with_subplans: bool = False,
                        return_per_file: bool = False,
-                       merge_nlj_and_inlj_to_same_op: bool = False) -> (List[dict], dict):
+                       merge_nlj_and_inlj_to_same_op: bool = False,
+                       remove_join_cond_from_plan: bool = False) -> (List[dict], dict):
     # reads several workload runs
     plans = []
     database_statistics = dict()
@@ -137,6 +147,9 @@ def read_workload_runs(workload_run_paths: List[Path],
             if merge_nlj_and_inlj_to_same_op:
                 # replace Index Nested Loop with Nested Loop Join
                 recursively_rewrite_inlj_to_nlj(plan)
+
+            if remove_join_cond_from_plan:
+                recursively_remove_join_cond_from_plan(plan)
 
             per_file_plans.append(plan)
 
@@ -357,7 +370,8 @@ def create_datasets(workload_run_paths,
                                                         stratify_per_wl_file=stratify_per_wl_file,
                                                         augment_with_subplans=model_config.train_on_subplans and not is_test_dataset,
                                                         return_per_file=apply_ohem,
-                                                        merge_nlj_and_inlj_to_same_op=model_config.merge_nlj_and_inlj_to_same_op
+                                                        merge_nlj_and_inlj_to_same_op=model_config.merge_nlj_and_inlj_to_same_op,
+                                                        remove_join_cond_from_plan=model_config.remove_join_cond_from_plan,
                                                         )
     else:
         plans = inject_plans

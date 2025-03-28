@@ -8,7 +8,6 @@ from octopus.step import Rsync, KillAllScreens, SetupVenv, RsyncCurrentRepo, Set
 from classes.classes import ModelConfig, ModelType, shorten_model_name
 from classes.model_config_helper import parameterized_config
 from scripts.exp_runner.exp_runner import ExpRunner, TrainingServers
-from training.featurizations import PostgresEstWithAdditionalFeats
 
 
 def generate_training_commands(datasets: List[Dataset], seeds: list[int], python_version: str, wandb_project: str,
@@ -220,7 +219,7 @@ if __name__ == '__main__':
     seeds = [3]
     nodes = [
         TrainingServers.NODE00,
-        TrainingServers.NODE01,
+        # TrainingServers.NODE01,
         # TrainingServers.NODE02,
         # TrainingServers.NODE03,
         # TrainingServers.NODE04,
@@ -228,7 +227,7 @@ if __name__ == '__main__':
         # TrainingServers.NODE09,
     ]
     sockets = [0, 1]
-    out_file_id_offset = 0
+    out_file_id_offset = 2
     num_parallel_screens = None
     num_parallel_jobs_dgx = 2
 
@@ -255,7 +254,7 @@ if __name__ == '__main__':
         'zeroshot',
         'zeroshot_xl',
         # 'zeroshot_timeout',
-        'dace',
+        # 'dace',
         # 'flat',
         # 't3'
     ]:
@@ -265,15 +264,22 @@ if __name__ == '__main__':
             model_specific_args = {}
 
         model_configs.extend([
-            parameterized_config(model_type, wandb_group='baselines', include_pg_opt_workloads=True,
-                                 **model_specific_args),  # std
-            # parameterized_config(model_type, wandb_group='whintwl', include_hint_workloads=True,
-            #                      include_pg_opt_workloads=True, **model_specific_args),  # hint
-            parameterized_config(model_type, wandb_group='whint_hintidx', include_pg_opt_workloads=True,
-                                 include_hint_workloads=True, include_hint_idx_workloads=True, **model_specific_args),
-            parameterized_config(model_type, wandb_group='whint_hintidx_mergenlj', include_pg_opt_workloads=True,
-                                 include_hint_workloads=True, include_hint_idx_workloads=True,
-                                 merge_nlj_and_inlj_to_same_op=True, **model_specific_args),
+            # parameterized_config(model_type, wandb_group='baselines', include_pg_opt_workloads=True,
+            #                      **model_specific_args),  # std
+            # # parameterized_config(model_type, wandb_group='whintwl', include_hint_workloads=True,
+            # #                      include_pg_opt_workloads=True, **model_specific_args),  # hint
+            # parameterized_config(model_type, wandb_group='whint_hintidx', include_pg_opt_workloads=True,
+            #                      include_hint_workloads=True, include_hint_idx_workloads=True, **model_specific_args),
+            # parameterized_config(model_type, wandb_group='whint_hintidx_mergenlj', include_pg_opt_workloads=True,
+            #                      include_hint_workloads=True, include_hint_idx_workloads=True,
+            #                      merge_nlj_and_inlj_to_same_op=True, **model_specific_args),
+
+            # parameterized_config(model_type, wandb_group='whint_hintidx_nojoincond', include_pg_opt_workloads=True,
+            #                      include_hint_workloads=True, include_hint_idx_workloads=True,
+            #                      remove_join_cond_from_plan=True, **model_specific_args) if model_type == 'zeroshot' else None,
+            parameterized_config(model_type, wandb_group='wranking', include_pg_opt_workloads=True,
+                                 include_complex_ranking_workloads=True,
+                                 **model_specific_args),
             # hint + idx
             # parameterized_config(model_type, wandb_group='whintidx', include_hint_idx_workloads=True,
             #                      include_pg_opt_workloads=True,
@@ -345,14 +351,14 @@ if __name__ == '__main__':
             #                      include_complex_workloads=True, include_pg_opt_workloads=True,
             #                      include_hint_idx_workloads=True,
             #                      **model_specific_args) if model_type == 'zeroshot' else None,
-            parameterized_config(model_type,
-                                 wandb_group='isidxcond_isjoincond_numloops_wcolfilteredges_tablecardatscan_complex_pgopt_hintidx',
-                                 annotate_base_table_card_to_scan_op=True,
-                                 featurization=PostgresEstWithAdditionalFeats,
-                                 filter_inline_col_feats=False,
-                                 include_complex_workloads=True, include_pg_opt_workloads=True,
-                                 include_hint_idx_workloads=True, include_scan_only_hint_workloads=True,
-                                 **model_specific_args) if model_type in ['zeroshot', 'zeroshot_xl'] else None,
+            # parameterized_config(model_type,
+            #                      wandb_group='isidxcond_isjoincond_numloops_wcolfilteredges_tablecardatscan_complex_pgopt_hintidx',
+            #                      annotate_base_table_card_to_scan_op=True,
+            #                      featurization=PostgresEstWithAdditionalFeats,
+            #                      filter_inline_col_feats=False,
+            #                      include_complex_workloads=True, include_pg_opt_workloads=True,
+            #                      include_hint_idx_workloads=True, include_scan_only_hint_workloads=True,
+            #                      **model_specific_args) if model_type in ['zeroshot', 'zeroshot_xl'] else None,
 
             # OHEM test
             # parameterized_config(model_type,

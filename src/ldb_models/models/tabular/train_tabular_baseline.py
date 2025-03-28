@@ -348,7 +348,8 @@ def gen_postgres_cost_dataset(workload_runs: List[Path],
                                                     stratify_per_wl_file=stratify_per_wl_file,
                                                     limit_plans_overall=model_config.limit_plans_overall,
                                                     limit_plans_per_file=model_config.limit_plans_per_file,
-                                                    augment_with_subplans=model_config.train_on_subplans and not is_test)
+                                                    augment_with_subplans=model_config.train_on_subplans and not is_test,
+                                                    remove_join_cond_from_plan=model_config.remove_join_cond_from_plan, )
     feature_vecs = []
     labels = []
     sqls, hints = [], []  # Required to later evaluate against join order
@@ -392,7 +393,8 @@ def gen_flattened_dataset(workload_runs: List[Path],
                                                     limit_plans_per_file=model_config.limit_plans_per_file,
                                                     limit_plans_overall=model_config.limit_plans_overall,
                                                     augment_with_subplans=model_config.train_on_subplans and not is_test,
-                                                    merge_nlj_and_inlj_to_same_op=model_config.merge_nlj_and_inlj_to_same_op)
+                                                    merge_nlj_and_inlj_to_same_op=model_config.merge_nlj_and_inlj_to_same_op,
+                                                    remove_join_cond_from_plan=model_config.remove_join_cond_from_plan, )
     feature_vecs = []
     labels = []
     selectivities = []
@@ -477,7 +479,8 @@ def gen_analytical_flattened_dataset(workload_runs, statistics_file, cap_trainin
                                                     limit_plans_per_file=model_config.limit_plans_per_file,
                                                     limit_plans_overall=model_config.limit_plans_overall,
                                                     augment_with_subplans=model_config.train_on_subplans,
-                                                    merge_nlj_and_inlj_to_same_op=model_config.merge_nlj_and_inlj_to_same_op and not is_test)
+                                                    merge_nlj_and_inlj_to_same_op=model_config.merge_nlj_and_inlj_to_same_op and not is_test,
+                                                    remove_join_cond_from_plan=model_config.remove_join_cond_from_plan, )
     feature_vecs = []
     labels = []
     for plan in plans:
