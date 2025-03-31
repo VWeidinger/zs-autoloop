@@ -342,6 +342,9 @@ def evaluate_access_path_selection(predictions: dict, is_per_epoch: bool = False
     optimal_scan_op_list_dict = defaultdict(list)  # sel -> list
     predicted_scan_op_list_dict = defaultdict(list)
 
+    overall_predicted_selection = []
+    overall_label_selection = []
+
     for (table_name, col_name), group_df in prediction_dataframe.groupby(['table_name', 'col_name']):
         sel_runtimes_idx_dict = dict()
         sel_runtimes_seq_dict = dict()
@@ -428,6 +431,9 @@ def evaluate_access_path_selection(predictions: dict, is_per_epoch: bool = False
                 idx_labels_dict[sql] = np.inf
             label_selection.append(idx_labels_dict[sql] < seq_labels_dict[sql])
 
+        overall_label_selection.extend(label_selection)
+        overall_predicted_selection.extend(pred_selection)
+
         # calculate accuracy
         accuracy = np.mean([p == l for p, l in zip(pred_selection, label_selection)])
         balanced_accuracy = balanced_accuracy_score(label_selection, pred_selection)
@@ -445,6 +451,21 @@ def evaluate_access_path_selection(predictions: dict, is_per_epoch: bool = False
         else:
             time.sleep(0.1)  # Otherwise too many requests for localhost
 
+    # log overall accuracy
+    accuracy = np.mean([p == l for p, l in zip(overall_predicted_selection, overall_label_selection)])
+    balanced_accuracy = balanced_accuracy_score(overall_label_selection, overall_predicted_selection)
+
+    print(f'Overall - Accuracy: {accuracy:.2f} - Balanced Accuracy: {balanced_accuracy:.2f}')
+    if wandb_run:
+        if is_per_epoch:
+            wandb_run.log({
+                f'{prefix}/acc': accuracy,
+                f'{prefix}/bal_acc': balanced_accuracy
+            }, step=epoch, commit=False)
+        else:
+            wandb_run.summary[f'{prefix}/acc'] = accuracy
+            wandb_run.summary[f'{prefix}/bal_acc'] = balanced_accuracy
+
     # bucketize dict
     bucketized_predicted_scan_op_list_dict = defaultdict(list)
     bucketized_optimal_scan_op_list_dict = defaultdict(list)
@@ -453,7 +474,7 @@ def evaluate_access_path_selection(predictions: dict, is_per_epoch: bool = False
         bucketized_predicted_scan_op_list_dict[bucketized_sel].extend(predicted_scan_op_list_dict[sel])
         bucketized_optimal_scan_op_list_dict[bucketized_sel].extend(optimal_scan_op_list_dict[sel])
 
-    # create ratio of seqeuential scans with increasing selectivity
+    # create ratio of sequential scans with increasing selectivity
     x_sel_list = sorted([float(s) for s in bucketized_predicted_scan_op_list_dict.keys()])
     y_seq_ratio_pred = []
     y_seq_ratio_labels = []

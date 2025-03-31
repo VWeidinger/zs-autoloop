@@ -17,7 +17,7 @@ from models.workload_driven.model.mscn_model import MSCNModel
 from models.zeroshot.specific_models.postgres_zero_shot import PostgresZeroShotModel
 from models.zeroshot.subplan_runtime_helper import extract_smaller_larger_preds_tensor_for_subplan_graphs
 from training.batch_to_funcs import batch_to
-from training.losses import LessThanLoss
+from training.losses import LessThanLoss, RelativeLessThanLoss
 
 
 def train_epoch(epoch_stats: dict, train_loader: DataLoader, model: nn.Module,
@@ -36,7 +36,15 @@ def train_epoch(epoch_stats: dict, train_loader: DataLoader, model: nn.Module,
 
     if hasattr(model_config, 'subplan_monotonicity_loss') and model_config.subplan_monotonicity_loss:
         perform_subplan_monotonicity_loss = True
-        subplan_monotonicity_loss = LessThanLoss()
+
+        # select loss function
+        assert hasattr(model_config, 'subplan_monotonicity_loss_fn')
+        if model_config.subplan_monotonicity_loss_fn == 'lt_loss':
+            subplan_monotonicity_loss = LessThanLoss()
+        elif model_config.subplan_monotonicity_loss_fn == 'relative_lt_loss':
+            subplan_monotonicity_loss = RelativeLessThanLoss()
+        else:
+            raise ValueError(f"Unknown subplan monotonicity loss function: {model_config.subplan_monotonicity_loss_fn}")
     else:
         perform_subplan_monotonicity_loss = False
         subplan_monotonicity_loss = None
@@ -57,11 +65,11 @@ def train_epoch(epoch_stats: dict, train_loader: DataLoader, model: nn.Module,
 
         if perform_subplan_monotonicity_loss:
             assert len(output) == 3
-            output, subplan_graphs, subplan_predictions_dict = output
+            output, subplan_graphs, subplan_predictions_tensor = output
 
             # extract smaller and larger tensors - input for our monotonicity loss
             smaller_tensor, larger_tensor = extract_smaller_larger_preds_tensor_for_subplan_graphs(subplan_graphs,
-                                                                                                   subplan_predictions_dict)
+                                                                                                   subplan_predictions_tensor)
 
             # Loss computation
             monotonicity_loss = subplan_monotonicity_loss(smaller_tensor, larger_tensor)

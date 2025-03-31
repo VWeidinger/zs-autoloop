@@ -8,6 +8,7 @@ from octopus.step import Rsync, KillAllScreens, SetupVenv, RsyncCurrentRepo, Set
 from classes.classes import ModelConfig, ModelType, shorten_model_name
 from classes.model_config_helper import parameterized_config
 from scripts.exp_runner.exp_runner import ExpRunner, TrainingServers
+from training.featurizations import PostgresEstWithAdditionalFeats
 
 
 def generate_training_commands(datasets: List[Dataset], seeds: list[int], python_version: str, wandb_project: str,
@@ -218,18 +219,19 @@ if __name__ == '__main__':
 
     seeds = [3]
     nodes = [
-        TrainingServers.NODE00,
+        # TrainingServers.NODE00,
         # TrainingServers.NODE01,
         # TrainingServers.NODE02,
         # TrainingServers.NODE03,
-        # TrainingServers.NODE04,
+        TrainingServers.NODE04,
         # TrainingServers.NODE05,
         # TrainingServers.NODE09,
     ]
-    sockets = [0, 1]
-    out_file_id_offset = 2
+    sockets = [1]
+    out_file_id_offset = 0
     num_parallel_screens = None
     num_parallel_jobs_dgx = 2
+    run_exp_pin = False
 
     # ===================
     # CONFIGS
@@ -252,7 +254,7 @@ if __name__ == '__main__':
     for model_type in [
         # 'postgres',
         'zeroshot',
-        'zeroshot_xl',
+        # 'zeroshot_xl',
         # 'zeroshot_timeout',
         # 'dace',
         # 'flat',
@@ -277,8 +279,24 @@ if __name__ == '__main__':
             # parameterized_config(model_type, wandb_group='whint_hintidx_nojoincond', include_pg_opt_workloads=True,
             #                      include_hint_workloads=True, include_hint_idx_workloads=True,
             #                      remove_join_cond_from_plan=True, **model_specific_args) if model_type == 'zeroshot' else None,
-            parameterized_config(model_type, wandb_group='wranking', include_pg_opt_workloads=True,
+            # parameterized_config(model_type, wandb_group='wranking', include_pg_opt_workloads=True,
+            #                      include_complex_ranking_workloads=True,
+            #                      **model_specific_args),
+            # parameterized_config(model_type, wandb_group='wranking_subplanmon', include_pg_opt_workloads=True,
+            #                      include_complex_ranking_workloads=True,
+            #                      subplan_monotonicity_loss=True,
+            #                      **model_specific_args),
+            # parameterized_config(model_type, wandb_group='wranking_subplanmon_relloss', include_pg_opt_workloads=True,
+            #                      include_complex_ranking_workloads=True,
+            #                      subplan_monotonicity_loss=True,
+            #                      subplan_monotonicity_loss_fn='relative_lt_loss',
+            #                      **model_specific_args),
+            parameterized_config(model_type, wandb_group='wranking_subplanmon_relloss_addfeats',
+                                 include_pg_opt_workloads=True,
                                  include_complex_ranking_workloads=True,
+                                 subplan_monotonicity_loss=True,
+                                 subplan_monotonicity_loss_fn='relative_lt_loss',
+                                 featurization=PostgresEstWithAdditionalFeats,
                                  **model_specific_args),
             # hint + idx
             # parameterized_config(model_type, wandb_group='whintidx', include_hint_idx_workloads=True,
@@ -453,4 +471,5 @@ if __name__ == '__main__':
                    set_up_steps=setup_steps,
                    purge_steps=purge_steps,
                    pickup_steps=pickup_steps,
-                   offset=out_file_id_offset)
+                   offset=out_file_id_offset,
+                   run_exp_pin=run_exp_pin)

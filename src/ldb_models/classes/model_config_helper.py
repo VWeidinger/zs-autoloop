@@ -105,8 +105,18 @@ def get_parameterized_model_config(model_name: str, m_args: Dict) -> ModelConfig
         if arg in opt.__dict__.keys() or arg in ['AdamWScheduleFree']:
             args_dict['optimizer_class_name'] = arg
             continue
-        if arg.startswith('ohem_slice_by'):
-            args_dict['ohem_slice_by'] = arg.replace('ohem_slice_by', '')
+
+        # detect str key/value arguments
+        str_keywords = ['ohem_slice_by', 'subplan_monotonicity_loss_fn']
+        found = False
+        for str_keyword in str_keywords:
+            if arg.startswith(str_keyword):
+                args_dict[str_keyword] = arg[len(str_keyword):]
+                found = True
+                break
+
+        # we already handled this case - continue
+        if found:
             continue
 
         # check if arg ends with number and if so, split it

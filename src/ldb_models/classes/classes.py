@@ -404,6 +404,7 @@ class ZeroShotModelConfig(ModelConfig):
     filter_inline_col_feats: bool = True  # by default zs is trained with inline column features
     annotate_base_table_card_to_scan_op: bool = False  # annotate the base table card as children_card at scan ops (instead of setting it to 1 by default)
     subplan_monotonicity_loss: bool = False  # add a loss term that enforces the subplan runtime to be monotonically increasing
+    subplan_monotonicity_loss_fn: str = 'lt_loss'  # loss function for the subplan monotonicity loss - either lt_loss or relative_lt_loss
 
 
 @attrs.define(frozen=True, slots=False)

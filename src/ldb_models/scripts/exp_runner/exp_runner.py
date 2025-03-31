@@ -97,6 +97,7 @@ class ExpRunner:
                 purge_steps: List[Step],
                 pickup_steps: List[Step],
                 offset: int = 0,
+                run_exp_pin: bool = True
                 ):
 
         e = Experiment(
@@ -115,7 +116,7 @@ class ExpRunner:
             slurm_num_gpus_per_job=1,
             run_exp_message="Cost Model Evaluation",
             run_exp_expected_runtime="05:00",
-            use_run_exp_pin=True,
+            use_run_exp_pin=run_exp_pin,
             screen_or_job_id_offset=offset,
             python_version=self.python_version,
             ssh_path=self.ssh_path)

@@ -13,7 +13,7 @@ class SubplanClass:
         self.children: List["SubplanClass"] = []
 
 
-def compute_subplan_runtimes(graph, all_node_states: Dict, pred_fn):
+def compute_subplan_runtimes(graph, all_node_states: Dict, pred_fn) -> Tuple[List[SubplanClass], torch.Tensor]:
     # predict runtime for each subplan i.e. for each plan node in the graph - this works because we did topological message passing before
     predictions_dict = {}
     for node_type, node_states in all_node_states.items():
@@ -27,6 +27,10 @@ def compute_subplan_runtimes(graph, all_node_states: Dict, pred_fn):
 
     predictions_list = []
     for node_type, predictions in predictions_dict.items():
+        if not node_type.startswith('plan'):
+            # skip everything which is not a plan node - no subplan monotonicity is defined for them
+            continue
+
         for i in range(predictions.shape[0]):
             subplan_obj = SubplanClass(node_type, i + predictions_ctr)
             subplan_obj_idx[(node_type, i)] = subplan_obj

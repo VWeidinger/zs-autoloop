@@ -33,9 +33,10 @@ class PostgresZeroShotModel(nn.Module):
             root_predictions = self.decoder.fcout(hidden_states)
 
             # compute subplan predictions
-            subplan_graphs, subplan_predictions_dict = compute_subplan_runtimes(g, all_node_states, self.decoder.fcout)
+            subplan_graphs, subplan_predictions_tensor = compute_subplan_runtimes(g, all_node_states,
+                                                                                  self.decoder.fcout)
 
-            return root_predictions, subplan_graphs, subplan_predictions_dict
+            return root_predictions, subplan_graphs, subplan_predictions_tensor
         else:
             hidden_states = self.encoder((g, features))
             return self.decoder.fcout(hidden_states)
