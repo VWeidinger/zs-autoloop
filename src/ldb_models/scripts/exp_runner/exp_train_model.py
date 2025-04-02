@@ -8,7 +8,7 @@ from octopus.step import Rsync, KillAllScreens, SetupVenv, RsyncCurrentRepo, Set
 from classes.classes import ModelConfig, ModelType, shorten_model_name
 from classes.model_config_helper import parameterized_config
 from scripts.exp_runner.exp_runner import ExpRunner, TrainingServers
-from training.featurizations import PostgresEstWithAdditionalFeats
+from training.featurizations import PostgresEstNoOpname
 
 
 def generate_training_commands(datasets: List[Dataset], seeds: list[int], python_version: str, wandb_project: str,
@@ -219,15 +219,15 @@ if __name__ == '__main__':
 
     seeds = [3]
     nodes = [
-        # TrainingServers.NODE00,
+        TrainingServers.NODE00,
         # TrainingServers.NODE01,
         # TrainingServers.NODE02,
         # TrainingServers.NODE03,
-        TrainingServers.NODE04,
+        # TrainingServers.NODE04,
         # TrainingServers.NODE05,
         # TrainingServers.NODE09,
     ]
-    sockets = [1]
+    sockets = [0, 1]
     out_file_id_offset = 0
     num_parallel_screens = None
     num_parallel_jobs_dgx = 2
@@ -291,12 +291,16 @@ if __name__ == '__main__':
             #                      subplan_monotonicity_loss=True,
             #                      subplan_monotonicity_loss_fn='relative_lt_loss',
             #                      **model_specific_args),
-            parameterized_config(model_type, wandb_group='wranking_subplanmon_relloss_addfeats',
+            # parameterized_config(model_type, wandb_group='wranking_subplanmon_relloss_addfeats',
+            #                      include_pg_opt_workloads=True,
+            #                      include_complex_ranking_workloads=True,
+            #                      subplan_monotonicity_loss=True,
+            #                      subplan_monotonicity_loss_fn='relative_lt_loss',
+            #                      featurization=PostgresEstWithAdditionalFeats,
+            #                      **model_specific_args),
+            parameterized_config(model_type, wandb_group='pg_no_opname',
                                  include_pg_opt_workloads=True,
-                                 include_complex_ranking_workloads=True,
-                                 subplan_monotonicity_loss=True,
-                                 subplan_monotonicity_loss_fn='relative_lt_loss',
-                                 featurization=PostgresEstWithAdditionalFeats,
+                                 featurization=PostgresEstNoOpname,
                                  **model_specific_args),
             # hint + idx
             # parameterized_config(model_type, wandb_group='whintidx', include_hint_idx_workloads=True,

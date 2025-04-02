@@ -166,6 +166,14 @@ class PostgresEstSystemCardDetail(Featurization):
     TABLE_FEATURES = ['reltuples', 'relpages']
 
 
+class PostgresEstNoOpname(Featurization):
+    PLAN_FEATURES = ['est_card', 'est_width', 'est_children_card']
+    FILTER_FEATURES = ['operator']
+    COLUMN_FEATURES = ['avg_width', 'correlation', 'data_type', 'n_distinct', 'null_frac']
+    OUTPUT_COLUMN_FEATURES = ['aggregation']
+    TABLE_FEATURES = ['reltuples', 'relpages']
+
+
 class PostgresEstWithIsIndexCond(PostgresEstSystemCardDetail):
     FILTER_FEATURES = ['operator', 'is_index_cond']
 
