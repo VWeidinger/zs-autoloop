@@ -8,7 +8,7 @@ from octopus.step import Rsync, KillAllScreens, SetupVenv, RsyncCurrentRepo, Set
 from classes.classes import ModelConfig, ModelType, shorten_model_name
 from classes.model_config_helper import parameterized_config
 from scripts.exp_runner.exp_runner import ExpRunner, TrainingServers
-from training.featurizations import PostgresEstNoOpname
+from training.featurizations import PostgresTrueCardDetail
 
 
 def generate_training_commands(datasets: List[Dataset], seeds: list[int], python_version: str, wandb_project: str,
@@ -228,7 +228,7 @@ if __name__ == '__main__':
         # TrainingServers.NODE09,
     ]
     sockets = [0, 1]
-    out_file_id_offset = 0
+    out_file_id_offset = 3
     num_parallel_screens = None
     num_parallel_jobs_dgx = 2
     run_exp_pin = False
@@ -298,11 +298,20 @@ if __name__ == '__main__':
             #                      subplan_monotonicity_loss_fn='relative_lt_loss',
             #                      featurization=PostgresEstWithAdditionalFeats,
             #                      **model_specific_args),
-            parameterized_config(model_type, wandb_group='pg_no_opname',
-                                 include_pg_opt_workloads=True,
-                                 featurization=PostgresEstNoOpname,
-                                 **model_specific_args),
+            # parameterized_config(model_type, wandb_group='pg_no_opname',
+            #                      include_pg_opt_workloads=True,
+            #                      featurization=PostgresEstNoOpname,
+            #                      **model_specific_args),
             # hint + idx
+            parameterized_config(model_type, wandb_group='actcard',
+                                 include_pg_opt_workloads=True,
+                                 featurization=PostgresTrueCardDetail,
+                                 **model_specific_args),  # hint-idx
+            parameterized_config(model_type, wandb_group='actcard',
+                                 include_hint_idx_workloads=True,
+                                 include_complex_ranking_workloads=True,
+                                 featurization=PostgresTrueCardDetail,
+                                 **model_specific_args),  # hint-idx
             # parameterized_config(model_type, wandb_group='whintidx', include_hint_idx_workloads=True,
             #                      include_pg_opt_workloads=True,
             #                      **model_specific_args),  # hint-idx
@@ -428,17 +437,17 @@ if __name__ == '__main__':
     #                          pretrained_model_name='pm-zeroshot_xl-annotate_base_table_card_to_scan_op-PostgresEstWithAdditionalFeats-filter_inline_col_featsFalse-include_complex_workloads-include_pg_opt_workloads-include_hint_idx_workloads-include_scan_only_hint_workloads_1', )
     # ]
 
-#     model_configs = [
-#         parameterized_config('zeroshot_learn_from_timeout',
-#                              wandb_group='zs_from_timeout',
-#                              annotate_base_table_card_to_scan_op=True,
-#                              featurization=PostgresEstWithAdditionalFeats,
-#                              filter_inline_col_feats=False,
-#                              include_complex_workloads=True, include_pg_opt_workloads=True,
-#                              include_hint_idx_workloads=True, include_scan_only_hint_workloads=True,
-#                              pretrained_model_dir='/mnt/labstore/SIGs/ML/learned_db/models/pm-zeroshot-annotate_base_table_card_to_scan_op-PostgresEstWithAdditionalFeats-filter_inline_col_featsFalse-include_complex_workloads-include_pg_opt_workloads-include_hint_idx_workloads-include_scan_only_hint_workloads/imdb/',
+    #     model_configs = [
+    #         parameterized_config('zeroshot_learn_from_timeout',
+    #                              wandb_group='zs_from_timeout',
+    #                              annotate_base_table_card_to_scan_op=True,
+    #                              featurization=PostgresEstWithAdditionalFeats,
+    #                              filter_inline_col_feats=False,
+    #                              include_complex_workloads=True, include_pg_opt_workloads=True,
+    #                              include_hint_idx_workloads=True, include_scan_only_hint_workloads=True,
+    #                              pretrained_model_dir='/mnt/labstore/SIGs/ML/learned_db/models/pm-zeroshot-annotate_base_table_card_to_scan_op-PostgresEstWithAdditionalFeats-filter_inline_col_featsFalse-include_complex_workloads-include_pg_opt_workloads-include_hint_idx_workloads-include_scan_only_hint_workloads/imdb/',
     #                              pretrained_model_name='pm-zeroshot-annotate_base_table_card_to_scan_op-PostgresEstWithAdditionalFeats-filter_inline_col_featsFalse-include_complex_workloads-include_pg_opt_workloads-include_hint_idx_workloads-include_scan_only_hint_workloads_1')
-#     ]
+    #     ]
 
     model_configs = [model for model in model_configs if model is not None]
 
