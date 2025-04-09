@@ -1,6 +1,7 @@
 import os
 from typing import List
 
+import wandb
 from ldb_schema.datasets import Dataset
 from ldb_schema.paths import ClusterPaths, LocalPaths
 from octopus.step import Rsync, KillAllScreens, SetupVenv, RsyncCurrentRepo, SetupRYEVenv
@@ -8,7 +9,7 @@ from octopus.step import Rsync, KillAllScreens, SetupVenv, RsyncCurrentRepo, Set
 from classes.classes import ModelConfig, ModelType, shorten_model_name
 from classes.model_config_helper import parameterized_config
 from scripts.exp_runner.exp_runner import ExpRunner, TrainingServers
-from training.featurizations import PostgresTrueCardDetail
+from training.featurizations import PostgresEstWithNumLoops
 
 
 def generate_training_commands(datasets: List[Dataset], seeds: list[int], python_version: str, wandb_project: str,
@@ -20,7 +21,11 @@ def generate_training_commands(datasets: List[Dataset], seeds: list[int], python
                                eval_physical_operator: bool = False,
                                qo_eval_after_each_epoch: bool = False,
                                use_romans_runs: bool = False,
-                               is_pretrained: bool = False) -> List[str]:
+                               is_pretrained: bool = False,
+                               update_wandb_summary: bool = False) -> List[str]:
+    if update_wandb_summary:
+        assert is_pretrained, f"update_wandb_summary only works with pretrained models"
+
     if test_against:
         print(f'Testing the models against {test_against}')
 
@@ -106,11 +111,30 @@ def generate_training_commands(datasets: List[Dataset], seeds: list[int], python
 
                 wandb_name = f"{name_short}{model_suffix}/{target_dataset.db_name}/{seed}"
 
-                if is_pretrained:
-                    wandb_name += '_pretrained'
-
                 # shorten wandb name
                 wandb_name = shorten_model_name(wandb_name)
+
+                if update_wandb_summary:
+                    # remove pm_ if existing
+                    if wandb_name.startswith('pm-'):  # parameterized model
+                        tmp_name = wandb_name[3:]
+                    else:
+                        tmp_name = wandb_name
+
+                    # retrieve wandb run id
+                    api = wandb.Api()
+                    runs = api.runs(f'{wandb_project}', per_page=1000)
+                    runs = [run for run in runs if run.name == tmp_name]
+                    run_keys = [r.id for r in runs]
+
+                    assert len(
+                        run_keys) == 1, f"Found {len(run_keys)} runs with name {wandb_name}. Expected 1. Please make sure only one run with this name exists."
+                    wandb_resume_id = run_keys[0]
+                else:
+                    wandb_resume_id = None
+
+                if is_pretrained:
+                    wandb_name += '_pretrained'
 
                 command = (f"python{python_version} main.py "
                            f"--mode train "
@@ -125,6 +149,9 @@ def generate_training_commands(datasets: List[Dataset], seeds: list[int], python
                            f"--seed {seed} "
                            f"--wandb_name {wandb_name} "
                            )
+
+                if wandb_resume_id is not None:
+                    command += f" --wandb_resume_id {wandb_resume_id} "
 
                 if training_runs is not None and len(training_runs) > 0:
                     command += f" --workload_runs {training_runs} "
@@ -228,9 +255,10 @@ if __name__ == '__main__':
         # TrainingServers.NODE09,
     ]
     sockets = [0, 1]
-    out_file_id_offset = 3
+    out_file_id_offset = 0
     num_parallel_screens = None
     num_parallel_jobs_dgx = 2
+    num_parallel_tasks_per_job_dgx = 2
     run_exp_pin = False
 
     # ===================
@@ -246,7 +274,9 @@ if __name__ == '__main__':
     eval_physical_operator = True and not quick_run  # evaluate physical operator selection
     qo_eval_after_each_epoch = True  # if True, will run a full QO evaluation after each epoch
     use_romans_runs = False
+    # =================== (pretrained / wandb reuse configs)
     is_pretrained = False  # if True, assumes that the model is pretrained and does not train it
+    update_wandb_summary = False  # (works only together with pretrained) if True, it will update the wandb summaries of the first run with this layout
     # ===================
 
     # generate model configs
@@ -254,6 +284,7 @@ if __name__ == '__main__':
     for model_type in [
         # 'postgres',
         'zeroshot',
+        # 'zeroshot_low_min',
         # 'zeroshot_xl',
         # 'zeroshot_timeout',
         # 'dace',
@@ -291,6 +322,40 @@ if __name__ == '__main__':
             #                      subplan_monotonicity_loss=True,
             #                      subplan_monotonicity_loss_fn='relative_lt_loss',
             #                      **model_specific_args),
+
+            # access path tests
+            # parameterized_config(model_type, wandb_group='scanonly',
+            #                      include_scan_only_hint_workloads=True,
+            #                      **model_specific_args),
+            # parameterized_config(model_type, wandb_group='scanonly',
+            #                      include_scan_only_hint_workloads=True,
+            #                      enforce_aggregation_node_at_root=True,
+            #                      **model_specific_args),
+            parameterized_config(model_type, wandb_group='scanonly',
+                                 include_scan_only_hint_workloads=True,
+                                 enforce_aggregation_node_at_root=True,
+                                 featurization=PostgresEstWithNumLoops,
+                                 epochs=100,
+                                 **model_specific_args),
+            parameterized_config(model_type, wandb_group='scanonly',
+                                 include_scan_only_hint_workloads=True,
+                                 featurization=PostgresEstWithNumLoops,
+                                 epochs=100,
+                                 **model_specific_args),
+            parameterized_config(model_type, wandb_group='scanonly',
+                                 include_scan_only_hint_workloads=True,
+                                 annotate_base_table_card_to_scan_op=True,
+                                 featurization=PostgresEstWithNumLoops,
+                                 epochs=100,
+                                 **model_specific_args),
+            parameterized_config(model_type, wandb_group='scanonly',
+                                 include_scan_only_hint_workloads=True,
+                                 enforce_aggregation_node_at_root=True,
+                                 annotate_base_table_card_to_scan_op=True,
+                                 featurization=PostgresEstWithNumLoops,
+                                 epochs=100,
+                                 **model_specific_args),
+
             # parameterized_config(model_type, wandb_group='wranking_subplanmon_relloss_addfeats',
             #                      include_pg_opt_workloads=True,
             #                      include_complex_ranking_workloads=True,
@@ -303,15 +368,15 @@ if __name__ == '__main__':
             #                      featurization=PostgresEstNoOpname,
             #                      **model_specific_args),
             # hint + idx
-            parameterized_config(model_type, wandb_group='actcard',
-                                 include_pg_opt_workloads=True,
-                                 featurization=PostgresTrueCardDetail,
-                                 **model_specific_args),  # hint-idx
-            parameterized_config(model_type, wandb_group='actcard',
-                                 include_hint_idx_workloads=True,
-                                 include_complex_ranking_workloads=True,
-                                 featurization=PostgresTrueCardDetail,
-                                 **model_specific_args),  # hint-idx
+            # parameterized_config(model_type, wandb_group='actcard',
+            #                      include_pg_opt_workloads=True,
+            #                      featurization=PostgresTrueCardDetail,
+            #                      **model_specific_args),  # hint-idx
+            # parameterized_config(model_type, wandb_group='actcard',
+            #                      include_hint_idx_workloads=True,
+            #                      include_complex_ranking_workloads=True,
+            #                      featurization=PostgresTrueCardDetail,
+            #                      **model_specific_args),  # hint-idx
             # parameterized_config(model_type, wandb_group='whintidx', include_hint_idx_workloads=True,
             #                      include_pg_opt_workloads=True,
             #                      **model_specific_args),  # hint-idx
@@ -459,6 +524,7 @@ if __name__ == '__main__':
                        dgx_num_parallel_screens_or_jobs=num_parallel_jobs_dgx,
                        ssh_path=ssh_path,
                        stop_on_error=False,
+                       dgx_num_parallel_tasks_per_job=num_parallel_tasks_per_job_dgx,
                        )
 
     # for dataset in datasets:
@@ -478,7 +544,8 @@ if __name__ == '__main__':
                                                eval_physical_operator=eval_physical_operator,
                                                qo_eval_after_each_epoch=qo_eval_after_each_epoch,
                                                use_romans_runs=use_romans_runs,
-                                               is_pretrained=is_pretrained)
+                                               is_pretrained=is_pretrained,
+                                               update_wandb_summary=update_wandb_summary)
 
     runner.run_exp(commands=eval_commands,
                    set_up_steps=setup_steps,

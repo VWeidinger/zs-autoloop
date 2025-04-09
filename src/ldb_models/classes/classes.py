@@ -41,6 +41,7 @@ class ModelName:
     MSCN = Name("mscn", "MSCN")
     E2E = Name("e2e", "E2E")
     ZEROSHOT = Name("zeroshot", "Zero-Shot")
+    ZS_LOW_MIN = Name("zeroshot_low_min", "Zero-Shot (low min)")
     ZEROSHOT_ACT_CARD = Name("zeroshot_act_card", "Zero-Shot (act. card)")
     ZS_FROM_TIMEOUT = Name('zeroshot_learn_from_timeout', 'Zero-Shot (learn from timeout)')
     ZS_RANK_LOSS = Name('zeroshot_rank_loss', 'Zero-Shot (Rank Loss)')
@@ -146,6 +147,8 @@ class ModelConfig:
     ohem_resort_after_num_epochs: int = 2  # resort OHEM dataset after this number of epochs
     ohem_slice_by: str = 'file'  # file, dataset, none
 
+    enforce_aggregation_node_at_root: bool = False  # enforce that the root node is an aggregation node - will be done at the beginning of collator
+
     def get_model_dir(self, source_path: Paths, database: Dataset) -> Path:
         # shorten model name - otherwise we are hitting file-name limits
         model_name = shorten_model_name(self.name.NAME)
@@ -234,7 +237,20 @@ class ModelConfig:
         return f'{self.get_data_base_dir(stratified_workloads=stratified_workloads, romans_runs=romans_runs).as_posix()}/{target_db.db_name}_scaled{target_db.scale}/{wl_name}.json.gz'
 
     def get_test_workloads(self, target_db: Dataset, romans_runs: bool) -> str:
-        return self.assemble_wl_path(target_db, "workload_200k_s1", stratified_workloads=True, romans_runs=romans_runs)
+        test_paths = []
+
+        # always use this workload - this is forward backward compatibility / comparing with old runs
+        test_paths.append(
+            self.assemble_wl_path(target_db, "workload_200k_s1", stratified_workloads=True, romans_runs=romans_runs))
+
+        # always test on scan-only: check understanding of idx/seq scan costs
+        test_paths.append(self.assemble_wl_path(target_db, "scan_only_s1_access_path_hints", stratified_workloads=True,
+                                                romans_runs=romans_runs))
+
+        # also test on complex ranking
+        # test_paths.append(self.assemble_wl_path(target_db, "full_qo_complex_workload_200k_s1", stratified_workloads=True, romans_runs=romans_runs))
+
+        return ' '.join(test_paths)
 
     def get_data_base_dir(self, stratified_workloads: bool, romans_runs: bool = False) -> Path:
         if stratified_workloads and not romans_runs:  # we do not have roman's runs stratified
@@ -406,6 +422,13 @@ class ZeroShotModelConfig(ModelConfig):
     subplan_monotonicity_loss: bool = False  # add a loss term that enforces the subplan runtime to be monotonically increasing
     subplan_monotonicity_loss_fn: str = 'lt_loss'  # loss function for the subplan monotonicity loss - either lt_loss or relative_lt_loss
 
+
+@attrs.define(frozen=True, slots=False)
+class ZeroShotLowMin(ZeroShotModelConfig):
+    name: Name = ModelName.ZS_LOW_MIN
+    loss_class_kwargs: dict = {
+        'min_val': 1e-6
+    }
 
 @attrs.define(frozen=True, slots=False)
 class ZeroShotXLConfig(ZeroShotModelConfig):

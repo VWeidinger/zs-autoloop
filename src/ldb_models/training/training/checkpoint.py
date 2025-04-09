@@ -131,7 +131,7 @@ def load_checkpoint(model: nn.Module,
     if target_path is not None:
         try:
             if torch.cuda.is_available():
-                checkpoint = torch.load(os.path.join(target_path, f'{model_name}{filetype}'))
+                checkpoint = torch.load(os.path.join(target_path, f'{model_name}{filetype}'), map_location=model.device)
             else:
                 checkpoint = torch.load(os.path.join(target_path, f'{model_name}{filetype}'), map_location=torch.device('cpu'))
 

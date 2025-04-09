@@ -159,3 +159,4 @@ requirements.lock
 src/ldb_models/evaluation/wandb
 src/ldb_models/evaluation/artifacts
 src/ldb_models/evaluation/wandb_df_cache.pkl
+tmp/

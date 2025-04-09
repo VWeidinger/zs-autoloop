@@ -38,6 +38,7 @@ class ExpRunner:
                  available_sockets: List[int] = [0, 1],  # this does not apply to dgx: dgx automatically select socket 0
                  num_parallel_screens_or_jobs: int = None,
                  dgx_num_parallel_screens_or_jobs: int = None,
+                 dgx_num_parallel_tasks_per_job: int = 1,
                  ssh_path: str = 'ssh',
                  stop_on_error: bool = True,
                  ):
@@ -85,6 +86,7 @@ class ExpRunner:
                                        available_sockets=available_sockets,
                                        num_parallel_screens_or_jobs=num_parallel_screens_or_jobs,
                                        dgx_num_parallel_screens_or_jobs=dgx_num_parallel_screens_or_jobs)
+        self.dgx_num_parallel_tasks_per_job = dgx_num_parallel_tasks_per_job
 
         # Define script distribution
         self.exp_script_gen = functools.partial(distribute_exp_scripts, shuffle=False, replicate=replicate)
@@ -112,6 +114,7 @@ class ExpRunner:
             pickup_steps=pickup_steps,
             exp_folder_path=self.root_path,
             exp_script_gen=self.exp_script_gen,
+            slurm_num_parallel_tasks_per_job=self.dgx_num_parallel_tasks_per_job,
             slurm_num_cpus_per_task=20,
             slurm_num_gpus_per_job=1,
             run_exp_message="Cost Model Evaluation",

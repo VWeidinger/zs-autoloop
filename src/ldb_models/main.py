@@ -427,6 +427,7 @@ if __name__ == '__main__':
     parser.add_argument('--cap_training_samples', type=int, default=None)
     parser.add_argument('--wandb_name', default=None)
     parser.add_argument('--wandb_group', default=None)
+    parser.add_argument('--wandb_resume_id', default=None)
     parser.add_argument('--seed', type=int, default=0)
     parser.add_argument('--num_workers', type=int, default=20)
     parser.add_argument('--quick_run', action='store_true')
@@ -503,12 +504,18 @@ if __name__ == '__main__':
         config_dict['quick_run'] = args.quick_run
         config_dict['device'] = args.device
 
-        wandb_run = wandb.init(entity=args.wandb_entity,
-                               project=args.wandb_project,
-                               name=wandb_name,
-                               config=config_dict,
-                               group=args.wandb_group,
-                               tags=[model_type])
+        if args.wandb_resume_id is not None:
+            wandb_run = wandb.init(entity=args.wandb_entity,
+                                   project=args.wandb_project,
+                                   id=args.wandb_resume_id,
+                                   resume='must')
+        else:
+            wandb_run = wandb.init(entity=args.wandb_entity,
+                                   project=args.wandb_project,
+                                   name=wandb_name,
+                                   config=config_dict,
+                                   group=args.wandb_group,
+                                   tags=[model_type])
 
     args = dict(
         mode=args.mode,

@@ -209,7 +209,7 @@ def plan_to_graph(node, database_id, plan_depths, plan_features, plan_to_plan_ed
             raise e
 
     assert not (
-                filter is not None and join is not None), f'Filter and join in same plan node: {node} - the parser should prevent that! In this cases messages will get averaged. If this is wanted, please add automatic creation of a logical plan node that combines both filters and joins.'
+            filter is not None and join is not None), f'Filter and join in same plan node: {node} - the parser should prevent that! In this cases messages will get averaged. If this is wanted, please add automatic creation of a logical plan node that combines both filters and joins.'
 
     # tables
     table_id = plan_params.get('table_id')
@@ -375,7 +375,8 @@ def parse_predicates(db_column_features, feature_statistics, filter, filter_to_p
 def postgres_plan_collator(plans: List[Tuple], feature_statistics: dict[dict] = None, db_statistics: dict = None,
                            plan_featurization: Featurization = None, test_mode: bool = False,
                            skip_top_aggregation: bool = False, filter_inline_col_feats: bool = True,
-                           annotate_base_table_card_to_scan_op: bool = False):
+                           annotate_base_table_card_to_scan_op: bool = False,
+                           enforce_aggregation_node_at_root: bool = False):
     """
     Combines physical plans into a large graph that can be fed into ML models.
     :return:
@@ -444,6 +445,49 @@ def postgres_plan_collator(plans: List[Tuple], feature_statistics: dict[dict] = 
             selectivity_list += p["selectivity"]
             scan_op_list += p["scan_op"]
             join_op_list += p["join_op"]
+
+        if enforce_aggregation_node_at_root:
+            # check if plan has aggregation node at root
+            original_root_plan_parameters = p['plan_parameters']
+
+            if original_root_plan_parameters['op_name'] not in ['Simple Aggregate', 'Aggregate']:
+                # create an artifical aggregate node that sits on top
+                other_args = {k: p.pop(k) for k in list(p.keys()) if k not in ['plan_parameters', 'children']}
+
+                aggregate_node = {
+                    "plan_parameters": {
+                        "act_card": 1,
+                        "act_time": original_root_plan_parameters['act_time'],
+                        "act_loops": 1,
+                        "est_card": 1,
+                        "est_width": 8,
+                        "pg_cost": original_root_plan_parameters['pg_cost'],
+                        "est_loops": 1,
+                        "op_name": "Simple Aggregate",
+                        "output_columns": [
+                            {
+                                "aggregation": "COUNT",
+                                "columns": [],
+                                "udf_name": None,
+                                "udf_output": "False",
+                                "child_ref": False
+                            }
+                        ],
+                        "act_children_card": original_root_plan_parameters['act_card'],
+                        "est_children_card": original_root_plan_parameters['est_card'],
+                        "dd_est_card": 1,
+                        "dd_est_children_card": original_root_plan_parameters[
+                            'dd_est_card'] if 'dd_est_card' in original_root_plan_parameters else -1,
+                        "above_udf_filter": False,
+                        "is_udf_filter": False
+                    },
+                    "children": [p],
+                    **other_args
+                }
+
+                # overwrite the plan with the new one
+                p = aggregate_node
+
 
         # Parse the plan as graph
         plan_to_graph(p, p["database_id"], plan_depths, plan_features, plan_to_plan_edges, db_statistics,

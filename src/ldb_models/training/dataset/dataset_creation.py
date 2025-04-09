@@ -355,7 +355,8 @@ def create_datasets(workload_run_paths,
                     shuffle_before_split=True, is_test_dataset: bool = False,
                     do_not_limit_file: bool = False,
                     stratify_dataset: bool = False, stratify_per_wl_file: bool = False, inject_plans: List[Dict] = None,
-                    inject_database_statistics: Dict = None) -> (
+                    inject_database_statistics: Dict = None,
+                    include_zero_card_queries: bool = False) -> (
         Pipeline, PlanDataset, PlanDataset, PlanDataset, dict):
     # check if we need to apply OHEM
     apply_ohem = model_config.online_hard_example_mining and not is_test_dataset  # do not apply OHEM on test datasets - we want to have a static dataset
@@ -366,6 +367,7 @@ def create_datasets(workload_run_paths,
                                                         limit_plans_overall=model_config.limit_plans_overall if not do_not_limit_file and not apply_ohem else None,
                                                         input_format=model_config.input_format,
                                                         include_timeout_queries=model_config.include_timeout_queries and not is_test_dataset,
+                                                        include_zero_card_queries=include_zero_card_queries,
                                                         stratify_dataset=stratify_dataset,
                                                         stratify_per_wl_file=stratify_per_wl_file,
                                                         augment_with_subplans=model_config.train_on_subplans and not is_test_dataset,
@@ -524,7 +526,8 @@ def create_zeroshot_dataloader(workload_runs: WorkloadRuns,
                                              test_mode=False,
                                              skip_top_aggregation=model_config.skip_top_aggregation,
                                              filter_inline_col_feats=model_config.filter_inline_col_feats,
-                                             annotate_base_table_card_to_scan_op=model_config.annotate_base_table_card_to_scan_op)
+                                             annotate_base_table_card_to_scan_op=model_config.annotate_base_table_card_to_scan_op,
+                                             enforce_aggregation_node_at_root=model_config.enforce_aggregation_node_at_root)
 
         dataloader_args.update(collate_fn=train_collate_fn)
         train_loader: DataLoader = DataLoader(train_dataset, **dataloader_args)
@@ -550,6 +553,11 @@ def create_zeroshot_dataloader(workload_runs: WorkloadRuns,
         print("Creating dataloader for test data")
         test_loaders = []
         for test_path in workload_runs.test_workload_runs:
+            if 'join_order' in str(test_path):
+                include_zero_card = True
+            else:
+                include_zero_card = False
+
             _, test_dataset, _, test_database_statistics = create_datasets([test_path],
                                                                            model_config=model_config,
                                                                            shuffle_before_split=False,
@@ -557,6 +565,7 @@ def create_zeroshot_dataloader(workload_runs: WorkloadRuns,
                                                                            is_test_dataset=True,
                                                                            do_not_limit_file=True,
                                                                            # do not limit test files - e.g. for QO we need scores for all plans
+                                                                           include_zero_card_queries=include_zero_card
                                                                            )
 
             test_collate_fn = functools.partial(plan_collator,
@@ -566,7 +575,8 @@ def create_zeroshot_dataloader(workload_runs: WorkloadRuns,
                                                 test_mode=True,
                                                 skip_top_aggregation=model_config.skip_top_aggregation,
                                                 filter_inline_col_feats=model_config.filter_inline_col_feats,
-                                                annotate_base_table_card_to_scan_op=model_config.annotate_base_table_card_to_scan_op)
+                                                annotate_base_table_card_to_scan_op=model_config.annotate_base_table_card_to_scan_op,
+                                                enforce_aggregation_node_at_root=model_config.enforce_aggregation_node_at_root)
 
             # previously shuffle=False but this resulted in bugs
             dataloader_args.update(collate_fn=test_collate_fn)

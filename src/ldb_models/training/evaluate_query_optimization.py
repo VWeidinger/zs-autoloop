@@ -18,6 +18,8 @@ def evaluate_join_order(predictions, wl_name: str, is_per_epoch: bool = False, e
     prediction_dataframe = pd.DataFrame(predictions)
     prediction_dataframe["hint"] = prediction_dataframe["hint"].fillna("")
 
+    print(f'Join order evaluation: Found {len(prediction_dataframe)} predictions for workload {wl_name}')
+
     metrics = {
         "spearman_corr": SpearmanRank(),
         "selected_runtime": SelectedRuntime(),
@@ -214,6 +216,7 @@ def evaluate_physical_plan_selection(predictions: dict, with_idxs: bool = False,
             wandb_run.summary[f'{log_prefix}/total_selected_runtime'] = total_selected_runtime
             wandb_run.summary[f'{log_prefix}/total_optimal_runtime'] = total_optimal_runtime
             wandb_run.summary[f'{log_prefix}/avg_pick_rate'] = avg_pick_rate
+            wandb_run.log({f'{log_prefix}_pred_table': wandb.Table(dataframe=prediction_dataframe)})
 
     total = sum(optimal_join_op_ctr.values())
 
@@ -292,7 +295,7 @@ def evaluate_access_path_selection(predictions: dict, is_per_epoch: bool = False
     prediction_dataframe = pd.DataFrame(predictions)
     prediction_dataframe["hint"] = prediction_dataframe["hint"].fillna("")
 
-    metrics = {"selected_runtime": SelectedRuntime(), 'optimal_runtime': OptimalRuntime()}
+    metrics = {"selected_runtime": SelectedRuntime(), 'optimal_runtime': OptimalRuntime(), 'pick_rate': PickRate()}
     aggregated_results = {key: [] for key in metrics}
 
     # Group dataframe by SQL and iterate over each group
@@ -310,10 +313,12 @@ def evaluate_access_path_selection(predictions: dict, is_per_epoch: bool = False
 
     total_selected_runtime = np.sum(aggregated_results['selected_runtime'])
     total_optimal_runtime = np.sum(aggregated_results['optimal_runtime'])
+    total_pick_rate = np.mean(aggregated_results['pick_rate'])
 
     print("Access path evaluation results:")
     print(f"Total Selected runtime: {total_selected_runtime}")
     print(f"Total Optimal runtime: {total_optimal_runtime}")
+    print(f"Average Pick Rate: {total_pick_rate}")
 
     prefix = 'accesspath_eval'
     if is_per_epoch:
@@ -323,11 +328,14 @@ def evaluate_access_path_selection(predictions: dict, is_per_epoch: bool = False
         if is_per_epoch:
             wandb_run.log({
                 f'{prefix}/total_selected_runtime': total_selected_runtime,
-                f'{prefix}/total_optimal_runtime': total_optimal_runtime
+                f'{prefix}/total_optimal_runtime': total_optimal_runtime,
+                f'{prefix}/avg_pick_rate': total_pick_rate
             }, step=epoch, commit=False)
         else:
             wandb_run.summary[f'{prefix}/total_selected_runtime'] = total_selected_runtime
             wandb_run.summary[f'{prefix}/total_optimal_runtime'] = total_optimal_runtime
+            wandb_run.summary[f'{prefix}/avg_pick_rate'] = total_pick_rate
+            wandb_run.log({f'{prefix}_pred_table': wandb.Table(dataframe=prediction_dataframe)})
 
     def extract_table_col(sql):
         table_name = sql.split("FROM")[1].split("WHERE")[0].strip()
