@@ -148,6 +148,7 @@ class ModelConfig:
     ohem_slice_by: str = 'file'  # file, dataset, none
 
     enforce_aggregation_node_at_root: bool = False  # enforce that the root node is an aggregation node - will be done at the beginning of collator
+    prohibit_aggregation_node_at_root: bool = False  # prohibit that the root node is an aggregation node - will be done at the beginning of collator
 
     def get_model_dir(self, source_path: Paths, database: Dataset) -> Path:
         # shorten model name - otherwise we are hitting file-name limits

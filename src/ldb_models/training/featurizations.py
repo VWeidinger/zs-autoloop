@@ -190,6 +190,10 @@ class PostgresEstWithAdditionalFeats(PostgresEstSystemCardDetail):
     PLAN_FEATURES = ['est_card', 'est_width', 'op_name', 'est_children_card', 'est_loops']
 
 
+class PostgresEstWithCondFlags(PostgresEstSystemCardDetail):
+    FILTER_FEATURES = ['operator', 'is_index_cond', 'is_join_cond']
+
+
 class PostgresEstWithPGCost(PostgresEstSystemCardDetail):
     PLAN_FEATURES = ['est_card', 'est_width', 'op_name', 'est_children_card', 'pg_cost']
 

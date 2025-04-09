@@ -119,9 +119,19 @@ def test_model(config: ModelConfig,
                         physop_total_slowdown = slowdown
 
                 if "access_path_selection" in str(test_path):
-                    accesspath_total_selected_runtime, accesspath_total_slowdown = evaluate_access_path_selection(
+                    if 'with_aggregate' in str(test_path):
+                        ap_w_aggregate = True
+                        wl_name = 'w_aggregate'
+                    else:
+                        ap_w_aggregate = False
+                        wl_name = ''
+
+                    res = evaluate_access_path_selection(
                         predictions=predictions_dict, is_per_epoch=is_per_epoch, epoch=epoch,
-                        wandb_run=wandb_run)
+                        wandb_run=wandb_run, wl_name=wl_name)
+
+                    if not ap_w_aggregate:
+                        accesspath_total_selected_runtime, accesspath_total_slowdown = res
         else:
             print("Skipping saving the test stats")
 

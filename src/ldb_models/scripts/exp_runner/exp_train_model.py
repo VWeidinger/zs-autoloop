@@ -9,7 +9,7 @@ from octopus.step import Rsync, KillAllScreens, SetupVenv, RsyncCurrentRepo, Set
 from classes.classes import ModelConfig, ModelType, shorten_model_name
 from classes.model_config_helper import parameterized_config
 from scripts.exp_runner.exp_runner import ExpRunner, TrainingServers
-from training.featurizations import PostgresEstWithNumLoops
+from training.featurizations import PostgresEstWithAdditionalFeats
 
 
 def generate_training_commands(datasets: List[Dataset], seeds: list[int], python_version: str, wandb_project: str,
@@ -55,9 +55,16 @@ def generate_training_commands(datasets: List[Dataset], seeds: list[int], python
                                                                  stratified_workloads=False,
                                                                  romans_runs=use_romans_runs)
             if eval_access_path:  # and target_dataset.db_name in ['imdb', 'tpc_h', 'baseball']:
+                # AP without aggregate
                 test_runs += " " + target_model.assemble_wl_path(Dataset('imdb'), "access_path_selection",
                                                                  stratified_workloads=False,
                                                                  romans_runs=use_romans_runs)
+                # AP with aggregate
+                test_runs += " " + target_model.assemble_wl_path(Dataset('imdb'),
+                                                                 "access_path_selection_with_aggregate",
+                                                                 stratified_workloads=False,
+                                                                 romans_runs=use_romans_runs)
+
             if eval_physical_operator:  # and target_dataset.db_name in ['imdb', 'tpc_h', 'baseball']:
                 test_runs += " " + target_model.assemble_wl_path(Dataset('imdb'), "physical_operator",
                                                                  stratified_workloads=False,
@@ -246,8 +253,8 @@ if __name__ == '__main__':
 
     seeds = [3]
     nodes = [
-        TrainingServers.NODE00,
-        # TrainingServers.NODE01,
+        # TrainingServers.NODE00,
+        TrainingServers.NODE01,
         # TrainingServers.NODE02,
         # TrainingServers.NODE03,
         # TrainingServers.NODE04,
@@ -256,7 +263,7 @@ if __name__ == '__main__':
     ]
     sockets = [0, 1]
     out_file_id_offset = 0
-    num_parallel_screens = None
+    num_parallel_screens = 4
     num_parallel_jobs_dgx = 2
     num_parallel_tasks_per_job_dgx = 2
     run_exp_pin = False
@@ -327,32 +334,39 @@ if __name__ == '__main__':
             # parameterized_config(model_type, wandb_group='scanonly',
             #                      include_scan_only_hint_workloads=True,
             #                      **model_specific_args),
+            parameterized_config(model_type, wandb_group='scanonly',
+                                 include_scan_only_hint_workloads=True,
+                                 prohibit_aggregation_node_at_root=True,
+                                 epochs=100,
+                                 **model_specific_args),
+            parameterized_config(model_type, wandb_group='scanonly',
+                                 include_scan_only_hint_workloads=True,
+                                 prohibit_aggregation_node_at_root=True,
+                                 featurization=PostgresEstWithAdditionalFeats,
+                                 epochs=100,
+                                 **model_specific_args),
             # parameterized_config(model_type, wandb_group='scanonly',
             #                      include_scan_only_hint_workloads=True,
-            #                      enforce_aggregation_node_at_root=True,
+            #                      featurization=PostgresEstWithIsJoinCond,
+            #                      epochs=100,
+            #                      **model_specific_args),
+            # parameterized_config(model_type, wandb_group='scanonly',
+            #                      include_scan_only_hint_workloads=True,
+            #                      annotate_base_table_card_to_scan_op=True,
+            #                      featurization=PostgresEstWithIsJoinCond,
+            #                      epochs=100,
             #                      **model_specific_args),
             parameterized_config(model_type, wandb_group='scanonly',
                                  include_scan_only_hint_workloads=True,
-                                 enforce_aggregation_node_at_root=True,
-                                 featurization=PostgresEstWithNumLoops,
-                                 epochs=100,
-                                 **model_specific_args),
-            parameterized_config(model_type, wandb_group='scanonly',
-                                 include_scan_only_hint_workloads=True,
-                                 featurization=PostgresEstWithNumLoops,
-                                 epochs=100,
-                                 **model_specific_args),
-            parameterized_config(model_type, wandb_group='scanonly',
-                                 include_scan_only_hint_workloads=True,
+                                 prohibit_aggregation_node_at_root=True,
                                  annotate_base_table_card_to_scan_op=True,
-                                 featurization=PostgresEstWithNumLoops,
                                  epochs=100,
                                  **model_specific_args),
             parameterized_config(model_type, wandb_group='scanonly',
                                  include_scan_only_hint_workloads=True,
-                                 enforce_aggregation_node_at_root=True,
+                                 prohibit_aggregation_node_at_root=True,
                                  annotate_base_table_card_to_scan_op=True,
-                                 featurization=PostgresEstWithNumLoops,
+                                 featurization=PostgresEstWithAdditionalFeats,
                                  epochs=100,
                                  **model_specific_args),
 

@@ -527,7 +527,8 @@ def create_zeroshot_dataloader(workload_runs: WorkloadRuns,
                                              skip_top_aggregation=model_config.skip_top_aggregation,
                                              filter_inline_col_feats=model_config.filter_inline_col_feats,
                                              annotate_base_table_card_to_scan_op=model_config.annotate_base_table_card_to_scan_op,
-                                             enforce_aggregation_node_at_root=model_config.enforce_aggregation_node_at_root)
+                                             enforce_aggregation_node_at_root=model_config.enforce_aggregation_node_at_root,
+                                             prohibit_aggregation_node_at_root=model_config.prohibit_aggregation_node_at_root, )
 
         dataloader_args.update(collate_fn=train_collate_fn)
         train_loader: DataLoader = DataLoader(train_dataset, **dataloader_args)
@@ -576,7 +577,8 @@ def create_zeroshot_dataloader(workload_runs: WorkloadRuns,
                                                 skip_top_aggregation=model_config.skip_top_aggregation,
                                                 filter_inline_col_feats=model_config.filter_inline_col_feats,
                                                 annotate_base_table_card_to_scan_op=model_config.annotate_base_table_card_to_scan_op,
-                                                enforce_aggregation_node_at_root=model_config.enforce_aggregation_node_at_root)
+                                                enforce_aggregation_node_at_root=model_config.enforce_aggregation_node_at_root,
+                                                prohibit_aggregation_node_at_root=model_config.prohibit_aggregation_node_at_root, )
 
             # previously shuffle=False but this resulted in bugs
             dataloader_args.update(collate_fn=test_collate_fn)

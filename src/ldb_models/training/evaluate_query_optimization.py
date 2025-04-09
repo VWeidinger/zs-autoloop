@@ -288,7 +288,7 @@ def create_confusion_matrix_from_str_list(labels, predictions):
 
 
 def evaluate_access_path_selection(predictions: dict, is_per_epoch: bool = False, epoch: int = None,
-                                   wandb_run: Run = None):
+                                   wandb_run: Run = None, wl_name: str = ''):
     """ This method evaluates a given workload of queries, how well access paths were selected.
     """
 
@@ -321,6 +321,8 @@ def evaluate_access_path_selection(predictions: dict, is_per_epoch: bool = False
     print(f"Average Pick Rate: {total_pick_rate}")
 
     prefix = 'accesspath_eval'
+    if wl_name != '':
+        prefix = f'{prefix}_{wl_name}'
     if is_per_epoch:
         prefix += '-per_epoch'
 

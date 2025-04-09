@@ -376,7 +376,8 @@ def postgres_plan_collator(plans: List[Tuple], feature_statistics: dict[dict] = 
                            plan_featurization: Featurization = None, test_mode: bool = False,
                            skip_top_aggregation: bool = False, filter_inline_col_feats: bool = True,
                            annotate_base_table_card_to_scan_op: bool = False,
-                           enforce_aggregation_node_at_root: bool = False):
+                           enforce_aggregation_node_at_root: bool = False,
+                           prohibit_aggregation_node_at_root: bool = False):
     """
     Combines physical plans into a large graph that can be fed into ML models.
     :return:
@@ -487,6 +488,17 @@ def postgres_plan_collator(plans: List[Tuple], feature_statistics: dict[dict] = 
 
                 # overwrite the plan with the new one
                 p = aggregate_node
+        elif prohibit_aggregation_node_at_root:
+            if p['plan_parameters']['op_name'] in ['Simple Aggregate', 'Aggregate']:
+                # remove the aggregation node
+                root_args = {k: p.pop(k) for k in list(p.keys()) if k not in ['plan_parameters', 'children']}
+                children = p['children']
+                assert len(children) == 1, f'Aggregation node has more than one child: {p}'
+                p = children[0]
+
+                # copy over root args
+                for k, v in root_args.items():
+                    p[k] = v
 
 
         # Parse the plan as graph
