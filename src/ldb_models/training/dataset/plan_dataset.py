@@ -1,3 +1,4 @@
+import pickle
 from collections import defaultdict
 from pathlib import Path
 from typing import Tuple, List
@@ -32,7 +33,49 @@ class PlanDataset(Dataset):
         return self
 
 
+def serialize(data):
+    buffer = pickle.dumps(data, protocol=-1)
+    return np.frombuffer(buffer, dtype=np.uint8)
+
 class PreBatchedDataset(Dataset):
+    """
+    Serialized Dataset to prevent python objects copy-on-write behavior in shared memory for
+    dataloader workers. That is, as python objects use reference counters, they get coppied in
+    memory as soon as a worker tries to acces them. Thus each worker starts replicating the dataset
+    in its own/private memory. Tensors prevent this, as they implement their own pickler.
+        - GitHub Issue: https://github.com/pytorch/pytorch/issues/13246
+        - Based on: https://ppwwyyxx.com/blog/2022/Demystify-RAM-Usage-in-Multiprocess-DataLoader
+        - Code on GitHub: https://github.com/ppwwyyxx/RAM-multiprocess-dataloader/blob/main/serialize.py
+    """
+    def __init__(self, batches: List, batch_size: int):
+        self.batch_size = batch_size
+
+        # serialize batches
+        self._batches = [serialize(batch) for batch in batches]
+        self._addr = torch.asarray([len(batch) for batch in self._batches], dtype=torch.int64)
+        self._addr = torch.cumsum(self._addr, dim=0)
+        self._batches = np.concatenate(self._batches)
+
+        # convert to tensor
+        self._batches = torch.from_numpy(self._batches)
+
+        print(f"Serialization done, dataset takes {len(self._batches) / 1024 ** 2 :.2f} MiB", flush=True)
+
+    def __len__(self):
+        return len(self._addr)
+
+    def __getitem__(self, idx):
+        # lookup start / end adress
+        start_addr = 0 if idx == 0 else self._addr[idx - 1].item()
+        end_addr = self._addr[idx].item()
+
+        # get batch
+        bytes = memoryview(self._batches[start_addr:end_addr].numpy())
+        batch = pickle.loads(bytes)
+        return batch
+
+
+class NonSerializedPreBatchedDataset(Dataset):
     def __init__(self, batches: List, batch_size: int):
         self.batches = batches
         self.batch_size = batch_size

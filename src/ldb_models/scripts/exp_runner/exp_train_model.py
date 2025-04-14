@@ -284,7 +284,7 @@ if __name__ == '__main__':
     eval_physical_operator = True and not quick_run  # evaluate physical operator selection
     qo_eval_after_each_epoch = True  # if True, will run a full QO evaluation after each epoch
     use_romans_runs = False
-    assemble_data_up_front = False  # run data / graph assemble up front i.e. during dataset creation instead of collate / training time
+    assemble_data_up_front = True  # run data / graph assemble up front i.e. during dataset creation instead of collate / training time
     # =================== (pretrained / wandb reuse configs)
     is_pretrained = False  # if True, assumes that the model is pretrained and does not train it
     update_wandb_summary = False  # (works only together with pretrained) if True, it will update the wandb summaries of the first run with this layout
