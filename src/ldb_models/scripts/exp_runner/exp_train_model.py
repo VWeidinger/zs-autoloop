@@ -254,7 +254,7 @@ if __name__ == '__main__':
         Dataset('fhnk', scale=2)
     ]
 
-    seeds = [4]
+    seeds = [3]
     nodes = [
         TrainingServers.NODE00,
         # TrainingServers.NODE01,
@@ -275,7 +275,7 @@ if __name__ == '__main__':
     # CONFIGS
     # ===================
     quick_run = False  # if True, it will run only a few epochs on a few workloads
-    pt_profiler = True  # Profiler for PyTorch
+    pt_profiler = False  # Profiler for PyTorch
     test_against = 'imdb'  # if not set, will test against all in an leave one out style
     ft_with_ranking = False  # fine-tune with ranking (pretrains a model and then fine-tunes it with ranking)
     bound_predictions = False  # bound predictions to the range of the training data and output them as separate metrics - at the moment not competitive

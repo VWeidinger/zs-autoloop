@@ -65,7 +65,8 @@ class NodeTypeEncoder(FcOutModel):
         if input.shape[0] == 0:
             return torch.reshape(input, (0, self.output_dim))
 
-        assert input.shape[1] == self.input_feature_idx
+        assert input.shape[
+                   1] == self.input_feature_idx, f'{input.shape} != {self.input_feature_idx} / features: {self.features}'
         encoded_input = []
         for feat, feat_type, feat_idxs in zip(self.features, self.feature_types, self.feature_idxs):
             feat_data = input[:, feat_idxs]

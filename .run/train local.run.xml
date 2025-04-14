@@ -1,0 +1,26 @@
+<component name="ProjectRunConfigurationManager">
+    <configuration default="false" name="train local" type="PythonConfigurationType" factoryName="Python">
+        <module name="ldb_models"/>
+        <option name="ENV_FILES" value=""/>
+        <option name="INTERPRETER_OPTIONS" value=""/>
+        <option name="PARENT_ENVS" value="true"/>
+        <envs>
+            <env name="PYTHONUNBUFFERED" value="1"/>
+        </envs>
+        <option name="SDK_HOME" value=""/>
+        <option name="WORKING_DIRECTORY" value=""/>
+        <option name="IS_MODULE_SDK" value="true"/>
+        <option name="ADD_CONTENT_ROOTS" value="true"/>
+        <option name="ADD_SOURCE_ROOTS" value="true"/>
+        <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py"/>
+        <option name="SCRIPT_NAME" value="$PROJECT_DIR$/src/ldb_models/main.py"/>
+        <option name="PARAMETERS"
+                value="--mode train --wandb_group superhetero --model_type pm-zeroshot-include_pg_opt_workloads --device cpu --model_dir tmp --target_dir tmp --statistics_file /mnt/c/PhD/ldb/ldb_data/feature_statistics/parsed_plans_feature_statistics.json --seed 0 --workload_runs /mnt/c/PhD/ldb/ldb_data/runs/parsed_plans2/imdb_scaled1/workload_200k_s1_reduced.json --test_workload_runs /mnt/c/PhD/ldb/ldb_data/runs/parsed_plans2/imdb_scaled1/workload_200k_s1_reduced.json --num_workers 1 --assemble_data_up_front"/>
+        <option name="SHOW_COMMAND_LINE" value="false"/>
+        <option name="EMULATE_TERMINAL" value="false"/>
+        <option name="MODULE_MODE" value="false"/>
+        <option name="REDIRECT_INPUT" value="false"/>
+        <option name="INPUT_FILE" value=""/>
+        <method v="2"/>
+    </configuration>
+</component>

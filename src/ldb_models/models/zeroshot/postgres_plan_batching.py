@@ -18,7 +18,8 @@ def encode(column, plan_params, feature_statistics):
     else:
         value = plan_params[column]
     if feature_statistics[column].get('type') == str(FeatureType.numeric):
-        enc_value = feature_statistics[column]['scaler'].transform(np.array([[value]])).item()
+        enc_value = value  # we do the feature scaling later on - more efficiently
+        # enc_value = feature_statistics[column]['scaler'].transform(np.array([[value]])).item()
     elif feature_statistics[column].get('type') == str(FeatureType.categorical):
         value_dict = feature_statistics[column]['value_dict']
         assert len(list(value_dict.keys())) > 1, f'Value dict has only one key: {value_dict} for feature {column}'
@@ -346,6 +347,12 @@ def parse_predicates(db_column_features, feature_statistics, filter, filter_to_p
     else:
         curr_filter_features = [encode(feature_name, filter, feature_statistics)
                                 for feature_name in plan_featurization.FILTER_FEATURES]
+
+        # bring logical pred features to the same length as the normal filter features
+        if inline_col_feats:
+            # pad with 0 - there are not col features for logical preds
+            curr_filter_features = curr_filter_features + [0 for _ in plan_featurization.COLUMN_FEATURES]
+
         logical_preds.append(True)
 
     predicate_col_features.append(curr_filter_features)
@@ -501,7 +508,6 @@ def postgres_plan_collator(plans: List[Tuple], feature_statistics: dict[dict] = 
                 for k, v in root_args.items():
                     p[k] = v
 
-
         # Parse the plan as graph
         plan_to_graph(p, p["database_id"], plan_depths, plan_features, plan_to_plan_edges, db_statistics,
                       feature_statistics, filter_to_plan_edges, filter_features, output_column_to_plan_edges,
@@ -514,6 +520,68 @@ def postgres_plan_collator(plans: List[Tuple], feature_statistics: dict[dict] = 
 
     assert len(labels) == len(plans)
     assert len(plan_depths) == len(plan_features)
+
+    # run the feature scaling
+    def apply_feature_scalers(features, feature_statistics, feature_names: List[str]):
+        # convert features to numpy array
+        try:
+            features = np.array(features, dtype=np.float32)
+        except Exception as e:
+            print(len(features), flush=True)
+            print(len(features[0]), flush=True)
+
+            raise e
+
+        assert len(features[0]) == len(
+            feature_names), f'Features {len(features[0])} do not match feature names {len(feature_names)}'
+
+        scaled_features = []
+        for i, column in enumerate(feature_names):
+            # extract features of this column
+            column_features = features[:, i]
+
+            # apply scalers
+            if feature_statistics[column].get('type') == str(FeatureType.numeric):
+                scaler = feature_statistics[column]['scaler']
+                scaled = scaler.transform(column_features.reshape((-1, 1))).reshape((-1,))
+            else:
+                scaled = column_features
+
+            assert len(scaled) == len(
+                column_features), f'Scaled features {len(scaled)} do not match original features {len(column_features)}'
+
+            # store in list
+            scaled_features.append(scaled)
+
+        assert len(scaled_features) == len(
+            feature_names), f'Scaled features {len(scaled_features)} do not match original features {len(feature_names)}'
+
+        # concat the features
+        scaled_features = np.stack(scaled_features, axis=1)
+
+        assert scaled_features.shape == features.shape, f'Scaled features shape {scaled_features.shape} does not match original shape {features.shape}'
+
+        return scaled_features
+
+    # run the feature scaling
+    plan_features = apply_feature_scalers(plan_features, feature_statistics=feature_statistics,
+                                          feature_names=plan_featurization.PLAN_FEATURES)
+    output_column_features = apply_feature_scalers(output_column_features, feature_statistics=feature_statistics,
+                                                   feature_names=plan_featurization.OUTPUT_COLUMN_FEATURES)
+    table_features = apply_feature_scalers(table_features, feature_statistics=feature_statistics,
+                                           feature_names=plan_featurization.TABLE_FEATURES)
+
+    # assemble the filter features
+    if filter_inline_col_feats:
+        filter_feats_list = plan_featurization.FILTER_FEATURES + plan_featurization.COLUMN_FEATURES
+    else:
+        filter_feats_list = plan_featurization.FILTER_FEATURES
+
+    filter_features = apply_feature_scalers(filter_features, feature_statistics=feature_statistics,
+                                            feature_names=filter_feats_list)
+
+    column_features = apply_feature_scalers(column_features, feature_statistics=feature_statistics,
+                                            feature_names=plan_featurization.COLUMN_FEATURES)
 
     data_dict, nodes_per_depth, plan_dict = create_node_types_per_depth(plan_depths, plan_to_plan_edges)
 
@@ -582,6 +650,11 @@ def postgres_plan_collator(plans: List[Tuple], feature_statistics: dict[dict] = 
     for pred_node_id, pred_feat in enumerate(filter_features):
         if not logical_preds[pred_node_id]:
             continue
+
+        # we have padded the logical features - remove the padding
+        pred_feat = pred_feat[:len(
+            plan_featurization.FILTER_FEATURES)]  # we can do this since the embedding / one-hot encoding / ... will be done afterwards in the node type encoder
+
         node_type, _ = pred_node_type_id(logical_preds, pred_dict, pred_node_id)
         features[node_type].append(pred_feat)
 

@@ -49,7 +49,6 @@ def init_model(statistics_file: Path,
                assemble_data_up_front: bool = False) \
         -> (Optional[nn.Module], DataLoader, DataLoader, List[DataLoader]):
     if isinstance(config, ZeroShotModelConfig):
-        assert assemble_data_up_front
         label_norm, feature_statistics, train_loader, val_loader, test_loaders = \
             create_zeroshot_dataloader(workload_runs=workload_runs,
                                        statistics_file=statistics_file,

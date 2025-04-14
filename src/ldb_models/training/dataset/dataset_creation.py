@@ -407,8 +407,7 @@ def create_datasets(workload_run_paths,
 
     def create_dataset(plans, indexes, is_validation_set: bool = False, assemble_graphs: bool = False,
                        assemble_graph_collate_fn=None):
-        assert assemble_graphs
-        assert not apply_ohem
+
         if apply_ohem:
             assert not assemble_graphs, f'with ohem we cannot make the graphs up front, because in each epoch we reselect the plans used for training'
             assert model_config.cap_training_samples is None, f'ensuring that always this number of samples is included is not yet supported - this would require replication in case the limit is too high! - not yet implemented'
