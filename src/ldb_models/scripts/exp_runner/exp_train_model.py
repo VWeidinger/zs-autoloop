@@ -21,7 +21,8 @@ def generate_training_commands(datasets: List[Dataset], seeds: list[int], python
                                qo_eval_after_each_epoch: bool = False,
                                use_romans_runs: bool = False,
                                is_pretrained: bool = False,
-                               update_wandb_summary: bool = False) -> List[str]:
+                               update_wandb_summary: bool = False,
+                               assemble_data_up_front: bool = False) -> List[str]:
     if update_wandb_summary:
         assert is_pretrained, f"update_wandb_summary only works with pretrained models"
 
@@ -196,6 +197,9 @@ def generate_training_commands(datasets: List[Dataset], seeds: list[int], python
                     command += f" --pretrained_model_dir {target_model.pretrained_model_dir} "
                     command += f" --pretrained_model_name {target_model.pretrained_model_name} "
 
+                if assemble_data_up_front:
+                    command += " --assemble_data_up_front"
+
                 commands.append(command)
 
     return commands
@@ -250,7 +254,7 @@ if __name__ == '__main__':
         Dataset('fhnk', scale=2)
     ]
 
-    seeds = [3]
+    seeds = [4]
     nodes = [
         TrainingServers.NODE00,
         # TrainingServers.NODE01,
@@ -270,8 +274,8 @@ if __name__ == '__main__':
     # ===================
     # CONFIGS
     # ===================
-    quick_run = True  # if True, it will run only a few epochs on a few workloads
-    pt_profiler = False  # Profiler for PyTorch
+    quick_run = False  # if True, it will run only a few epochs on a few workloads
+    pt_profiler = True  # Profiler for PyTorch
     test_against = 'imdb'  # if not set, will test against all in an leave one out style
     ft_with_ranking = False  # fine-tune with ranking (pretrains a model and then fine-tunes it with ranking)
     bound_predictions = False  # bound predictions to the range of the training data and output them as separate metrics - at the moment not competitive
@@ -280,6 +284,7 @@ if __name__ == '__main__':
     eval_physical_operator = True and not quick_run  # evaluate physical operator selection
     qo_eval_after_each_epoch = True  # if True, will run a full QO evaluation after each epoch
     use_romans_runs = False
+    assemble_data_up_front = False  # run data / graph assemble up front i.e. during dataset creation instead of collate / training time
     # =================== (pretrained / wandb reuse configs)
     is_pretrained = False  # if True, assumes that the model is pretrained and does not train it
     update_wandb_summary = False  # (works only together with pretrained) if True, it will update the wandb summaries of the first run with this layout
@@ -558,7 +563,8 @@ if __name__ == '__main__':
                                                qo_eval_after_each_epoch=qo_eval_after_each_epoch,
                                                use_romans_runs=use_romans_runs,
                                                is_pretrained=is_pretrained,
-                                               update_wandb_summary=update_wandb_summary)
+                                               update_wandb_summary=update_wandb_summary,
+                                               assemble_data_up_front=assemble_data_up_front)
 
     runner.run_exp(commands=eval_commands,
                    set_up_steps=setup_steps,

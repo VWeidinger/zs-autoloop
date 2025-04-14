@@ -61,10 +61,10 @@ def validate_model(val_loader: DataLoader,
         test_start_t = time.perf_counter()
         val_num_tuples = 0
         for batch_idx, batch in enumerate(tqdm(val_loader)):
-            if max_epoch_tuples is not None and batch_idx * val_loader.batch_size > max_epoch_tuples:
+            if max_epoch_tuples is not None and batch_idx * model_config.batch_size > max_epoch_tuples:
                 break
 
-            val_num_tuples += val_loader.batch_size
+            val_num_tuples += model_config.batch_size
 
             # Access path selection eval: selectivity + scan_op
             # Physicl op selection eval: join_op

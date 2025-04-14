@@ -45,21 +45,25 @@ def init_model(statistics_file: Path,
                config: ModelConfig,
                workload_runs: WorkloadRuns,
                word_embeddings: Path,
-               quick_run: bool = False) \
+               quick_run: bool = False,
+               assemble_data_up_front: bool = False) \
         -> (Optional[nn.Module], DataLoader, DataLoader, List[DataLoader]):
     if isinstance(config, ZeroShotModelConfig):
+        assert assemble_data_up_front
         label_norm, feature_statistics, train_loader, val_loader, test_loaders = \
             create_zeroshot_dataloader(workload_runs=workload_runs,
                                        statistics_file=statistics_file,
                                        model_config=config,
                                        data_loader_options=DataLoaderOptions(),
-                                       quick_run=quick_run)
+                                       quick_run=quick_run,
+                                       assemble_graphs_up_front=assemble_data_up_front)
 
         model: nn.Module = PostgresZeroShotModel(model_config=config,
                                                  feature_statistics=feature_statistics,
                                                  label_norm=label_norm)
 
     elif isinstance(config, (E2EModelConfig, MSCNModelConfig, TlstmModelConfig, QueryFormerModelConfig)):
+        assert not assemble_data_up_front, "assemble_data_up_front is not supported for this model type"
         _, feature_statistics, train_loader, val_loader, test_loaders, input_dims = \
             create_baseline_dataloader(workload_runs=workload_runs,
                                        statistics_file=statistics_file,
@@ -83,6 +87,7 @@ def init_model(statistics_file: Path,
                                            feature_statistics=feature_statistics)
 
     elif isinstance(config, QPPNetModelConfig):
+        assert not assemble_data_up_front, "assemble_data_up_front is not supported for this model type"
         label_norm, feature_statistics, train_loader, val_loader, test_loaders = \
             create_qppnet_dataloader(workload_runs=workload_runs,
                                      statistics_file=statistics_file,
@@ -96,6 +101,7 @@ def init_model(statistics_file: Path,
                                   label_norm=label_norm)
 
     elif isinstance(config, DACEModelConfig):
+        assert not assemble_data_up_front, "assemble_data_upfront is not supported for this model type"
         feature_statistics, train_loader, val_loader, test_loaders = \
             create_dace_dataloader(workload_runs=workload_runs,
                                    statistics_file=statistics_file,
@@ -104,6 +110,7 @@ def init_model(statistics_file: Path,
         model: nn.Module = DACELora(config=config)
 
     elif isinstance(config, (ScaledPostgresModelConfig, FlatModelConfig, T3ModelConfig)):
+        assert not assemble_data_up_front, "assemble_data_upfront is not supported for this model type"
         model = None
         train_loader, val_loader, test_loaders = None, None, None
         feature_statistics = None
@@ -114,9 +121,16 @@ def init_model(statistics_file: Path,
         # Count the number of entries in train_loader where timeout happened
         overall_count = 0
         timeout_count = 0
-        for label, plan in dataloader.dataset:  # dataloader is batched
-            overall_count += 1
-            timeout_count += 1 if plan['timeout'] else 0
+        if assemble_data_up_front:
+            for batch in dataloader.dataset:
+                # extract statistics
+                per_batch_labels = batch[2]
+                overall_count += len(per_batch_labels)
+                timeout_count += sum([1 for label in per_batch_labels if label == None])
+        else:
+            for label, plan in dataloader.dataset:  # dataloader is batched
+                overall_count += 1
+                timeout_count += 1 if plan['timeout'] else 0
 
         print(f"Timeout count: {timeout_count} of {overall_count} "
               f"({timeout_count / overall_count * 100:.2f}%) in {string}")
@@ -150,7 +164,8 @@ def use_model(mode: str,
               run_qo_test_pipeline_after_each_epoch: bool = True,
               pretrained_model_dir: Optional[str] = None,
               pretrained_model_name: Optional[str] = None,
-              quick_run: bool = False):
+              quick_run: bool = False,
+              assemble_data_up_front: bool = False):
     # Seed for reproducibility
     print(f"Found model config {config}")
     torch.manual_seed(config.seed)
@@ -176,7 +191,9 @@ def use_model(mode: str,
                                                                               column_statistics=column_statistics,
                                                                               workload_runs=wl_runs,
                                                                               word_embeddings=word_embeddings,
-                                                                              quick_run=quick_run)
+                                                                              quick_run=quick_run,
+                                                                              assemble_data_up_front=assemble_data_up_front)
+
     if test_loaders:
         # extract test data for testing after each epoch
         if run_qo_test_pipeline_after_each_epoch:
@@ -447,6 +464,9 @@ if __name__ == '__main__':
     parser.add_argument('--pretrained_model_dir', default=None)
     parser.add_argument('--pretrained_model_name', default=None)
 
+    # assemble data up front
+    parser.add_argument('--assemble_data_up_front', action='store_true')
+
     args = parser.parse_args()
 
     assert args.device == 'cpu' or args.device.startswith('cuda'), "Device must be either 'cpu' or 'cuda'"
@@ -545,6 +565,7 @@ if __name__ == '__main__':
         pretrained_model_dir=args.pretrained_model_dir,
         pretrained_model_name=args.pretrained_model_name,
         quick_run=args.quick_run,
+        assemble_data_up_front=args.assemble_data_up_front
     )
 
     use_model(**args)

@@ -32,6 +32,18 @@ class PlanDataset(Dataset):
         return self
 
 
+class PreBatchedDataset(Dataset):
+    def __init__(self, batches: List, batch_size: int):
+        self.batches = batches
+        self.batch_size = batch_size
+
+    def __len__(self):
+        return len(self.batches)
+
+    def __getitem__(self, idx):
+        return self.batches[idx]
+
+
 class OHEMPlanDataset(Dataset):
     """
     Online-Hard-Example-Mining Dataset

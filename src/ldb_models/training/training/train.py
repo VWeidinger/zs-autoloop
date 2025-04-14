@@ -50,7 +50,7 @@ def train_epoch(epoch_stats: dict, train_loader: DataLoader, model: nn.Module,
         subplan_monotonicity_loss = None
 
     for batch_idx, batch in enumerate(tqdm(train_loader)):
-        if max_epoch_tuples is not None and batch_idx * train_loader.batch_size > max_epoch_tuples:
+        if max_epoch_tuples is not None and batch_idx * model_config.batch_size > max_epoch_tuples:
             break
         input_model, label, sample_idxs, _, _, _, _, _ = custom_batch_to(batch, model.device, model.label_norm)
 

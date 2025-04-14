@@ -377,7 +377,8 @@ def postgres_plan_collator(plans: List[Tuple], feature_statistics: dict[dict] = 
                            skip_top_aggregation: bool = False, filter_inline_col_feats: bool = True,
                            annotate_base_table_card_to_scan_op: bool = False,
                            enforce_aggregation_node_at_root: bool = False,
-                           prohibit_aggregation_node_at_root: bool = False):
+                           prohibit_aggregation_node_at_root: bool = False,
+                           output_tensors: bool = False):
     """
     Combines physical plans into a large graph that can be fed into ML models.
     :return:
@@ -588,6 +589,11 @@ def postgres_plan_collator(plans: List[Tuple], feature_statistics: dict[dict] = 
 
     # rather deal with runtimes in secs
     labels = postprocess_labels(labels)
+
+    if output_tensors:
+        # create tensors
+        labels = torch.from_numpy(labels)
+        sample_idxs = torch.from_numpy(np.array(sample_idxs, dtype=np.int64))
 
     if test_mode:
         return graph, features, labels, sample_idxs, sql_statements, hints, selectivity_list, scan_op_list, join_op_list
