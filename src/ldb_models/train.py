@@ -36,7 +36,8 @@ def train_model(csv_stats: List,
                 pt_profiler: bool = False,
                 train_w_rank_model: bool = False,
                 bound_predictions: bool = False,
-                prediction_bounder: PredictionBounder = None):
+                prediction_bounder: PredictionBounder = None,
+                quick_run: bool = False, ):
     if train_w_rank_model:
         # wrap the model with the rank model
         ranking_wrapper = RankModel(model)
@@ -146,8 +147,9 @@ def train_model(csv_stats: List,
         # save stats to file
         csv_stats.append(epoch_stats)
 
-        # save current state of training allowing us to resume if this is stopped
-        save_checkpoint(epochs_wo_improvement=epochs_wo_improvement,
+        if not quick_run:  # in case of quick-run we do not store artifacts
+            # save current state of training allowing us to resume if this is stopped
+            save_checkpoint(epochs_wo_improvement=epochs_wo_improvement,
                         epoch=epoch,
                         model=model,
                         optimizer=optimizer,

@@ -478,7 +478,8 @@ def derive_label_normalizer(loss_class_name, y) -> Pipeline:
 def create_zeroshot_dataloader(workload_runs: WorkloadRuns,
                                statistics_file: Path,
                                model_config: ZeroShotModelConfig,
-                               data_loader_options: DataLoaderOptions) \
+                               data_loader_options: DataLoaderOptions,
+                               quick_run: bool = False) \
         -> (Optional[Pipeline], dict, Optional[DataLoader], Optional[DataLoader], List[Optional[DataLoader]]):
     # Postgres_plan_collator does the heavy lifting of creating the graphs and extracting the features and thus
     # requires both database statistics but also feature statistics
@@ -564,7 +565,8 @@ def create_zeroshot_dataloader(workload_runs: WorkloadRuns,
                                                                            shuffle_before_split=False,
                                                                            val_ratio=0.0,
                                                                            is_test_dataset=True,
-                                                                           do_not_limit_file=True,
+                                                                           do_not_limit_file=True and not quick_run,
+                                                                           # in case of quick_run we still want to limit this file
                                                                            # do not limit test files - e.g. for QO we need scores for all plans
                                                                            include_zero_card_queries=include_zero_card
                                                                            )

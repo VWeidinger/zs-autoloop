@@ -9,7 +9,6 @@ from octopus.step import Rsync, KillAllScreens, SetupVenv, RsyncCurrentRepo, Set
 from classes.classes import ModelConfig, ModelType, shorten_model_name
 from classes.model_config_helper import parameterized_config
 from scripts.exp_runner.exp_runner import ExpRunner, TrainingServers
-from training.featurizations import PostgresEstWithAdditionalFeats
 
 
 def generate_training_commands(datasets: List[Dataset], seeds: list[int], python_version: str, wandb_project: str,
@@ -253,8 +252,8 @@ if __name__ == '__main__':
 
     seeds = [3]
     nodes = [
-        # TrainingServers.NODE00,
-        TrainingServers.NODE01,
+        TrainingServers.NODE00,
+        # TrainingServers.NODE01,
         # TrainingServers.NODE02,
         # TrainingServers.NODE03,
         # TrainingServers.NODE04,
@@ -271,7 +270,7 @@ if __name__ == '__main__':
     # ===================
     # CONFIGS
     # ===================
-    quick_run = False  # if True, it will run only a few epochs on a few workloads
+    quick_run = True  # if True, it will run only a few epochs on a few workloads
     pt_profiler = False  # Profiler for PyTorch
     test_against = 'imdb'  # if not set, will test against all in an leave one out style
     ft_with_ranking = False  # fine-tune with ranking (pretrains a model and then fine-tunes it with ranking)
@@ -304,8 +303,8 @@ if __name__ == '__main__':
             model_specific_args = {}
 
         model_configs.extend([
-            # parameterized_config(model_type, wandb_group='baselines', include_pg_opt_workloads=True,
-            #                      **model_specific_args),  # std
+            parameterized_config(model_type, wandb_group='baselines', include_pg_opt_workloads=True,
+                                 **model_specific_args),  # std
             # # parameterized_config(model_type, wandb_group='whintwl', include_hint_workloads=True,
             # #                      include_pg_opt_workloads=True, **model_specific_args),  # hint
             # parameterized_config(model_type, wandb_group='whint_hintidx', include_pg_opt_workloads=True,
@@ -334,17 +333,17 @@ if __name__ == '__main__':
             # parameterized_config(model_type, wandb_group='scanonly',
             #                      include_scan_only_hint_workloads=True,
             #                      **model_specific_args),
-            parameterized_config(model_type, wandb_group='scanonly',
-                                 include_scan_only_hint_workloads=True,
-                                 prohibit_aggregation_node_at_root=True,
-                                 epochs=100,
-                                 **model_specific_args),
-            parameterized_config(model_type, wandb_group='scanonly',
-                                 include_scan_only_hint_workloads=True,
-                                 prohibit_aggregation_node_at_root=True,
-                                 featurization=PostgresEstWithAdditionalFeats,
-                                 epochs=100,
-                                 **model_specific_args),
+            # parameterized_config(model_type, wandb_group='scanonly',
+            #                      include_scan_only_hint_workloads=True,
+            #                      prohibit_aggregation_node_at_root=True,
+            #                      epochs=100,
+            #                      **model_specific_args),
+            # parameterized_config(model_type, wandb_group='scanonly',
+            #                      include_scan_only_hint_workloads=True,
+            #                      prohibit_aggregation_node_at_root=True,
+            #                      featurization=PostgresEstWithAdditionalFeats,
+            #                      epochs=100,
+            #                      **model_specific_args),
             # parameterized_config(model_type, wandb_group='scanonly',
             #                      include_scan_only_hint_workloads=True,
             #                      featurization=PostgresEstWithIsJoinCond,
@@ -356,19 +355,19 @@ if __name__ == '__main__':
             #                      featurization=PostgresEstWithIsJoinCond,
             #                      epochs=100,
             #                      **model_specific_args),
-            parameterized_config(model_type, wandb_group='scanonly',
-                                 include_scan_only_hint_workloads=True,
-                                 prohibit_aggregation_node_at_root=True,
-                                 annotate_base_table_card_to_scan_op=True,
-                                 epochs=100,
-                                 **model_specific_args),
-            parameterized_config(model_type, wandb_group='scanonly',
-                                 include_scan_only_hint_workloads=True,
-                                 prohibit_aggregation_node_at_root=True,
-                                 annotate_base_table_card_to_scan_op=True,
-                                 featurization=PostgresEstWithAdditionalFeats,
-                                 epochs=100,
-                                 **model_specific_args),
+            # parameterized_config(model_type, wandb_group='scanonly',
+            #                      include_scan_only_hint_workloads=True,
+            #                      prohibit_aggregation_node_at_root=True,
+            #                      annotate_base_table_card_to_scan_op=True,
+            #                      epochs=100,
+            #                      **model_specific_args),
+            # parameterized_config(model_type, wandb_group='scanonly',
+            #                      include_scan_only_hint_workloads=True,
+            #                      prohibit_aggregation_node_at_root=True,
+            #                      annotate_base_table_card_to_scan_op=True,
+            #                      featurization=PostgresEstWithAdditionalFeats,
+            #                      epochs=100,
+            #                      **model_specific_args),
 
             # parameterized_config(model_type, wandb_group='wranking_subplanmon_relloss_addfeats',
             #                      include_pg_opt_workloads=True,

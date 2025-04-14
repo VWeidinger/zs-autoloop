@@ -44,14 +44,16 @@ def init_model(statistics_file: Path,
                column_statistics: Path,
                config: ModelConfig,
                workload_runs: WorkloadRuns,
-               word_embeddings: Path) \
+               word_embeddings: Path,
+               quick_run: bool = False) \
         -> (Optional[nn.Module], DataLoader, DataLoader, List[DataLoader]):
     if isinstance(config, ZeroShotModelConfig):
         label_norm, feature_statistics, train_loader, val_loader, test_loaders = \
             create_zeroshot_dataloader(workload_runs=workload_runs,
                                        statistics_file=statistics_file,
                                        model_config=config,
-                                       data_loader_options=DataLoaderOptions(), )
+                                       data_loader_options=DataLoaderOptions(),
+                                       quick_run=quick_run)
 
         model: nn.Module = PostgresZeroShotModel(model_config=config,
                                                  feature_statistics=feature_statistics,
@@ -147,7 +149,8 @@ def use_model(mode: str,
               is_pretrained: bool,
               run_qo_test_pipeline_after_each_epoch: bool = True,
               pretrained_model_dir: Optional[str] = None,
-              pretrained_model_name: Optional[str] = None):
+              pretrained_model_name: Optional[str] = None,
+              quick_run: bool = False):
     # Seed for reproducibility
     print(f"Found model config {config}")
     torch.manual_seed(config.seed)
@@ -172,7 +175,8 @@ def use_model(mode: str,
                                                                               statistics_file=statistics_file,
                                                                               column_statistics=column_statistics,
                                                                               workload_runs=wl_runs,
-                                                                              word_embeddings=word_embeddings)
+                                                                              word_embeddings=word_embeddings,
+                                                                              quick_run=quick_run)
     if test_loaders:
         # extract test data for testing after each epoch
         if run_qo_test_pipeline_after_each_epoch:
@@ -211,7 +215,7 @@ def use_model(mode: str,
         print(f"Try to load model with name {config.name.NAME} and seed {config.seed} from {model_dir}", flush=True)
         csv_stats, epochs_wo_improvement, epoch, model, optimizer, metrics, finished, found, rank_found = \
             load_checkpoint(model=model,
-                            target_path=model_dir,
+                            target_path=model_dir if not quick_run else None,  # do not load checkpoint in quick_run
                             config=config,
                             optimizer=optimizer,
                             metrics=metrics,
@@ -348,7 +352,8 @@ def use_model(mode: str,
                             train_w_rank_model=train_w_rank_model,
                             rank_metric=rank_metric,
                             bound_predictions=False,
-                            prediction_bounder=prediction_bounder)
+                            prediction_bounder=prediction_bounder,
+                            quick_run=quick_run)
 
             # perform validation - after each training stage
             if isinstance(model_config, TabularModelConfig):
@@ -372,7 +377,8 @@ def use_model(mode: str,
                            log_prefix='test',
                            file_suffix=f"{'_rankmodel' if train_w_rank_model else ''}",
                            bound_predictions=bound_predictions,
-                           prediction_bounder=prediction_bounder)
+                           prediction_bounder=prediction_bounder,
+                           quick_run=quick_run)
 
             # reset stats
             epoch = 0
@@ -404,7 +410,8 @@ def use_model(mode: str,
                        file_suffix='',
                        bound_predictions=bound_predictions,
                        prediction_bounder=prediction_bounder,
-                       log_prefix='test'
+                       log_prefix='test',
+                       quick_run=quick_run
                        )
 
 
@@ -497,6 +504,9 @@ if __name__ == '__main__':
         if wandb_name.startswith('pm-'):  # remove the pm- prefix
             wandb_name = wandb_name[3:]
 
+        if args.quick_run:
+            wandb_name = f'quick_{wandb_name}'
+
         config_dict = attrs.asdict(model_config)
         config_dict['name'] = wandb_name
         config_dict['model_type'] = model_type
@@ -534,6 +544,7 @@ if __name__ == '__main__':
         is_pretrained=args.is_pretrained,
         pretrained_model_dir=args.pretrained_model_dir,
         pretrained_model_name=args.pretrained_model_name,
+        quick_run=args.quick_run,
     )
 
     use_model(**args)

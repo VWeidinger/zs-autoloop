@@ -32,7 +32,8 @@ def validate_model(val_loader: DataLoader,
                    update_metrics: bool = True,
                    store_model_snapshot: bool = True,
                    show_best_seen: bool = True,
-                   model_config: ModelConfig = None, ) -> bool:
+                   model_config: ModelConfig = None,
+                   quick_run: bool = False) -> bool:
     model.eval()
 
     with torch.autograd.no_grad():
@@ -177,7 +178,8 @@ def validate_model(val_loader: DataLoader,
                 for d, pred in zip(predictions, bounded_preds):
                     d['bounded_pred'] = pred
 
-            save_csv(predictions, target_csv_path=str(target_path) + "_test_pred.csv")
+            if not quick_run:  # do not store artifacts in quick run
+                save_csv(predictions, target_csv_path=str(target_path) + "_test_pred.csv")
 
     return any_best_metric, predictions
 

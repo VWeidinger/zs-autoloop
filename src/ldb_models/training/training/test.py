@@ -28,7 +28,8 @@ def test_model(config: ModelConfig,
                prediction_bounder: Optional[PredictionBounder] = None,
                load_best_checkpoint: bool = True,
                log_prefix: str = 'test',
-               is_per_epoch: bool = False):
+               is_per_epoch: bool = False,
+               quick_run: bool = False):
     # initialize variables for aggregated reporting across all experiments
     job_total_selected_runtime = -1
     job_total_slowdown = None
@@ -68,7 +69,8 @@ def test_model(config: ModelConfig,
                     store_model_snapshot=False,  # do not update best model snapshot - this is determined by val set
                     log_prefix=log_prefix,
                     show_best_seen=False,  # do not show - it was computed during val i.e. not relevant
-                    model_config=config
+                    model_config=config,
+                    quick_run=quick_run
                 )
 
                 # extract filename from path
