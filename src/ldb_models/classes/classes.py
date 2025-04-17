@@ -97,7 +97,7 @@ def shorten_model_name(name: str) -> str:
     name = name.replace('ohem_initialize_difficulty', 'ohem_init')
     name = name.replace('tablecardatscan', 'tcardscan')
     name = name.replace('PostgresEstWithAdditionalFeats', 'addfeats')
-
+    name = name.replace('include_complex_many_joins_workloads', 'manyjoins')
     return name
 
 
@@ -132,6 +132,7 @@ class ModelConfig:
     include_scan_only_hint_workloads: bool = False
     include_complex_workloads: bool = False
     include_complex_ranking_workloads: bool = False
+    include_complex_many_joins_workloads: bool = False
     wandb_group: str = field(default=None)
     train_on_subplans: bool = False
     merge_nlj_and_inlj_to_same_op: bool = False  # merge NLJ and INLJ to the same operator / do not differentiate between them
@@ -210,12 +211,20 @@ class ModelConfig:
         if self.include_complex_ranking_workloads:
             workload_names.append('full_qo_complex_workload_200k_s1')
 
+        if self.include_complex_many_joins_workloads:
+            workload_names.append('complex_workload_many_joins_hints')
+
         if self.type == ModelType.WL_AGNOSTIC:
             training_workloads = []
             for db in training_datasets:
                 if db.db_name != target_dataset.db_name:
-
                     for wl in workload_names:
+
+                        if wl == 'complex_workload_many_joins_hints' and db.db_name not in ['baseball', 'credit',
+                                                                                            'financial', 'geneea',
+                                                                                            'imdb', 'tournament']:
+                            continue
+
                         path = self.get_data_base_dir(
                             stratified_workloads=stratified_workload,
                             romans_runs=romans_runs) / f"{db.db_name}_scaled{db.scale}" / f"{wl}.json.gz"

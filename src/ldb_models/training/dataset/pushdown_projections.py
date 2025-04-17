@@ -145,27 +145,35 @@ def apply_projection_pushdown(plan: Dict, database_statistics: Dict, outcol_list
             })
             cols_already_covered_in_outcol.append(col)
 
-    if is_root and len(plan['children']) == 0 and len(node_output_cols) == 0:
-        # this is a "SELECT * FROM table WHERE ... " case
+    if len(plan['children']) == 0 and len(node_output_cols) == 0:
+        if is_root:
+            # this is a "SELECT * FROM table WHERE ... " case
 
-        # lookup pk col name & id
-        pk_col_name, pk_col_id = get_pk_col_of_table(plan, plan['plan_parameters']['table_name'], database_statistics)
+            # lookup pk col name & id
+            pk_col_name, pk_col_id = get_pk_col_of_table(plan, plan['plan_parameters']['table_name'],
+                                                         database_statistics)
 
-        node_output_cols.append({
-            "aggregation": "None",
-            "columns": [{
-                'col_id': pk_col_id,
-                'child_ref': None,
-                'table_name': plan['plan_parameters']['table_name'],
-                'table_alias': plan['plan_parameters']['table_alias'] if 'table_alias' in plan[
-                    'plan_parameters'] else None,
-                'col_name': pk_col_name,
-            }
-            ],
-            "udf_name": None,
-            "udf_output": "False",
-            "child_ref": False
-        })
+            node_output_cols.append({
+                "aggregation": "None",
+                "columns": [{
+                    'col_id': pk_col_id,
+                    'child_ref': None,
+                    'table_name': plan['plan_parameters']['table_name'],
+                    'table_alias': plan['plan_parameters']['table_alias'] if 'table_alias' in plan[
+                        'plan_parameters'] else None,
+                    'col_name': pk_col_name,
+                }
+                ],
+                "udf_name": None,
+                "udf_output": "False",
+                "child_ref": False
+            })
+        else:
+            # this could be an index only scan - columns will be used in join, but join has been moved to idx scan so no usage in parent
+            # keep existing output columns
+            node_output_cols.extend(plan['plan_parameters']['output_columns'])
+
+
 
     # update the output columns
     assert len(node_output_cols) > 0, f'there always has to be an output column: {plan} / {parent_col_list}'
