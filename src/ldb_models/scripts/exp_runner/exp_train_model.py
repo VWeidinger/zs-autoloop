@@ -308,8 +308,10 @@ if __name__ == '__main__':
             model_specific_args = {}
 
         model_configs.extend([
-            parameterized_config(model_type, wandb_group='baselines', include_pg_opt_workloads=True,
-                                 **model_specific_args),  # std
+            # parameterized_config(model_type, wandb_group='baselines', include_pg_opt_workloads=True,
+            #                      **model_specific_args),  # std
+            parameterized_config(model_type, wandb_group='outcolpruning', include_pg_opt_workloads=True,
+                                 apply_outcol_pruning=True, **model_specific_args),  # std
             # # parameterized_config(model_type, wandb_group='whintwl', include_hint_workloads=True,
             # #                      include_pg_opt_workloads=True, **model_specific_args),  # hint
             # parameterized_config(model_type, wandb_group='whint_hintidx', include_pg_opt_workloads=True,

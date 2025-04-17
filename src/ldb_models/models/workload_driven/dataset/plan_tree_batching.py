@@ -4,7 +4,7 @@ import dgl
 import numpy as np
 import torch
 
-from training.dataset.operator import LogicalOperator
+from training.dataset.cmp_operator import LogicalOperator
 from training.training.utils import recursive_to
 
 

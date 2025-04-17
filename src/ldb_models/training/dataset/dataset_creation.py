@@ -17,6 +17,7 @@ from classes.classes import ZeroShotModelConfig, DataLoaderOptions, ModelConfig,
 from classes.workload_runs import WorkloadRuns
 from models.zeroshot.postgres_plan_batching import postgres_plan_collator
 from training.dataset.plan_dataset import PlanDataset, OHEMPlanDataset, PreBatchedDataset
+from training.dataset.pushdown_projections import apply_projection_pushdown
 from training.dataset.statification import stratify_plans
 
 
@@ -64,7 +65,9 @@ def read_workload_runs(workload_run_paths: List[Path],
                        augment_with_subplans: bool = False,
                        return_per_file: bool = False,
                        merge_nlj_and_inlj_to_same_op: bool = False,
-                       remove_join_cond_from_plan: bool = False) -> (List[dict], dict):
+                       remove_join_cond_from_plan: bool = False,
+                       apply_outcol_pruning: bool = False,
+                       ) -> (List[dict], dict):
     # reads several workload runs
     plans = []
     database_statistics = dict()
@@ -151,6 +154,9 @@ def read_workload_runs(workload_run_paths: List[Path],
 
             if remove_join_cond_from_plan:
                 recursively_remove_join_cond_from_plan(plan)
+
+            if apply_outcol_pruning:
+                plan = apply_projection_pushdown(plan, database_statistics=database_statistics)[0]
 
             per_file_plans.append(plan)
 
@@ -377,6 +383,7 @@ def create_datasets(workload_run_paths,
                                                         return_per_file=apply_ohem,
                                                         merge_nlj_and_inlj_to_same_op=model_config.merge_nlj_and_inlj_to_same_op,
                                                         remove_join_cond_from_plan=model_config.remove_join_cond_from_plan,
+                                                        apply_outcol_pruning=model_config.apply_outcol_pruning,
                                                         )
     else:
         plans = inject_plans

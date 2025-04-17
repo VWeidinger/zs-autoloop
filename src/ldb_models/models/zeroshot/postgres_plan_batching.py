@@ -6,7 +6,7 @@ import numpy as np
 import torch
 from sklearn.preprocessing import RobustScaler
 
-from training.dataset.operator import Operator
+from training.dataset.cmp_operator import Operator
 from training.featurizations import Featurization
 from training.preprocessing.feature_statistics import FeatureType
 
@@ -528,12 +528,16 @@ def postgres_plan_collator(plans: List[Tuple], feature_statistics: dict[dict] = 
             features = np.array(features, dtype=np.float32)
         except Exception as e:
             print(len(features), flush=True)
-            print(len(features[0]), flush=True)
+            if len(features) > 0:
+                print(len(features[0]), flush=True)
 
             raise e
 
-        assert len(features[0]) == len(
-            feature_names), f'Features {len(features[0])} do not match feature names {len(feature_names)}'
+        if len(features) > 0:
+            assert len(features[0]) == len(
+                feature_names), f'Features {len(features[0])} do not match feature names {len(feature_names)}'
+        else:
+            print(f'Empty features: {features} / {feature_names}', flush=True)
 
         scaled_features = []
         for i, column in enumerate(feature_names):
