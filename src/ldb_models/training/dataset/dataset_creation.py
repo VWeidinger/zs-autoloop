@@ -156,7 +156,12 @@ def read_workload_runs(workload_run_paths: List[Path],
                 recursively_remove_join_cond_from_plan(plan)
 
             if apply_outcol_pruning:
-                plan = apply_projection_pushdown(plan, database_statistics=database_statistics)[0]
+                try:
+                    plan = apply_projection_pushdown(plan, database_statistics=database_statistics)[0]
+                except Exception as e:
+                    print(f'full plan: {plan}', flush=True)
+                    raise e
+
 
             per_file_plans.append(plan)
 
@@ -389,6 +394,21 @@ def create_datasets(workload_run_paths,
         plans = inject_plans
         database_statistics = inject_database_statistics
 
+    # derive label normalization
+    if apply_ohem:
+        # flatten list[list[plan]] to list[plan]
+        runtime_plans = []
+        for p_list in plans:
+            runtime_plans.extend(p_list)
+    else:
+        runtime_plans = plans
+
+    for p in runtime_plans:
+        assert 'timeout' in p, f"plan {p} does not have timeout information / {workload_run_paths}"
+
+    runtimes = np.array([p["plan_runtime_ms"] / 1000 for p in runtime_plans if not p['timeout']])
+    label_norm = derive_label_normalizer(model_config.loss_class_name, runtimes)
+
     if apply_ohem:
         # special case handling for OHEM
 
@@ -504,16 +524,6 @@ def create_datasets(workload_run_paths,
         val_dataset = create_dataset(plans, val_indexes, is_validation_set=True, assemble_graphs=assemble_graphs,
                                      assemble_graph_collate_fn=collate_fn)
 
-    # derive label normalization
-    if apply_ohem:
-        # flatten list[list[plan]] to list[plan]
-        runtime_plans = []
-        for p_list in plans:
-            runtime_plans.extend(p_list)
-    else:
-        runtime_plans = plans
-    runtimes = np.array([p["plan_runtime_ms"] / 1000 for p in runtime_plans if not p['timeout']])
-    label_norm = derive_label_normalizer(model_config.loss_class_name, runtimes)
 
     return label_norm, train_dataset, val_dataset, database_statistics
 

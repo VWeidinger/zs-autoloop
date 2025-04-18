@@ -1,9 +1,11 @@
 import time
 from pathlib import Path
-from typing import Optional, List, Callable
+from typing import Optional, List, Callable, Tuple, Dict
 
 import numpy as np
+import pandas as pd
 import torch
+import wandb
 from torch import nn
 from torch.utils.data import DataLoader
 from tqdm import tqdm
@@ -33,7 +35,8 @@ def validate_model(val_loader: DataLoader,
                    store_model_snapshot: bool = True,
                    show_best_seen: bool = True,
                    model_config: ModelConfig = None,
-                   quick_run: bool = False) -> bool:
+                   quick_run: bool = False,
+                   wandb_plots_dict: Dict = None) -> Tuple[bool, Dict]:
     model.eval()
 
     with torch.autograd.no_grad():
@@ -49,6 +52,8 @@ def validate_model(val_loader: DataLoader,
         all_selectivity = []
         all_scan_op = []
         all_join_op = []
+        all_num_tables = []
+        all_plan_depths = []
 
         if hasattr(model_config, 'subplan_monotonicity_loss') and model_config.subplan_monotonicity_loss:
             perform_subplan_monotonicity_loss = True
@@ -68,7 +73,8 @@ def validate_model(val_loader: DataLoader,
 
             # Access path selection eval: selectivity + scan_op
             # Physicl op selection eval: join_op
-            input_model, label, sample_idxs_batch, sql, hints, selectivity, scan_op, join_op = custom_batch_to(batch,
+            input_model, label, sample_idxs_batch, sql, hints, selectivity, scan_op, join_op, num_tables, plan_depths = custom_batch_to(
+                batch,
                                                                                                                model.device,
                                                                                                                model.label_norm)
 
@@ -112,6 +118,8 @@ def validate_model(val_loader: DataLoader,
             all_selectivity.extend(selectivity)
             all_scan_op.extend(scan_op)
             all_join_op.extend(join_op)
+            all_num_tables.extend(num_tables)
+            all_plan_depths.extend(plan_depths)
 
         if epoch_stats is not None:
             epoch_stats[f'{log_prefix}_time'] = time.perf_counter() - test_start_t
@@ -172,7 +180,41 @@ def validate_model(val_loader: DataLoader,
                               hints=all_hints,
                               selectivitys=all_selectivity,
                               scan_ops=all_scan_op,
-                              join_ops=all_join_op)
+                              join_ops=all_join_op,
+                              num_tables=all_num_tables,
+                              plan_depths=all_plan_depths
+                              )
+
+        if wandb_plots_dict is not None:
+            # create a q-error over num joins plot
+            predictions_df = pd.DataFrame(predictions)
+            print(list(predictions_df.columns), flush=True)
+            preds_grouped = predictions_df.groupby('num_tables')
+
+            # assemble metrics
+            qerror = QError()
+            qerror95 = QError(95)
+
+            plot_data = []
+            for num_tables, group in preds_grouped:
+                qerror_median = qerror.evaluate_metric(group['label'], group['prediction'])
+                qerror_95 = qerror95.evaluate_metric(group['label'], group['prediction'])
+                qerror_max = group['qerror'].max()
+
+                plot_data.append([num_tables, qerror_median, qerror_95, qerror_max])
+                epoch_stats[f'{log_prefix}_qerror_{num_tables}'] = qerror_median
+                epoch_stats[f'{log_prefix}_qerror_95_{num_tables}'] = qerror_95
+                epoch_stats[f'{log_prefix}_qerror_max_{num_tables}'] = qerror_max
+
+            # assemble wandb table
+            table = wandb.Table(data=plot_data, columns=["num_tables", "qerror_median", "qerror_95", "qerror_max"])
+            wandb_plots_dict[f'{log_prefix}_qerror_over_tables'] = wandb.plot.bar(table, "num_tables", "qerror_median",
+                                                                                  title='QError over number of tables')
+            wandb_plots_dict[f'{log_prefix}_qerror_over_tables_95'] = wandb.plot.bar(table, "num_tables", "qerror_95",
+                                                                                     title='QError 95 over number of tables')
+            wandb_plots_dict[f'{log_prefix}_qerror_over_tables_max'] = wandb.plot.bar(table, "num_tables", "qerror_max",
+                                                                                      title='QError max over number of tables')
+
         if log_all_queries:
             if bound_predictions:
                 for d, pred in zip(predictions, bounded_preds):
@@ -184,14 +226,20 @@ def validate_model(val_loader: DataLoader,
     return any_best_metric, predictions
 
 
-def to_rows(indexes, labels, predictions, sqls, hints, selectivitys, scan_ops, join_ops):
+def to_rows(indexes, labels, predictions, sqls, hints, selectivitys, scan_ops, join_ops, num_tables, plan_depths):
     """ Write down test-set predictions to file and to wandb"""
+    assert len(indexes) == len(labels) == len(predictions) == len(sqls) == len(hints) == len(selectivitys) == len(
+        scan_ops) == len(join_ops) == len(num_tables) == len(
+        plan_depths), f'len(indexes): {len(indexes)} len(labels): {len(labels)} len(predictions): {len(predictions)} len(sqls): {len(sqls)} len(hints): {len(hints)} len(selectivitys): {len(selectivitys)} len(scan_ops): {len(scan_ops)} len(join_ops): {len(join_ops)} len(num_tables): {len(num_tables)} len(plan_depths): {len(plan_depths)}'
+
     rows = []
-    for (index, label, prediction, sql, hint, selectivity, scan_op, join_op) in zip(indexes, labels, predictions, sqls,
+    for (index, label, prediction, sql, hint, selectivity, scan_op, join_op, num_t, depth) in zip(indexes, labels,
+                                                                                                  predictions, sqls,
                                                                                     hints, selectivitys, scan_ops,
-                                                                                    join_ops):
+                                                                                                  join_ops, num_tables,
+                                                                                                  plan_depths):
         entry = dict(query_index=index, label=label, prediction=prediction, sql=sql, hint=hint, selectivity=selectivity,
-                     scan_op=scan_op, join_op=join_op)
+                     scan_op=scan_op, join_op=join_op, num_tables=num_t, plan_depth=depth)
         entry.update(qerror=QError().evaluate_metric(label, prediction))
         rows.append(entry)
     return rows

@@ -59,10 +59,13 @@ def extract_cols_from_join(join: Dict) -> List[Dict]:
     ]
 
 
-def apply_projection_pushdown(plan: Dict, database_statistics: Dict, outcol_list: List[Dict] = None):
+def apply_projection_pushdown(plan: Dict, database_statistics: Dict, outcol_list: List[Dict] = None,
+                              dataset: str = None, db_id: int = None) -> (Dict, List[str]):
     if outcol_list is None:
         is_root = True
         outcol_list = []
+        dataset = plan['dataset']
+        db_id = plan['database_id']
     else:
         is_root = False
 
@@ -94,7 +97,8 @@ def apply_projection_pushdown(plan: Dict, database_statistics: Dict, outcol_list
     if 'children' in plan:
         for child in plan['children']:
             child_tables.extend(
-                apply_projection_pushdown(child, database_statistics=database_statistics, outcol_list=outcol_list)[1])
+                apply_projection_pushdown(child, database_statistics=database_statistics, outcol_list=outcol_list,
+                                          dataset=dataset, db_id=db_id)[1])
 
     if not is_root and len(parent_col_list) == 0:
         # this might happen because of count(*) on top - keep just the first output column
@@ -112,7 +116,22 @@ def apply_projection_pushdown(plan: Dict, database_statistics: Dict, outcol_list
             # reconstruct from filter
             cols = extract_cols_from_filter(plan['plan_parameters']['filter'])
 
+        if len(cols) == 0 and len(plan['children']) == 0:
+            # still no cols extracted and no child exists: we just use the pk column
+            # lookup pk col name & id
+            pk_col_name, pk_col_id = get_pk_col_of_table(plan, plan['plan_parameters']['table_name'],
+                                                         database_statistics, dataset=dataset, db_id=db_id)
+            cols = [{
+                'col_id': pk_col_id,
+                'child_ref': None,
+                'table_name': plan['plan_parameters']['table_name'],
+                'table_alias': plan['plan_parameters']['table_alias'] if 'table_alias' in plan[
+                    'plan_parameters'] else None,
+                'col_name': pk_col_name,
+            }]
+
         if len(cols) == 0:
+            # still no cols extracted: this is a problem
             raise Exception(f'No output column can be reconstructed for {plan}')
 
         assert len(cols) > 0, plan
@@ -173,8 +192,6 @@ def apply_projection_pushdown(plan: Dict, database_statistics: Dict, outcol_list
             # keep existing output columns
             node_output_cols.extend(plan['plan_parameters']['output_columns'])
 
-
-
     # update the output columns
     assert len(node_output_cols) > 0, f'there always has to be an output column: {plan} / {parent_col_list}'
     plan['plan_parameters']['output_columns'] = node_output_cols
@@ -187,10 +204,13 @@ def get_schema_wrapper(dataset: str):
     return get_json_schema(dataset=dataset)
 
 
-def get_pk_col_of_table(plan, table_name, dataset_statistics) -> str:
-    assert 'dataset' in plan, f'does not found dataset info in {plan}'
+def get_pk_col_of_table(plan, table_name, dataset_statistics, dataset: str = None, db_id: int = None) -> str:
+    if dataset is None:
+        assert 'dataset' in plan, f'does not found dataset info in {plan}'
+        dataset = plan['dataset']
+        db_id = plan['database_id']
 
-    schema = get_schema_wrapper(dataset=plan['dataset'])
+    schema = get_schema_wrapper(dataset=dataset)
 
     col_list = schema['table_col_info'][table_name]
     assert len(col_list) > 0, f'no columns found for table {table_name} in {schema}'
@@ -199,9 +219,6 @@ def get_pk_col_of_table(plan, table_name, dataset_statistics) -> str:
     pk_cols = [col_name for col_name, col in col_list.items() if col['pk']]
     assert len(pk_cols) > 0, f'no pk cols found for table {table_name} in {schema}'
     pk_col_name = pk_cols[0]
-
-    # db id
-    db_id = plan['database_id']
 
     # lookup pk col id
     assert 'column_stats' in dataset_statistics[db_id], f'no column stats found in {dataset_statistics[db_id]}'

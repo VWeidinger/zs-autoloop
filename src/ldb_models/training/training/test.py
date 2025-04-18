@@ -53,12 +53,14 @@ def test_model(config: ModelConfig,
             for test_path, test_loader in zip(test_csv_paths, test_loaders):
                 print(f"Starting validation for {test_path}")
                 test_stats = dict()
+                wandb_plots_dict = dict() if wandb_run is not None else None
 
                 _, predictions_dict = validate_model(
                     val_loader=test_loader,
                     model=model,
                     epoch=epoch,
                     epoch_stats=test_stats,
+                    wandb_plots_dict=wandb_plots_dict,
                     metrics=metrics,
                     custom_batch_to=config.batch_to_func,
                     log_all_queries=True,
@@ -79,10 +81,15 @@ def test_model(config: ModelConfig,
                 filename = '_'.join(filename.split('_')[:-1])
 
                 if wandb_run is not None:
+                    prefixed = prefix_dict(test_stats, f'{filename}.json/')
                     if is_per_epoch:
-                        wandb_run.log(prefix_dict(test_stats, f'{filename}.json/'), step=epoch)
+                        # prefixed_plots = prefix_dict(wandb_plots_dict, f'{filename}.json/') # do not log plots per epoch
+                        wandb_run.log(prefixed, step=epoch)
+                        # wandb_run.log(prefixed_plots, step=epoch)
                     else:
-                        wandb_run.summary.update(prefix_dict(test_stats, f'{filename}.json/'))
+                        prefixed_plots = prefix_dict(wandb_plots_dict, f'{filename}.json/')
+                        wandb_run.summary.update(prefixed)
+                        wandb_run.log(prefixed_plots)
 
                 if not is_per_epoch:
                     save_csv([test_stats], str(test_path) + f"_test_stats{file_suffix}.csv")

@@ -52,7 +52,7 @@ def train_epoch(epoch_stats: dict, train_loader: DataLoader, model: nn.Module,
     for batch_idx, batch in enumerate(tqdm(train_loader)):
         if max_epoch_tuples is not None and batch_idx * model_config.batch_size > max_epoch_tuples:
             break
-        input_model, label, sample_idxs, _, _, _, _, _ = custom_batch_to(batch, model.device, model.label_norm)
+        input_model, label, sample_idxs, _, _, _, _, _, _, _ = custom_batch_to(batch, model.device, model.label_norm)
 
         # Reset gradients first
         if isinstance(model, QPPNet):

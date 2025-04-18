@@ -437,6 +437,8 @@ def postgres_plan_collator(plans: List[Tuple], feature_statistics: dict[dict] = 
     selectivity_list = []
     scan_op_list = []
     join_op_list = []
+    num_tables_list = []
+    graph_depth_list = []
 
     # prepare robust encoder for the numerical fields
     add_numerical_scalers(feature_statistics)
@@ -446,14 +448,13 @@ def postgres_plan_collator(plans: List[Tuple], feature_statistics: dict[dict] = 
     for sample_idx, p in plans:
         sample_idxs.append(sample_idx)
         labels.append(p["plan_runtime_ms"])
-
-        if test_mode:
-            sql_statements.append(p["sql"])
-            hints.append(p["hint"])
-            assign_additional_plan_info(p, db_statistics)
-            selectivity_list += p["selectivity"]
-            scan_op_list += p["scan_op"]
-            join_op_list += p["join_op"]
+        num_tables_list.append(p["num_tables"])
+        sql_statements.append(p["sql"])
+        hints.append(p["hint"])
+        assign_additional_plan_info(p, db_statistics)
+        selectivity_list += p["selectivity"]
+        scan_op_list += p["scan_op"]
+        join_op_list += p["join_op"]
 
         if enforce_aggregation_node_at_root:
             # check if plan has aggregation node at root
@@ -508,6 +509,8 @@ def postgres_plan_collator(plans: List[Tuple], feature_statistics: dict[dict] = 
                 for k, v in root_args.items():
                     p[k] = v
 
+        plan_depth_start_idx = len(plan_depths)
+
         # Parse the plan as graph
         plan_to_graph(p, p["database_id"], plan_depths, plan_features, plan_to_plan_edges, db_statistics,
                       feature_statistics, filter_to_plan_edges, filter_features, output_column_to_plan_edges,
@@ -517,6 +520,8 @@ def postgres_plan_collator(plans: List[Tuple], feature_statistics: dict[dict] = 
                       plan_featurization, predicate_depths, intra_predicate_edges, logical_preds,
                       skip_top_aggregation=skip_top_aggregation, filter_inline_col_feats=filter_inline_col_feats,
                       annotate_base_table_card_to_scan_op=annotate_base_table_card_to_scan_op)
+
+        graph_depth_list.append(max(plan_depths[plan_depth_start_idx:], default=0))
 
     assert len(labels) == len(plans)
     assert len(plan_depths) == len(plan_features)
@@ -672,10 +677,10 @@ def postgres_plan_collator(plans: List[Tuple], feature_statistics: dict[dict] = 
         labels = torch.from_numpy(labels)
         sample_idxs = torch.from_numpy(np.array(sample_idxs, dtype=np.int64))
 
-    if test_mode:
-        return graph, features, labels, sample_idxs, sql_statements, hints, selectivity_list, scan_op_list, join_op_list
-    else:
-        return graph, features, labels, sample_idxs, [], [], [], [], []
+    # if test_mode:
+    return graph, features, labels, sample_idxs, sql_statements, hints, selectivity_list, scan_op_list, join_op_list, num_tables_list, graph_depth_list
+    # else:
+    #     return graph, features, labels, sample_idxs, [], [], [], [], [], num_tables_list, graph_depth_list
 
 
 def postprocess_labels(labels):

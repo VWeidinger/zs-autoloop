@@ -9,6 +9,7 @@ from octopus.step import Rsync, KillAllScreens, SetupVenv, RsyncCurrentRepo, Set
 from classes.classes import ModelConfig, ModelType, shorten_model_name
 from classes.model_config_helper import parameterized_config
 from scripts.exp_runner.exp_runner import ExpRunner, TrainingServers
+from training.featurizations import PostgresEstWithAdditionalFeats
 
 
 def generate_training_commands(datasets: List[Dataset], seeds: list[int], python_version: str, wandb_project: str,
@@ -311,14 +312,21 @@ if __name__ == '__main__':
             # parameterized_config(model_type, wandb_group='baselines', include_pg_opt_workloads=True,
             #                      **model_specific_args),  # std
             parameterized_config(model_type, wandb_group='outcolpruning_manyjoins',
+                                 include_scan_only_hint_workloads=True,
                                  include_hint_idx_workloads=True,
                                  include_complex_many_joins_workloads=True,
+                                 include_complex_ranking_workloads=True,
+                                 enforce_aggregation_node_at_root=True,
+                                 annotate_base_table_card_to_scan_op=True,
+                                 featurization=PostgresEstWithAdditionalFeats,
+                                 subplan_monotonicity_loss=True,
+                                 subplan_monotonicity_loss_fn='relative_lt_loss',
                                  apply_outcol_pruning=True, **model_specific_args),  # std
-            parameterized_config(model_type, wandb_group='outcolpruning_manyjoins',
-                                 include_pg_opt_workloads=True,
-                                 include_hint_idx_workloads=True,
-                                 include_complex_many_joins_workloads=True,
-                                 apply_outcol_pruning=True, **model_specific_args),  # std
+            # parameterized_config(model_type, wandb_group='outcolpruning_manyjoins',
+            #                      include_pg_opt_workloads=True,
+            #                      include_hint_idx_workloads=True,
+            #                      include_complex_many_joins_workloads=True,
+            #                      apply_outcol_pruning=True, **model_specific_args),  # std
             # # parameterized_config(model_type, wandb_group='whintwl', include_hint_workloads=True,
             # #                      include_pg_opt_workloads=True, **model_specific_args),  # hint
             # parameterized_config(model_type, wandb_group='whint_hintidx', include_pg_opt_workloads=True,

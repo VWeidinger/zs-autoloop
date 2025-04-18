@@ -63,6 +63,8 @@ def train_model(csv_stats: List,
         epoch_stats.update(epoch=epoch + epoch_offset, train_w_rank=train_w_rank_model)
         epoch_start_time: float = time.perf_counter()
 
+        wandb_plots_dict = dict() if wandb_run is not None else None
+
         any_best_metric = False
         if train_w_rank_model:
             train_epoch_rank(
@@ -108,6 +110,7 @@ def train_model(csv_stats: List,
             prediction_bounder=prediction_bounder,
             log_prefix='epoch_val',
             model_config=config,
+            wandb_plots_dict=wandb_plots_dict
         )
         any_best_metric = any_best_metric or new_best_metric_seen
 
@@ -164,6 +167,7 @@ def train_model(csv_stats: List,
 
         if wandb_run:
             wandb_run.log(epoch_stats, step=epoch)
+            # wandb_run.log(wandb_plots_dict, step=epoch) # do not log plots per epoch
 
         if config.online_hard_example_mining:
             if epoch % config.ohem_resort_after_num_epochs == 0:
