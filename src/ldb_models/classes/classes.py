@@ -57,7 +57,7 @@ class ModelName:
                                                 "Zero-Shot (stratified, PG cost, with hint plan)")
     ZS_PG_COST_WITH_HINT_PLAN = Name("zeroshot_pg_cost_with_hint_plan",
                                      "Zero-Shot (PG cost, with hint plan)")
-
+    ZS_VAE = Name("zeroshot_vae", "Zero-Shot (VAE)")
     QPP_NET = Name("qppnet", "QPP-Net")
     QPP_NET_NO_COSTS = Name("qppnet_no_costs", "QPP-Net\n(w/o PG costs)")
     QPP_NET_ACT_CARDS = Name("qppnet_act_cards", "QPP-Net (act. card.)")
@@ -536,6 +536,14 @@ class ZeroShotModelWHintsConfig(ZeroShotModelConfig):
 class ZeroShotModelOnlyHints(ZeroShotModelConfig):
     name: Name = ModelName.ZS_ONLY_HINTS
     only_hint_workloads: bool = True
+
+
+@attrs.define(frozen=True, slots=False)
+class ZeroShotVAEModelConfig(ZeroShotModelConfig):
+    name: Name = ModelName.ZS_VAE
+    vae_dim: int = 128
+    beta: float = 0.1
+    num_samples: int = 100
 
 
 @attrs.define(frozen=True, slots=False)

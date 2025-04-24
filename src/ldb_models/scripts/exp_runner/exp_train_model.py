@@ -301,7 +301,8 @@ if __name__ == '__main__':
         # 'zeroshot_timeout',
         # 'dace',
         # 'flat',
-        # 't3'
+        # 't3',
+        # 'zeroshot_vae'
     ]:
         if model_type == 'dace':
             model_specific_args = {'pad_length': 60}

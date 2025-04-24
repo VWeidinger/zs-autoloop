@@ -11,6 +11,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from classes.classes import ModelConfig
+from models.zeroshot.specific_models.postgres_zero_shot_vae import PostgresZeroShotModelVAE
 from models.zeroshot.subplan_runtime_helper import extract_smaller_larger_preds_tensor_for_subplan_graphs
 from training.batch_to_funcs import batch_to
 from training.bound_predictions_with_history import PredictionBounder, bound_predictions_helper
@@ -79,7 +80,10 @@ def validate_model(val_loader: DataLoader,
                                                                                                                model.label_norm)
 
             sample_idxs += sample_idxs_batch
-            output = model(input_model)
+            if isinstance(model, PostgresZeroShotModelVAE):
+                output = model.predict(input_model, model_config.num_samples)
+            else:
+                output = model(input_model)
 
             if perform_subplan_monotonicity_loss:
                 assert len(output) == 3
