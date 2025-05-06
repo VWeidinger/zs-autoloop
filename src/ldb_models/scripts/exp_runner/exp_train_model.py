@@ -99,6 +99,8 @@ def generate_training_commands(datasets: List[Dataset], seeds: list[int], python
                 model_type = 'flat'
             elif model_type.startswith('t3'):
                 model_type = 't3'
+            elif model_type.startswith('neo'):
+                model_type = 'neo'
             else:
                 raise ValueError(f"Model type {model_type} not recognized")
 
@@ -213,7 +215,7 @@ if __name__ == '__main__':
     if os.getenv('SSH_PATH') is not None:
         ssh_path = os.getenv('SSH_PATH')
     else:
-        ssh_path = None
+        ssh_path = "ssh"
 
     setup_steps = [
         RsyncCurrentRepo(gitignore_path='.gitignore', local_folder_path=LocalPaths().Models.root.as_posix(),
@@ -285,7 +287,7 @@ if __name__ == '__main__':
     eval_physical_operator = True and not quick_run  # evaluate physical operator selection
     qo_eval_after_each_epoch = True  # if True, will run a full QO evaluation after each epoch
     use_romans_runs = False
-    assemble_data_up_front = True  # run data / graph assemble up front i.e. during dataset creation instead of collate / training time
+    assemble_data_up_front = False  # run data / graph assemble up front i.e. during dataset creation instead of collate / training time
     # =================== (pretrained / wandb reuse configs)
     is_pretrained = False  # if True, assumes that the model is pretrained and does not train it
     update_wandb_summary = False  # (works only together with pretrained) if True, it will update the wandb summaries of the first run with this layout
@@ -295,13 +297,14 @@ if __name__ == '__main__':
     model_configs = []
     for model_type in [
         # 'postgres',
-        'zeroshot',
+        # 'zeroshot',
         # 'zeroshot_low_min',
         # 'zeroshot_xl',
         # 'zeroshot_timeout',
         # 'dace',
         # 'flat',
         # 't3'
+        "neo"
     ]:
         if model_type == 'dace':
             model_specific_args = {'pad_length': 60}
@@ -309,19 +312,24 @@ if __name__ == '__main__':
             model_specific_args = {}
 
         model_configs.extend([
-            # parameterized_config(model_type, wandb_group='baselines', include_pg_opt_workloads=True,
-            #                      **model_specific_args),  # std
-            parameterized_config(model_type, wandb_group='outcolpruning_manyjoins',
+            parameterized_config(model_type, wandb_group='baselines',
+                                 include_pg_opt_workloads=True,
                                  include_scan_only_hint_workloads=True,
                                  include_hint_idx_workloads=True,
                                  include_complex_many_joins_workloads=True,
                                  include_complex_ranking_workloads=True,
-                                 enforce_aggregation_node_at_root=True,
-                                 annotate_base_table_card_to_scan_op=True,
-                                 featurization=PostgresEstWithAdditionalFeats,
-                                 subplan_monotonicity_loss=True,
-                                 subplan_monotonicity_loss_fn='relative_lt_loss',
-                                 apply_outcol_pruning=True, **model_specific_args),  # std
+                                 **model_specific_args),  # std
+            #parameterized_config(model_type, wandb_group='outcolpruning_manyjoins',
+            #                     include_scan_only_hint_workloads=True,
+            #                     include_hint_idx_workloads=True,
+            #                     include_complex_many_joins_workloads=True,
+            #                     include_complex_ranking_workloads=True,
+            #                     enforce_aggregation_node_at_root=True,
+            #                     annotate_base_table_card_to_scan_op=True,
+            #                     featurization=PostgresEstWithAdditionalFeats,
+            #                     subplan_monotonicity_loss=True,
+            #                     subplan_monotonicity_loss_fn='relative_lt_loss',
+            #                     apply_outcol_pruning=True, **model_specific_args),  # std
             # parameterized_config(model_type, wandb_group='outcolpruning_manyjoins',
             #                      include_pg_opt_workloads=True,
             #                      include_hint_idx_workloads=True,

@@ -41,3 +41,20 @@ def batch_to(batch, device, label_norm):
     graph = graph.to(device, non_blocking=True)
     return (
     graph, features), label_tensor, sample_idxs, sqls, hints, selectivity, scan_op, join_op, num_tables, plan_depths
+
+def neo_batch_to(batch, device, label_norm):
+    # Unpack the batch
+    query_encodings, trees, indexes, labels, sample_idxs, sqls, hints, selectivity, scan_op, join_op, num_tables, plan_depths = batch
+
+    # Normalize the labels for training
+    if label_norm is not None:
+        labels = label_norm.transform(np.asarray(labels).reshape(-1, 1))
+        labels = labels.reshape(-1)
+
+    # Convert to tensors and move to device
+    labels = torch.as_tensor(labels, device=device, dtype=torch.float)
+    recursive_to(trees, device)
+    recursive_to(query_encodings, device)
+    recursive_to(indexes, device)
+    recursive_to(labels, device)
+    return (query_encodings, trees, indexes), labels, sample_idxs, sqls, hints, selectivity, scan_op, join_op, num_tables, plan_depths

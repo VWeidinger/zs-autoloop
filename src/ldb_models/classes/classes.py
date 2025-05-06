@@ -11,7 +11,7 @@ from models.t3.query_plan import CardType
 from models.workload_driven.dataset.mscn_batching import mscn_plan_collator
 from models.workload_driven.dataset.plan_tree_batching import plan_batch_to, baseline_plan_collator
 from models.zeroshot.postgres_plan_batching import postgres_plan_collator
-from training.batch_to_funcs import dace_batch_to, simple_batch_to, batch_to
+from training.batch_to_funcs import dace_batch_to, simple_batch_to, batch_to, neo_batch_to
 from training.featurizations import Featurization, DACEFeaturization, QPPNetFeaturization, \
     PostgresEstSystemCardDetail, DACEFeaturizationNoCosts, QPPNetNoCostsFeaturization, FlatModelFeaturization, \
     FlatModelActCardFeaturization, QPPNetActCardsFeaturization, PostgresTrueCardDetail, DACEActCardFeaturization, \
@@ -72,6 +72,8 @@ class ModelName:
     T3 = Name("t3", "T3")
     T3Flat = Name("t3_flat", "T3 (Flat)")
     T3Tree = Name("t3_tree", "T3 (Tree)")
+
+    NEO = Name("neo", "Neo")
 
 
 class ModelType:
@@ -164,12 +166,11 @@ class ModelConfig:
         return source_path.Data.evaluation / model_name / database.db_name
 
     def get_statistics(self, source_path: Paths, dataset: Dataset, format: InputFormats) -> Path:
-        # if self.name in [ModelName.MSCN, ModelName.QUERY_FORMER]:
-        #    if dataset == Dataset('imdb'):
-        #        return source_path.Data. / dataset.db_name / 'statistics_combined.json'
-        #    else:
-        #        return source_path.Data.augmented_plans_baseline / dataset.db_name / 'statistics.json'
-        return source_path.Data.root / 'feature_statistics' / f'{format}_feature_statistics.json'
+        model_name = self.name.NAME[3:].split('-')[0]
+        if model_name in ["mscn", "query_former", "neo"]:
+            return source_path.Data.root / 'feature_statistics' / f'{format}_feature_statistics_{dataset.db_name}.json'
+        else:
+            return source_path.Data.root / 'feature_statistics' / f'{format}_feature_statistics.json'
 
     def get_column_stats(self, dataset: Dataset) -> Optional[Path]:
         if self.column_statistics:
@@ -648,6 +649,22 @@ class T3TreeModelConfig(T3ModelConfig):
 @attrs.define(frozen=True, slots=False)
 class T3FlatModelConfig(T3ModelConfig):
     name: Name = ModelName.T3Flat
+
+@attrs.define(frozen=True, slots=False)
+class NeoModelConfig(ModelConfig):
+    name: Name = ModelName.NEO
+    batch_to_func: Callable = dace_batch_to
+    device: str = "cuda:[socket]"
+    type: ModelType = ModelType.WL_DRIVEN
+    mscn_enc_layers: int = 1
+    mscn_est_layers: int = 1
+    batch_to_func: Callable = batch_to
+    collator_func: Callable = mscn_plan_collator
+    input_format: InputFormats = InputFormats.parsed
+    column_statistics: bool = False
+    word_embeddings: bool = False
+    batch_to_func: callable = neo_batch_to
+    optimizer_kwargs: dict = dict(lr=1e-2)
 
 
 @attrs.define(frozen=True, slots=False)

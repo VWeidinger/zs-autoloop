@@ -18,11 +18,12 @@ from wandb.apis.public import Run
 
 from classes.classes import ModelConfig, E2EModelConfig, ZeroShotModelConfig, MSCNModelConfig, DataLoaderOptions, \
     TlstmModelConfig, FlatModelConfig, ScaledPostgresModelConfig, TabularModelConfig, QPPNetModelConfig, \
-    DACEModelConfig, QueryFormerModelConfig, T3ModelConfig
+    DACEModelConfig, QueryFormerModelConfig, T3ModelConfig, NeoModelConfig
 from classes.model_config_helper import get_model_config
 from classes.workload_runs import WorkloadRuns
 from models.dace.dace_dataset import create_dace_dataloader
 from models.dace.dace_model import DACELora
+from models.neo.neo_model import TreeConvolution
 from models.qppnet.qppnet_dataloader import create_qppnet_dataloader
 from models.qppnet.qppnet_model import QPPNet
 from models.query_former.model import QueryFormer
@@ -83,6 +84,19 @@ def init_model(statistics_file: Path,
             model: nn.Module = QueryFormer(config=config,
                                            input_dims=input_dims,
                                            label_norm=None,
+                                           feature_statistics=feature_statistics)
+
+    elif isinstance(config, NeoModelConfig):
+        _, feature_statistics, train_loader, val_loader, test_loaders, input_dims = \
+            create_baseline_dataloader(workload_runs=workload_runs,
+                                       statistics_file=statistics_file,
+                                       column_statistics=column_statistics,
+                                       word_embeddings=word_embeddings,
+                                       model_config=config,
+                                       data_loader_options=DataLoaderOptions())
+
+        model: nn.Module = TreeConvolution(model_config=config,
+                                           input_dims=input_dims,
                                            feature_statistics=feature_statistics)
 
     elif isinstance(config, QPPNetModelConfig):
@@ -211,6 +225,9 @@ def use_model(mode: str,
                     continue
                 test_after_epoch_dataloaders.append(dl)
                 test_after_epoch_testfiles.append(wl_file)
+    else:
+        test_after_epoch_dataloaders = []
+        test_after_epoch_testfiles = []
 
     found = False
     rank_found = False
@@ -513,6 +530,8 @@ if __name__ == '__main__':
         model_type = 'flat'
     elif model_type.startswith('t3'):
         model_type = 't3'
+    elif model_type.startswith('neo'):
+        model_type = 'neo'
     else:
         raise ValueError(f"Model type {model_type} not recognized")
 
