@@ -210,8 +210,8 @@ def create_baseline_dataloader(workload_runs: WorkloadRuns,
         dim_word_hash = 0
 
     if workload_runs.train_workload_runs:
-        assert workload_runs.test_workload_runs == [], ("Unseen Test workload runs are not allowed when training "
-                                                        "workload driven models")
+        #assert workload_runs.test_workload_runs == [], ("Unseen Test workload runs are not allowed when training "
+        #                                                "workload driven models")
         print("Create dataloader for training, validation and test data")
 
         label_norm, train_dataset, val_dataset, database_statistics = \

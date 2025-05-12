@@ -664,7 +664,6 @@ class NeoModelConfig(ModelConfig):
     column_statistics: bool = False
     word_embeddings: bool = False
     batch_to_func: callable = neo_batch_to
-    optimizer_kwargs: dict = dict(lr=1e-2)
 
 
 @attrs.define(frozen=True, slots=False)

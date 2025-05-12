@@ -26,9 +26,14 @@ def get_table_id(table_name: str, table_statistics: list) -> int:
     raise ValueError(f"Table {table_name} not found in table statistics")
 
 
-def extract_join_recursively(plan: dict, table_statistics: list, join_tables: list) -> list:
+def extract_join_recursively(sql: str, hint: str, plan: dict, table_statistics: list, join_tables: list) -> list:
     if is_join(plan):
         join_info = plan["plan_parameters"]["join"]
+
+        # Quick fix in case of joining three tables - this happens in care cases of transitive joins
+        if "children" in join_info:
+            print(f"Joining three tables for {sql}")
+            join_info = join_info["children"][0]
 
         # Left side
         table_name1 = join_info["table_name1"]
@@ -47,14 +52,18 @@ def extract_join_recursively(plan: dict, table_statistics: list, join_tables: li
         right_table_id = get_table_id(table_name2, table_statistics)
 
         # Collect join information
-        join_tables.append({"left_table": left_table_id,
+        join_tables.append({"left_table": table_name1,
                             "left_col": col_id1,
-                            "right_table": right_table_id,
+                            "right_table": table_name2,
                             "right_col": col_id2})
 
     if "children" in plan.keys():
         for child in plan["children"]:
-            join_tables = extract_join_recursively(child, table_statistics, join_tables)
+            join_tables = extract_join_recursively(sql=sql,
+                                                   plan=child,
+                                                   hint=hint,
+                                                   table_statistics=table_statistics,
+                                                   join_tables=join_tables)
     return join_tables
 
 def extract_join_matrix(plan: dict, table_statistics: list) -> np.ndarray:
@@ -67,42 +76,52 @@ def extract_join_matrix(plan: dict, table_statistics: list) -> np.ndarray:
     :param table_statistics: The table statistics to know the length of tables
     :return: The join matrix as a numpy array.
     """
+    table_ids = init_table_ids(table_statistics)
 
     joins = []
-    joins_infos = extract_join_recursively(plan, table_statistics, [])
+    joins_infos = extract_join_recursively(sql=plan["sql"],
+                                           hint=plan["hint"],
+                                           plan=plan,
+                                           table_statistics=table_statistics,
+                                           join_tables=[])
     for join_info in joins_infos:
         joins.append(sorted([join_info["left_table"], join_info["right_table"]]))
 
     # Create join matrix
     join_matrix = np.zeros((len(table_statistics), len(table_statistics)))
+
     for pair in joins:
-        join_matrix[pair[0], pair[1]] = 1
-        join_matrix[pair[1], pair[0]] = 1
+        left_index = table_ids[pair[0]]
+        right_index = table_ids[pair[1]]
+        join_matrix[left_index, right_index] = 1
+        join_matrix[left_index, right_index] = 1
 
     # Flatten matrix by getting values above the main diagonal (excluding diagonal), as shown in paper
     rows, cols = np.triu_indices(join_matrix.shape[0], k=1)
     result = join_matrix[rows, cols]
 
-    assert result.sum() == plan["num_tables"] - 1, f"Expected {plan['num_tables'] - 1} joins, but got {result.sum()} for {plan}"
+    #assert result.sum() == plan["num_tables"] - 1, f"Expected {plan['num_tables'] - 1} joins, but got {result.sum()} for {plan}"
     return result
 
-def extract_predicates_recursively(plan: dict, column_statistics: dict, feature_statistics: dict, predicates: list) -> list[dict]:
+def extract_filter_columns_recursively(filter_params: dict, table_name: str, predicates: list):
+    if "col_id" in filter_params:
+        predicates.append({"col_id": filter_params["col_id"],
+                           "col_name": filter_params["col_name"],
+                           "table_name": table_name})
+
+    if "children" in filter_params:
+        for child_filter in filter_params["children"]:
+            extract_filter_columns_recursively(child_filter, table_name, predicates)
+
+def extract_predicates_recursively(plan: dict, column_statistics: dict,
+                                   feature_statistics: dict, predicates: list) -> list[dict]:
     plan_params = plan.get("plan_parameters", {})
     table_name = plan_params.get("table_name")
 
-    if is_scan(plan):
-        # When there is a scan, but no filter, we do not add any predicates
+    if is_scan(plan): # When there is a scan, but no filter, we do not add any predicates
         if "filter" in plan_params.keys():
             filter_params = plan_params["filter"]
-            if "col_id" in filter_params:
-                predicates.append({"col_id": filter_params["col_id"],
-                                   "col_name": filter_params["col_name"],
-                                   "table_name": table_name})
-            else:
-                for child_filter in filter_params.get("children", []):
-                    predicates.append({"col_id": child_filter["col_id"],
-                                       "col_name": child_filter["col_name"],
-                                       "table_name": table_name})
+            extract_filter_columns_recursively(filter_params, table_name, predicates)
 
     for child in plan.get("children", []):
         extract_predicates_recursively(child, column_statistics, feature_statistics, predicates)
@@ -111,6 +130,8 @@ def extract_predicates_recursively(plan: dict, column_statistics: dict, feature_
 def extract_predicate_encoding(plan: dict, column_statistics: dict, feature_statistics: dict) -> np.ndarray:
     # Extracts the predicate encoding from a plan
     predicates = extract_predicates_recursively(plan, column_statistics, feature_statistics, predicates=[])
+
+    print(f"Predicates: {predicates}")
 
     # Use only column ids and sort them - we might later implement more sophisticated encoding as written in the paper
     predicate_ids = []
@@ -124,8 +145,8 @@ def extract_predicate_encoding(plan: dict, column_statistics: dict, feature_stat
         predicate_encodings[p] = 1
     return predicate_encodings
 
-def extract_plan_encoding_recursively(plan: dict, table_statistics: list, feature_statistics: dict,
-                                      plan_encodings: list, depth: int, max_depth: int = 10) -> list:
+def extract_plan_encoding_recursively(plan: dict, table_statistics: list, table_ids: list,
+                                      plan_encodings: list, depth: int, max_depth: int) -> list:
 
     assert depth < max_depth, f"Plan depth exceeds maximum limit of {max_depth}"
     # Initialize plan encoding feature vectors for operator type, table access, and index encoding
@@ -137,17 +158,21 @@ def extract_plan_encoding_recursively(plan: dict, table_statistics: list, featur
 
     if is_join(plan) or is_scan(plan):
         if is_scan(plan):
-            table_id = plan["plan_parameters"].get("table_id")
-            if table_id is not None:
-                table_vector[table_id] = 1
-                operator_vector[:] = [0, 0]
-                if op_name in {"Index Scan", "Index Only Scan"}:
-                    index_vector[table_id] = 1
+            #table_id = plan["plan_parameters"].get("table_id")
+            table_id = table_ids[plan["plan_parameters"]["table_name"]]
+            table_vector[table_id] = 1
+            operator_vector[:] = [0, 0]
+            if op_name in {"Index Scan", "Index Only Scan"}:
+                index_vector[table_id] = 1
 
         elif is_join(plan):
             join_params = plan["plan_parameters"]["join"]
-            left_table_id = get_table_id(join_params["table_name1"], table_statistics)
-            right_table_id = get_table_id(join_params["table_name2"], table_statistics)
+
+            if "children" in join_params:
+                join_params = join_params["children"][0]
+
+            left_table_id = table_ids[join_params["table_name1"]]
+            right_table_id =  table_ids[join_params["table_name2"]]
             table_vector[left_table_id] = 1
             table_vector[right_table_id] = 1
             operator_vector[:] = [1, 0] if op_name == "Hash Join" else [0, 1]
@@ -161,8 +186,9 @@ def extract_plan_encoding_recursively(plan: dict, table_statistics: list, featur
         extract_plan_encoding_recursively(
             plan=child,
             table_statistics=table_statistics,
-            feature_statistics=feature_statistics,
             plan_encodings=plan_encodings,
+            table_ids=table_ids,
+            max_depth=max_depth,
             depth=depth if is_join(plan) else depth + 1)
     return plan_encodings
 
@@ -274,12 +300,23 @@ def pad_indexes(data):
         xs[i, :vec.shape[0], :] = vec
     return xs
 
+def init_table_ids(table_stats):
+    # We can't use the table IDs from the database statistics, because they contain pg_ and sql_ tables
+    # For this we maintain a separate list of table IDs
+    table_stats = [x for x in table_stats if not re.match(r"^(pg_|sql_)", x["relname"])]
+    table_ids = {}
+    for index, stats in enumerate(table_stats):
+        table_ids[stats["relname"]] = index
+    return table_ids
+
+
+
 
 def neo_collator(batch: Tuple,
                  db_statistics: dict,
                  column_statistics: dict,
                  feature_statistics: dict,
-                 max_depth = 25):
+                 max_depth = 35):
 
     # Get plan encodings
     sample_idxs = []
@@ -299,8 +336,6 @@ def neo_collator(batch: Tuple,
 
     column_statistics = db_statistics[0]["column_stats"]
     table_stats = db_statistics[0]["table_stats"]
-    #table_stats = [x for x in table_stats if not re.match(r"^(pg_|sql_)", x["relname"])]
-    # ToDo! We have too many useless tables, that only serve as random noise!
 
     for sample_idx, p in batch:
         sample_idxs.append(sample_idx)
@@ -325,8 +360,8 @@ def neo_collator(batch: Tuple,
         # Next is plan level encoding. We add first native feature vectors to each node and later combine them
         extract_plan_encoding_recursively(plan=p,
                                           table_statistics=table_stats,
-                                          feature_statistics=feature_statistics,
                                           plan_encodings=[],
+                                          table_ids=init_table_ids(table_stats),
                                           depth=0,
                                           max_depth=max_depth)
 

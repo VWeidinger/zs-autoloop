@@ -1,0 +1,2417 @@
+{
+  "parsed_plans": [
+    {
+      "plan_parameters": {
+        "act_card": 1,
+        "act_time": 1635.747,
+        "est_card": 1,
+        "est_width": 8,
+        "pg_cost": 374086.99,
+        "op_name": "Simple Aggregate",
+        "act_children_card": 0,
+        "est_children_card": 1324,
+        "dd_est_card": 1,
+        "dd_est_children_card": 235420301.13645294,
+        "above_udf_filter": false,
+        "is_udf_filter": false
+      },
+      "children": [
+        {
+          "plan_parameters": {
+            "act_card": 0,
+            "act_time": 1635.74,
+            "est_card": 1324,
+            "est_width": 8,
+            "pg_cost": 374080.36,
+            "op_name": "Index Nested Loop",
+            "join": {
+              "table_name1": "keyword",
+              "column_name1": "id",
+              "col_id1": 45,
+              "comparison_operator": "=",
+              "table_name2": "movie_keyword",
+              "column_name2": "keyword_id",
+              "col_id2": 74
+            },
+            "act_children_card": 0,
+            "est_children_card": 2992,
+            "dd_est_card": 235420301.13645294,
+            "dd_est_children_card": 31586341803477.895,
+            "above_udf_filter": false,
+            "is_udf_filter": false
+          },
+          "children": [
+            {
+              "plan_parameters": {
+                "act_card": 0,
+                "act_time": 1635.738,
+                "est_card": 2992,
+                "est_width": 8,
+                "pg_cost": 372762.05,
+                "op_name": "Hash Join",
+                "join": {
+                  "table_name1": "movie_keyword",
+                  "column_name1": "movie_id",
+                  "col_id1": 73,
+                  "comparison_operator": "=",
+                  "table_name2": "title",
+                  "column_name2": "id",
+                  "col_id2": 91
+                },
+                "act_children_card": 1034017670,
+                "est_children_card": 1008464066,
+                "dd_est_card": 235420301.13645297,
+                "dd_est_children_card": 1420514020.0,
+                "above_udf_filter": false,
+                "is_udf_filter": false
+              },
+              "children": [
+                {
+                  "plan_parameters": {
+                    "act_card": 3211235,
+                    "act_time": 559.137,
+                    "est_card": 3211669,
+                    "est_width": 8,
+                    "pg_cost": 81003.12,
+                    "table_name": "movie_keyword",
+                    "table_id": 16,
+                    "output_columns": [
+                      {
+                        "aggregation": "None",
+                        "columns": [
+                          {
+                            "col_id": 72,
+                            "child_ref": null,
+                            "table_name": "movie_keyword",
+                            "col_name": "id"
+                          }
+                        ],
+                        "udf_name": null,
+                        "udf_output": "False",
+                        "child_ref": false
+                      },
+                      {
+                        "aggregation": "None",
+                        "columns": [
+                          {
+                            "col_id": 73,
+                            "child_ref": null,
+                            "table_name": "movie_keyword",
+                            "col_name": "movie_id"
+                          }
+                        ],
+                        "udf_name": null,
+                        "udf_output": "False",
+                        "child_ref": false
+                      },
+                      {
+                        "aggregation": "None",
+                        "columns": [
+                          {
+                            "col_id": 74,
+                            "child_ref": null,
+                            "table_name": "movie_keyword",
+                            "col_name": "keyword_id"
+                          }
+                        ],
+                        "udf_name": null,
+                        "udf_output": "False",
+                        "child_ref": false
+                      }
+                    ],
+                    "op_name": "Seq Scan",
+                    "filter": {
+                      "table_name": "movie_keyword",
+                      "col_name": "movie_id",
+                      "col_id": 73,
+                      "operator": ">=",
+                      "literal": "1753838"
+                    },
+                    "act_children_card": 1,
+                    "est_children_card": 1,
+                    "dd_est_card": 4523930.0,
+                    "dd_est_children_card": 1,
+                    "above_udf_filter": false,
+                    "is_udf_filter": false
+                  },
+                  "children": []
+                },
+                {
+                  "plan_parameters": {
+                    "act_card": 322,
+                    "act_time": 773.868,
+                    "est_card": 314,
+                    "est_width": 12,
+                    "pg_cost": 279707.25,
+                    "op_name": "Hash",
+                    "act_children_card": 322,
+                    "est_children_card": 314,
+                    "dd_est_card": 314,
+                    "dd_est_children_card": 314,
+                    "above_udf_filter": false,
+                    "is_udf_filter": false
+                  },
+                  "children": [
+                    {
+                      "plan_parameters": {
+                        "act_card": 322,
+                        "act_time": 773.778,
+                        "est_card": 314,
+                        "est_width": 12,
+                        "pg_cost": 279707.25,
+                        "op_name": "Gather",
+                        "act_children_card": 107,
+                        "est_children_card": 131,
+                        "dd_est_card": 314,
+                        "dd_est_children_card": 131,
+                        "above_udf_filter": false,
+                        "is_udf_filter": false
+                      },
+                      "children": [
+                        {
+                          "plan_parameters": {
+                            "act_card": 107,
+                            "act_time": 770.408,
+                            "est_card": 131,
+                            "est_width": 12,
+                            "pg_cost": 278675.85,
+                            "op_name": "Index Nested Loop",
+                            "join": {
+                              "table_name1": "title",
+                              "column_name1": "id",
+                              "col_id1": 91,
+                              "comparison_operator": "=",
+                              "table_name2": "movie_info",
+                              "column_name2": "movie_id",
+                              "col_id2": 100
+                            },
+                            "act_children_card": 0,
+                            "est_children_card": 3613,
+                            "dd_est_card": 131,
+                            "dd_est_children_card": 9135542760.0,
+                            "above_udf_filter": false,
+                            "is_udf_filter": false
+                          },
+                          "children": [
+                            {
+                              "plan_parameters": {
+                                "act_card": 1999,
+                                "act_time": 751.781,
+                                "est_card": 3613,
+                                "est_width": 4,
+                                "pg_cost": 254399.47,
+                                "table_name": "movie_info",
+                                "table_id": 23,
+                                "output_columns": [
+                                  {
+                                    "aggregation": "None",
+                                    "columns": [
+                                      {
+                                        "col_id": 99,
+                                        "child_ref": null,
+                                        "table_name": "movie_info",
+                                        "col_name": "id"
+                                      }
+                                    ],
+                                    "udf_name": null,
+                                    "udf_output": "False",
+                                    "child_ref": false
+                                  },
+                                  {
+                                    "aggregation": "None",
+                                    "columns": [
+                                      {
+                                        "col_id": 100,
+                                        "child_ref": null,
+                                        "table_name": "movie_info",
+                                        "col_name": "movie_id"
+                                      }
+                                    ],
+                                    "udf_name": null,
+                                    "udf_output": "False",
+                                    "child_ref": false
+                                  },
+                                  {
+                                    "aggregation": "None",
+                                    "columns": [
+                                      {
+                                        "col_id": 101,
+                                        "child_ref": null,
+                                        "table_name": "movie_info",
+                                        "col_name": "info_type_id"
+                                      }
+                                    ],
+                                    "udf_name": null,
+                                    "udf_output": "False",
+                                    "child_ref": false
+                                  },
+                                  {
+                                    "aggregation": "None",
+                                    "columns": [
+                                      {
+                                        "col_id": 102,
+                                        "child_ref": null,
+                                        "table_name": "movie_info",
+                                        "col_name": "info"
+                                      }
+                                    ],
+                                    "udf_name": null,
+                                    "udf_output": "False",
+                                    "child_ref": false
+                                  },
+                                  {
+                                    "aggregation": "None",
+                                    "columns": [
+                                      {
+                                        "col_id": 103,
+                                        "child_ref": null,
+                                        "table_name": "movie_info",
+                                        "col_name": "note"
+                                      }
+                                    ],
+                                    "udf_name": null,
+                                    "udf_output": "False",
+                                    "child_ref": false
+                                  }
+                                ],
+                                "op_name": "Seq Scan",
+                                "filter": {
+                                  "operator": "AND",
+                                  "children": [
+                                    {
+                                      "table_name": "movie_info",
+                                      "col_name": "movie_id",
+                                      "col_id": 100,
+                                      "operator": ">=",
+                                      "literal": "418592"
+                                    },
+                                    {
+                                      "table_name": "movie_info",
+                                      "col_name": "info_type_id",
+                                      "col_id": 101,
+                                      "operator": "=",
+                                      "literal": "57"
+                                    }
+                                  ]
+                                },
+                                "act_children_card": 1,
+                                "est_children_card": 1,
+                                "dd_est_card": 3613,
+                                "dd_est_children_card": 1,
+                                "above_udf_filter": false,
+                                "is_udf_filter": false
+                              },
+                              "children": []
+                            },
+                            {
+                              "plan_parameters": {
+                                "act_card": 0,
+                                "act_time": 0.009,
+                                "est_card": 1,
+                                "est_width": 8,
+                                "pg_cost": 6.72,
+                                "table_name": "title",
+                                "table_id": 22,
+                                "output_columns": [],
+                                "op_name": "Index Scan",
+                                "filter": {
+                                  "table_name": "title",
+                                  "col_name": "series_years",
+                                  "col_id": 97,
+                                  "operator": "!=",
+                                  "literal": "'1964-1970'"
+                                },
+                                "act_children_card": 1,
+                                "est_children_card": 1,
+                                "dd_est_card": 2528520.0,
+                                "dd_est_children_card": 1,
+                                "above_udf_filter": false,
+                                "is_udf_filter": false
+                              },
+                              "children": []
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "plan_parameters": {
+                "act_card": 0,
+                "act_time": 0.0,
+                "est_card": 1,
+                "est_width": 4,
+                "pg_cost": 0.44,
+                "table_name": "keyword",
+                "table_id": 9,
+                "output_columns": [
+                  {
+                    "aggregation": "None",
+                    "columns": [
+                      {
+                        "col_id": 45,
+                        "child_ref": null,
+                        "table_name": "keyword",
+                        "col_name": "id"
+                      }
+                    ],
+                    "udf_name": null,
+                    "udf_output": "False",
+                    "child_ref": false
+                  }
+                ],
+                "op_name": "Index Only Scan",
+                "filter": {
+                  "table_name": "keyword",
+                  "col_name": "id",
+                  "col_id": 45,
+                  "operator": "<=",
+                  "literal": "59292"
+                },
+                "act_children_card": 1,
+                "est_children_card": 1,
+                "dd_est_card": 134170.0,
+                "dd_est_children_card": 1,
+                "above_udf_filter": false,
+                "is_udf_filter": false
+              },
+              "children": []
+            }
+          ]
+        }
+      ],
+      "sql": "SELECT SUM(\"keyword\".\"id\" + \"title\".\"episode_of_id\") as agg_0 FROM \"keyword\" LEFT OUTER JOIN \"movie_keyword\" ON \"keyword\".\"id\" = \"movie_keyword\".\"keyword_id\" LEFT OUTER JOIN \"title\" ON \"movie_keyword\".\"movie_id\" = \"title\".\"id\" LEFT OUTER JOIN \"movie_info\" ON \"title\".\"id\" = \"movie_info\".\"movie_id\"  WHERE \"keyword\".\"id\" <= 59292 AND \"title\".\"series_years\" != '1964-1970' AND \"movie_keyword\".\"movie_id\" >= 1753838 AND \"movie_info\".\"info_type_id\" = 57 AND \"movie_info\".\"movie_id\" >= 418592;",
+      "dataset": "imdb",
+      "plan_runtime_ms": 1635.858,
+      "num_tables": 4,
+      "num_filters": 5,
+      "hint": null,
+      "invalid_hint": false,
+      "zero_card": false,
+      "timeout": false,
+      "timeout_threshold": 30000
+    },
+    {
+      "plan_parameters": {
+        "act_card": 1,
+        "act_time": 3977.943,
+        "est_card": 1,
+        "est_width": 8,
+        "pg_cost": 512046.74,
+        "op_name": "Finalize Aggregate",
+        "act_children_card": 3,
+        "est_children_card": 2,
+        "dd_est_card": 1,
+        "dd_est_children_card": 2,
+        "above_udf_filter": false,
+        "is_udf_filter": false
+      },
+      "children": [
+        {
+          "plan_parameters": {
+            "act_card": 3,
+            "act_time": 3977.935,
+            "est_card": 2,
+            "est_width": 8,
+            "pg_cost": 512046.72,
+            "op_name": "Gather",
+            "act_children_card": 1,
+            "est_children_card": 1,
+            "dd_est_card": 2,
+            "dd_est_children_card": 1,
+            "above_udf_filter": false,
+            "is_udf_filter": false
+          },
+          "children": [
+            {
+              "plan_parameters": {
+                "act_card": 1,
+                "act_time": 3910.063,
+                "est_card": 1,
+                "est_width": 8,
+                "pg_cost": 511046.52,
+                "op_name": "Partial Aggregate",
+                "act_children_card": 0,
+                "est_children_card": 60,
+                "dd_est_card": 1,
+                "dd_est_children_card": 60,
+                "above_udf_filter": false,
+                "is_udf_filter": false
+              },
+              "children": [
+                {
+                  "plan_parameters": {
+                    "act_card": 0,
+                    "act_time": 3910.056,
+                    "est_card": 60,
+                    "est_width": 0,
+                    "pg_cost": 511046.36,
+                    "op_name": "Hash Join",
+                    "join": {
+                      "table_name1": "cast_info",
+                      "column_name1": "role_id",
+                      "col_id1": 28,
+                      "comparison_operator": "=",
+                      "table_name2": "role_type",
+                      "column_name2": "id",
+                      "col_id2": 89
+                    },
+                    "act_children_card": 0,
+                    "est_children_card": 720,
+                    "dd_est_card": 60,
+                    "dd_est_children_card": 864.0,
+                    "above_udf_filter": false,
+                    "is_udf_filter": false
+                  },
+                  "children": [
+                    {
+                      "plan_parameters": {
+                        "act_card": 0,
+                        "act_time": 3909.838,
+                        "est_card": 72,
+                        "est_width": 4,
+                        "pg_cost": 511044.8,
+                        "op_name": "Hash Join",
+                        "join": {
+                          "table_name1": "title",
+                          "column_name1": "kind_id",
+                          "col_id1": 77,
+                          "comparison_operator": "=",
+                          "table_name2": "kind_type",
+                          "column_name2": "id",
+                          "col_id2": 59
+                        },
+                        "act_children_card": 396,
+                        "est_children_card": 502,
+                        "dd_est_card": 72,
+                        "dd_est_children_card": 3514.0,
+                        "above_udf_filter": false,
+                        "is_udf_filter": false
+                      },
+                      "children": [
+                        {
+                          "plan_parameters": {
+                            "act_card": 198,
+                            "act_time": 3909.728,
+                            "est_card": 502,
+                            "est_width": 8,
+                            "pg_cost": 511041.57,
+                            "op_name": "Hash Join",
+                            "join": {
+                              "table_name1": "cast_info",
+                              "column_name1": "movie_id",
+                              "col_id1": 24,
+                              "comparison_operator": "=",
+                              "table_name2": "title",
+                              "column_name2": "id",
+                              "col_id2": 91
+                            },
+                            "act_children_card": 664479640,
+                            "est_children_card": 1269141468,
+                            "dd_est_card": 502,
+                            "dd_est_children_card": 3044524896.0,
+                            "above_udf_filter": false,
+                            "is_udf_filter": false
+                          },
+                          "children": [
+                            {
+                              "plan_parameters": {
+                                "act_card": 12081448,
+                                "act_time": 1986.198,
+                                "est_card": 15108827,
+                                "est_width": 8,
+                                "pg_cost": 403775.27,
+                                "table_name": "cast_info",
+                                "table_id": 2,
+                                "output_columns": [
+                                  {
+                                    "aggregation": "None",
+                                    "columns": [
+                                      {
+                                        "col_id": 2,
+                                        "child_ref": null,
+                                        "table_name": "cast_info",
+                                        "col_name": "id"
+                                      }
+                                    ],
+                                    "udf_name": null,
+                                    "udf_output": "False",
+                                    "child_ref": false
+                                  },
+                                  {
+                                    "aggregation": "None",
+                                    "columns": [
+                                      {
+                                        "col_id": 23,
+                                        "child_ref": null,
+                                        "table_name": "cast_info",
+                                        "col_name": "person_id"
+                                      }
+                                    ],
+                                    "udf_name": null,
+                                    "udf_output": "False",
+                                    "child_ref": false
+                                  },
+                                  {
+                                    "aggregation": "None",
+                                    "columns": [
+                                      {
+                                        "col_id": 24,
+                                        "child_ref": null,
+                                        "table_name": "cast_info",
+                                        "col_name": "movie_id"
+                                      }
+                                    ],
+                                    "udf_name": null,
+                                    "udf_output": "False",
+                                    "child_ref": false
+                                  },
+                                  {
+                                    "aggregation": "None",
+                                    "columns": [
+                                      {
+                                        "col_id": 25,
+                                        "child_ref": null,
+                                        "table_name": "cast_info",
+                                        "col_name": "person_role_id"
+                                      }
+                                    ],
+                                    "udf_name": null,
+                                    "udf_output": "False",
+                                    "child_ref": false
+                                  },
+                                  {
+                                    "aggregation": "None",
+                                    "columns": [
+                                      {
+                                        "col_id": 26,
+                                        "child_ref": null,
+                                        "table_name": "cast_info",
+                                        "col_name": "note"
+                                      }
+                                    ],
+                                    "udf_name": null,
+                                    "udf_output": "False",
+                                    "child_ref": false
+                                  },
+                                  {
+                                    "aggregation": "None",
+                                    "columns": [
+                                      {
+                                        "col_id": 27,
+                                        "child_ref": null,
+                                        "table_name": "cast_info",
+                                        "col_name": "nr_order"
+                                      }
+                                    ],
+                                    "udf_name": null,
+                                    "udf_output": "False",
+                                    "child_ref": false
+                                  },
+                                  {
+                                    "aggregation": "None",
+                                    "columns": [
+                                      {
+                                        "col_id": 28,
+                                        "child_ref": null,
+                                        "table_name": "cast_info",
+                                        "col_name": "role_id"
+                                      }
+                                    ],
+                                    "udf_name": null,
+                                    "udf_output": "False",
+                                    "child_ref": false
+                                  }
+                                ],
+                                "op_name": "Seq Scan",
+                                "act_children_card": 1,
+                                "est_children_card": 1,
+                                "dd_est_card": 36244344.0,
+                                "dd_est_children_card": 1,
+                                "above_udf_filter": false,
+                                "is_udf_filter": false
+                              },
+                              "children": []
+                            },
+                            {
+                              "plan_parameters": {
+                                "act_card": 55,
+                                "act_time": 370.144,
+                                "est_card": 84,
+                                "est_width": 8,
+                                "pg_cost": 67604.51,
+                                "op_name": "Hash",
+                                "act_children_card": 55,
+                                "est_children_card": 84,
+                                "dd_est_card": 84,
+                                "dd_est_children_card": 84,
+                                "above_udf_filter": false,
+                                "is_udf_filter": false
+                              },
+                              "children": [
+                                {
+                                  "plan_parameters": {
+                                    "act_card": 55,
+                                    "act_time": 370.079,
+                                    "est_card": 84,
+                                    "est_width": 8,
+                                    "pg_cost": 67604.51,
+                                    "table_name": "title",
+                                    "table_id": 22,
+                                    "output_columns": [
+                                      {
+                                        "aggregation": "None",
+                                        "columns": [
+                                          {
+                                            "col_id": 91,
+                                            "child_ref": null,
+                                            "table_name": "title",
+                                            "col_name": "id"
+                                          }
+                                        ],
+                                        "udf_name": null,
+                                        "udf_output": "False",
+                                        "child_ref": false
+                                      },
+                                      {
+                                        "aggregation": "None",
+                                        "columns": [
+                                          {
+                                            "col_id": 77,
+                                            "child_ref": null,
+                                            "table_name": "title",
+                                            "col_name": "kind_id"
+                                          }
+                                        ],
+                                        "udf_name": null,
+                                        "udf_output": "False",
+                                        "child_ref": false
+                                      }
+                                    ],
+                                    "op_name": "Seq Scan",
+                                    "filter": {
+                                      "table_name": "title",
+                                      "col_name": "imdb_index",
+                                      "col_id": 76,
+                                      "operator": "=",
+                                      "literal": "'VIII'"
+                                    },
+                                    "act_children_card": 1,
+                                    "est_children_card": 1,
+                                    "dd_est_card": 84,
+                                    "dd_est_children_card": 1,
+                                    "above_udf_filter": false,
+                                    "is_udf_filter": false
+                                  },
+                                  "children": []
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "plan_parameters": {
+                            "act_card": 2,
+                            "act_time": 0.019,
+                            "est_card": 1,
+                            "est_width": 4,
+                            "pg_cost": 1.1,
+                            "op_name": "Hash",
+                            "act_children_card": 2,
+                            "est_children_card": 1,
+                            "dd_est_card": 7.0,
+                            "dd_est_children_card": 7.0,
+                            "above_udf_filter": false,
+                            "is_udf_filter": false
+                          },
+                          "children": [
+                            {
+                              "plan_parameters": {
+                                "act_card": 2,
+                                "act_time": 0.015,
+                                "est_card": 1,
+                                "est_width": 4,
+                                "pg_cost": 1.1,
+                                "table_name": "kind_type",
+                                "table_id": 10,
+                                "output_columns": [
+                                  {
+                                    "aggregation": "None",
+                                    "columns": [
+                                      {
+                                        "col_id": 59,
+                                        "child_ref": null,
+                                        "table_name": "kind_type",
+                                        "col_name": "id"
+                                      }
+                                    ],
+                                    "udf_name": null,
+                                    "udf_output": "False",
+                                    "child_ref": false
+                                  }
+                                ],
+                                "op_name": "Seq Scan",
+                                "filter": {
+                                  "operator": "AND",
+                                  "children": [
+                                    {
+                                      "table_name": "kind_type",
+                                      "col_name": "id",
+                                      "col_id": 59,
+                                      "operator": ">=",
+                                      "literal": "6"
+                                    },
+                                    {
+                                      "table_name": "kind_type",
+                                      "col_name": "kind",
+                                      "col_id": 60,
+                                      "operator": "!=",
+                                      "literal": "'video movie'"
+                                    }
+                                  ]
+                                },
+                                "act_children_card": 1,
+                                "est_children_card": 1,
+                                "dd_est_card": 7.0,
+                                "dd_est_children_card": 1,
+                                "above_udf_filter": false,
+                                "is_udf_filter": false
+                              },
+                              "children": []
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "plan_parameters": {
+                        "act_card": 10,
+                        "act_time": 0.036,
+                        "est_card": 10,
+                        "est_width": 4,
+                        "pg_cost": 1.18,
+                        "op_name": "Hash",
+                        "act_children_card": 10,
+                        "est_children_card": 10,
+                        "dd_est_card": 12.0,
+                        "dd_est_children_card": 12.0,
+                        "above_udf_filter": false,
+                        "is_udf_filter": false
+                      },
+                      "children": [
+                        {
+                          "plan_parameters": {
+                            "act_card": 10,
+                            "act_time": 0.024,
+                            "est_card": 10,
+                            "est_width": 4,
+                            "pg_cost": 1.18,
+                            "table_name": "role_type",
+                            "table_id": 21,
+                            "output_columns": [
+                              {
+                                "aggregation": "None",
+                                "columns": [
+                                  {
+                                    "col_id": 89,
+                                    "child_ref": null,
+                                    "table_name": "role_type",
+                                    "col_name": "id"
+                                  }
+                                ],
+                                "udf_name": null,
+                                "udf_output": "False",
+                                "child_ref": false
+                              }
+                            ],
+                            "op_name": "Seq Scan",
+                            "filter": {
+                              "operator": "AND",
+                              "children": [
+                                {
+                                  "table_name": "role_type",
+                                  "col_name": "role",
+                                  "col_id": 90,
+                                  "operator": "!=",
+                                  "literal": "'producer'"
+                                },
+                                {
+                                  "table_name": "role_type",
+                                  "col_name": "id",
+                                  "col_id": 89,
+                                  "operator": "!=",
+                                  "literal": "8"
+                                }
+                              ]
+                            },
+                            "act_children_card": 1,
+                            "est_children_card": 1,
+                            "dd_est_card": 12.0,
+                            "dd_est_children_card": 1,
+                            "above_udf_filter": false,
+                            "is_udf_filter": false
+                          },
+                          "children": []
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "sql": "SELECT COUNT(*) as agg_0 FROM \"role_type\" LEFT OUTER JOIN \"cast_info\" ON \"role_type\".\"id\" = \"cast_info\".\"role_id\" LEFT OUTER JOIN \"title\" ON \"cast_info\".\"movie_id\" = \"title\".\"id\" LEFT OUTER JOIN \"kind_type\" ON \"title\".\"kind_id\" = \"kind_type\".\"id\"  WHERE \"role_type\".\"role\" != 'producer' AND \"title\".\"imdb_index\" = 'VIII' AND \"kind_type\".\"id\" >= 6 AND \"kind_type\".\"kind\" != 'video movie' AND \"role_type\".\"id\" != 8;",
+      "dataset": "imdb",
+      "plan_runtime_ms": 3978.068,
+      "num_tables": 4,
+      "num_filters": 5,
+      "hint": null,
+      "invalid_hint": false,
+      "zero_card": false,
+      "timeout": false,
+      "timeout_threshold": 30000
+    }
+  ],
+  "database_stats": {
+    "column_stats": [
+      {
+        "tablename": "aka_title",
+        "attname": "season_nr",
+        "null_frac": 0.9929,
+        "avg_width": 4,
+        "n_distinct": 18.0,
+        "correlation": 0.453954,
+        "data_type": "integer",
+        "table_size": 361472.0
+      },
+      {
+        "tablename": "complete_cast",
+        "attname": "status_id",
+        "null_frac": 0.0,
+        "avg_width": 4,
+        "n_distinct": 2.0,
+        "correlation": 0.673986,
+        "data_type": "integer",
+        "table_size": 135086.0
+      },
+      {
+        "tablename": "cast_info",
+        "attname": "id",
+        "null_frac": 0.0,
+        "avg_width": 4,
+        "n_distinct": -1.0,
+        "correlation": 1.0,
+        "data_type": "integer",
+        "table_size": 36261200.0
+      },
+      {
+        "tablename": "char_name",
+        "attname": "imdb_id",
+        "null_frac": 1.0,
+        "avg_width": 4,
+        "n_distinct": 0.0,
+        "correlation": null,
+        "data_type": "integer",
+        "table_size": 3140290.0
+      },
+      {
+        "tablename": "aka_name",
+        "attname": "id",
+        "null_frac": 0.0,
+        "avg_width": 4,
+        "n_distinct": -1.0,
+        "correlation": 1.0,
+        "data_type": "integer",
+        "table_size": 901343.0
+      },
+      {
+        "tablename": "aka_name",
+        "attname": "person_id",
+        "null_frac": 0.0,
+        "avg_width": 4,
+        "n_distinct": -0.418099,
+        "correlation": 0.0383101,
+        "data_type": "integer",
+        "table_size": 901343.0
+      },
+      {
+        "tablename": "aka_name",
+        "attname": "name",
+        "null_frac": 0.0,
+        "avg_width": 16,
+        "n_distinct": -0.543574,
+        "correlation": 0.481942,
+        "data_type": "character varying",
+        "table_size": 901343.0
+      },
+      {
+        "tablename": "aka_name",
+        "attname": "imdb_index",
+        "null_frac": 0.999933,
+        "avg_width": 2,
+        "n_distinct": -6.6638e-05,
+        "correlation": -1.0,
+        "data_type": "character varying",
+        "table_size": 901343.0
+      },
+      {
+        "tablename": "aka_name",
+        "attname": "name_pcode_cf",
+        "null_frac": 0.000133333,
+        "avg_width": 5,
+        "n_distinct": 12401.0,
+        "correlation": 0.479378,
+        "data_type": "character varying",
+        "table_size": 901343.0
+      },
+      {
+        "tablename": "aka_name",
+        "attname": "name_pcode_nf",
+        "null_frac": 0.119533,
+        "avg_width": 5,
+        "n_distinct": 10454.0,
+        "correlation": 0.0306478,
+        "data_type": "character varying",
+        "table_size": 901343.0
+      },
+      {
+        "tablename": "aka_title",
+        "attname": "phonetic_code",
+        "null_frac": 0.0125667,
+        "avg_width": 5,
+        "n_distinct": 12181.0,
+        "correlation": 0.152564,
+        "data_type": "character varying",
+        "table_size": 361472.0
+      },
+      {
+        "tablename": "aka_name",
+        "attname": "surname_pcode",
+        "null_frac": 0.310867,
+        "avg_width": 4,
+        "n_distinct": 2623.0,
+        "correlation": 0.542415,
+        "data_type": "character varying",
+        "table_size": 901343.0
+      },
+      {
+        "tablename": "aka_name",
+        "attname": "md5sum",
+        "null_frac": 0.0,
+        "avg_width": 33,
+        "n_distinct": -0.543574,
+        "correlation": 0.00749935,
+        "data_type": "character varying",
+        "table_size": 901343.0
+      },
+      {
+        "tablename": "aka_title",
+        "attname": "id",
+        "null_frac": 0.0,
+        "avg_width": 4,
+        "n_distinct": -1.0,
+        "correlation": 0.983445,
+        "data_type": "integer",
+        "table_size": 361472.0
+      },
+      {
+        "tablename": "aka_title",
+        "attname": "movie_id",
+        "null_frac": 0.0,
+        "avg_width": 4,
+        "n_distinct": -0.384658,
+        "correlation": 0.871362,
+        "data_type": "integer",
+        "table_size": 361472.0
+      },
+      {
+        "tablename": "aka_title",
+        "attname": "title",
+        "null_frac": 0.0,
+        "avg_width": 21,
+        "n_distinct": -0.704019,
+        "correlation": 0.126365,
+        "data_type": "character varying",
+        "table_size": 361472.0
+      },
+      {
+        "tablename": "aka_title",
+        "attname": "imdb_index",
+        "null_frac": 0.992333,
+        "avg_width": 2,
+        "n_distinct": 6.0,
+        "correlation": 0.528702,
+        "data_type": "character varying",
+        "table_size": 361472.0
+      },
+      {
+        "tablename": "aka_title",
+        "attname": "kind_id",
+        "null_frac": 0.0,
+        "avg_width": 4,
+        "n_distinct": 6.0,
+        "correlation": 0.499174,
+        "data_type": "integer",
+        "table_size": 361472.0
+      },
+      {
+        "tablename": "aka_title",
+        "attname": "production_year",
+        "null_frac": 0.00813333,
+        "avg_width": 4,
+        "n_distinct": 123.0,
+        "correlation": -0.102772,
+        "data_type": "integer",
+        "table_size": 361472.0
+      },
+      {
+        "tablename": "aka_title",
+        "attname": "episode_of_id",
+        "null_frac": 0.992167,
+        "avg_width": 4,
+        "n_distinct": 249.0,
+        "correlation": 0.0687213,
+        "data_type": "integer",
+        "table_size": 361472.0
+      },
+      {
+        "tablename": "aka_title",
+        "attname": "episode_nr",
+        "null_frac": 0.992967,
+        "avg_width": 4,
+        "n_distinct": 51.0,
+        "correlation": -0.011842,
+        "data_type": "integer",
+        "table_size": 361472.0
+      },
+      {
+        "tablename": "aka_title",
+        "attname": "note",
+        "null_frac": 0.0781,
+        "avg_width": 22,
+        "n_distinct": 1255.0,
+        "correlation": 0.0706279,
+        "data_type": "character varying",
+        "table_size": 361472.0
+      },
+      {
+        "tablename": "aka_title",
+        "attname": "md5sum",
+        "null_frac": 0.0,
+        "avg_width": 33,
+        "n_distinct": -0.925624,
+        "correlation": -0.00698029,
+        "data_type": "character varying",
+        "table_size": 361472.0
+      },
+      {
+        "tablename": "cast_info",
+        "attname": "person_id",
+        "null_frac": 0.0,
+        "avg_width": 4,
+        "n_distinct": 72185.0,
+        "correlation": 0.704034,
+        "data_type": "integer",
+        "table_size": 36261200.0
+      },
+      {
+        "tablename": "cast_info",
+        "attname": "movie_id",
+        "null_frac": 0.0,
+        "avg_width": 4,
+        "n_distinct": 945719.0,
+        "correlation": 0.00184617,
+        "data_type": "integer",
+        "table_size": 36261200.0
+      },
+      {
+        "tablename": "cast_info",
+        "attname": "person_role_id",
+        "null_frac": 0.516133,
+        "avg_width": 4,
+        "n_distinct": 22074.0,
+        "correlation": 0.417896,
+        "data_type": "integer",
+        "table_size": 36261200.0
+      },
+      {
+        "tablename": "cast_info",
+        "attname": "note",
+        "null_frac": 0.605733,
+        "avg_width": 18,
+        "n_distinct": 3771.0,
+        "correlation": 0.0665466,
+        "data_type": "character varying",
+        "table_size": 36261200.0
+      },
+      {
+        "tablename": "cast_info",
+        "attname": "nr_order",
+        "null_frac": 0.701033,
+        "avg_width": 4,
+        "n_distinct": 156.0,
+        "correlation": 0.0143034,
+        "data_type": "integer",
+        "table_size": 36261200.0
+      },
+      {
+        "tablename": "cast_info",
+        "attname": "role_id",
+        "null_frac": 0.0,
+        "avg_width": 4,
+        "n_distinct": 11.0,
+        "correlation": 1.0,
+        "data_type": "integer",
+        "table_size": 36261200.0
+      },
+      {
+        "tablename": "char_name",
+        "attname": "id",
+        "null_frac": 0.0,
+        "avg_width": 4,
+        "n_distinct": -1.0,
+        "correlation": 0.999015,
+        "data_type": "integer",
+        "table_size": 3140290.0
+      },
+      {
+        "tablename": "char_name",
+        "attname": "name",
+        "null_frac": 0.0,
+        "avg_width": 16,
+        "n_distinct": -1.0,
+        "correlation": 0.00790749,
+        "data_type": "character varying",
+        "table_size": 3140290.0
+      },
+      {
+        "tablename": "char_name",
+        "attname": "imdb_index",
+        "null_frac": 0.999967,
+        "avg_width": 2,
+        "n_distinct": -3.3319e-05,
+        "correlation": null,
+        "data_type": "character varying",
+        "table_size": 3140290.0
+      },
+      {
+        "tablename": "movie_companies",
+        "attname": "id",
+        "null_frac": 0.0,
+        "avg_width": 4,
+        "n_distinct": -1.0,
+        "correlation": 1.0,
+        "data_type": "integer",
+        "table_size": 2609130.0
+      },
+      {
+        "tablename": "movie_link",
+        "attname": "link_type_id",
+        "null_frac": 0.0,
+        "avg_width": 4,
+        "n_distinct": 16.0,
+        "correlation": 0.164079,
+        "data_type": "integer",
+        "table_size": 29997.0
+      },
+      {
+        "tablename": "title",
+        "attname": "production_year",
+        "null_frac": 0.0294,
+        "avg_width": 4,
+        "n_distinct": 120.0,
+        "correlation": -0.151558,
+        "data_type": "integer",
+        "table_size": 2528520.0
+      },
+      {
+        "tablename": "title",
+        "attname": "imdb_id",
+        "null_frac": 1.0,
+        "avg_width": 4,
+        "n_distinct": 0.0,
+        "correlation": null,
+        "data_type": "integer",
+        "table_size": 2528520.0
+      },
+      {
+        "tablename": "char_name",
+        "attname": "name_pcode_nf",
+        "null_frac": 0.0002,
+        "avg_width": 5,
+        "n_distinct": 12209.0,
+        "correlation": 0.0103462,
+        "data_type": "character varying",
+        "table_size": 3140290.0
+      },
+      {
+        "tablename": "char_name",
+        "attname": "surname_pcode",
+        "null_frac": 0.151333,
+        "avg_width": 4,
+        "n_distinct": 4977.0,
+        "correlation": 0.0213099,
+        "data_type": "character varying",
+        "table_size": 3140290.0
+      },
+      {
+        "tablename": "char_name",
+        "attname": "md5sum",
+        "null_frac": 0.0,
+        "avg_width": 33,
+        "n_distinct": -1.0,
+        "correlation": -0.00185833,
+        "data_type": "character varying",
+        "table_size": 3140290.0
+      },
+      {
+        "tablename": "comp_cast_type",
+        "attname": "id",
+        "null_frac": 0.0,
+        "avg_width": 4,
+        "n_distinct": -1.0,
+        "correlation": 1.0,
+        "data_type": "integer",
+        "table_size": 4.0
+      },
+      {
+        "tablename": "comp_cast_type",
+        "attname": "kind",
+        "null_frac": 0.0,
+        "avg_width": 9,
+        "n_distinct": -1.0,
+        "correlation": 0.4,
+        "data_type": "character varying",
+        "table_size": 4.0
+      },
+      {
+        "tablename": "company_name",
+        "attname": "id",
+        "null_frac": 0.0,
+        "avg_width": 4,
+        "n_distinct": -1.0,
+        "correlation": 0.892359,
+        "data_type": "integer",
+        "table_size": 234997.0
+      },
+      {
+        "tablename": "company_name",
+        "attname": "name",
+        "null_frac": 0.0,
+        "avg_width": 19,
+        "n_distinct": -0.891071,
+        "correlation": 0.00589261,
+        "data_type": "character varying",
+        "table_size": 234997.0
+      },
+      {
+        "tablename": "company_name",
+        "attname": "country_code",
+        "null_frac": 0.0999333,
+        "avg_width": 5,
+        "n_distinct": 168.0,
+        "correlation": 0.220208,
+        "data_type": "character varying",
+        "table_size": 234997.0
+      },
+      {
+        "tablename": "company_name",
+        "attname": "imdb_id",
+        "null_frac": 1.0,
+        "avg_width": 4,
+        "n_distinct": 0.0,
+        "correlation": null,
+        "data_type": "integer",
+        "table_size": 234997.0
+      },
+      {
+        "tablename": "keyword",
+        "attname": "id",
+        "null_frac": 0.0,
+        "avg_width": 4,
+        "n_distinct": -1.0,
+        "correlation": 0.994566,
+        "data_type": "integer",
+        "table_size": 134170.0
+      },
+      {
+        "tablename": "keyword",
+        "attname": "keyword",
+        "null_frac": 0.0,
+        "avg_width": 16,
+        "n_distinct": -1.0,
+        "correlation": 0.0323421,
+        "data_type": "character varying",
+        "table_size": 134170.0
+      },
+      {
+        "tablename": "company_name",
+        "attname": "name_pcode_nf",
+        "null_frac": 6.66667e-05,
+        "avg_width": 5,
+        "n_distinct": 11431.0,
+        "correlation": 0.00627392,
+        "data_type": "character varying",
+        "table_size": 234997.0
+      },
+      {
+        "tablename": "company_name",
+        "attname": "name_pcode_sf",
+        "null_frac": 0.0999333,
+        "avg_width": 5,
+        "n_distinct": 10689.0,
+        "correlation": 0.00686267,
+        "data_type": "character varying",
+        "table_size": 234997.0
+      },
+      {
+        "tablename": "company_name",
+        "attname": "md5sum",
+        "null_frac": 0.0,
+        "avg_width": 33,
+        "n_distinct": -1.0,
+        "correlation": -0.00192181,
+        "data_type": "character varying",
+        "table_size": 234997.0
+      },
+      {
+        "tablename": "company_type",
+        "attname": "id",
+        "null_frac": 0.0,
+        "avg_width": 4,
+        "n_distinct": -1.0,
+        "correlation": 1.0,
+        "data_type": "integer",
+        "table_size": 4.0
+      },
+      {
+        "tablename": "company_type",
+        "attname": "kind",
+        "null_frac": 0.0,
+        "avg_width": 21,
+        "n_distinct": -1.0,
+        "correlation": 0.4,
+        "data_type": "character varying",
+        "table_size": 4.0
+      },
+      {
+        "tablename": "complete_cast",
+        "attname": "id",
+        "null_frac": 0.0,
+        "avg_width": 4,
+        "n_distinct": -1.0,
+        "correlation": 1.0,
+        "data_type": "integer",
+        "table_size": 135086.0
+      },
+      {
+        "tablename": "complete_cast",
+        "attname": "movie_id",
+        "null_frac": 0.0,
+        "avg_width": 4,
+        "n_distinct": -0.638186,
+        "correlation": 0.227196,
+        "data_type": "integer",
+        "table_size": 135086.0
+      },
+      {
+        "tablename": "complete_cast",
+        "attname": "subject_id",
+        "null_frac": 0.0,
+        "avg_width": 4,
+        "n_distinct": 2.0,
+        "correlation": 1.0,
+        "data_type": "integer",
+        "table_size": 135086.0
+      },
+      {
+        "tablename": "info_type",
+        "attname": "id",
+        "null_frac": 0.0,
+        "avg_width": 4,
+        "n_distinct": -1.0,
+        "correlation": 1.0,
+        "data_type": "integer",
+        "table_size": 113.0
+      },
+      {
+        "tablename": "info_type",
+        "attname": "info",
+        "null_frac": 0.0,
+        "avg_width": 14,
+        "n_distinct": -1.0,
+        "correlation": 0.10098,
+        "data_type": "character varying",
+        "table_size": 113.0
+      },
+      {
+        "tablename": "person_info",
+        "attname": "info_type_id",
+        "null_frac": 0.0,
+        "avg_width": 4,
+        "n_distinct": 22.0,
+        "correlation": 0.113368,
+        "data_type": "integer",
+        "table_size": 2965440.0
+      },
+      {
+        "tablename": "keyword",
+        "attname": "phonetic_code",
+        "null_frac": 0.000366667,
+        "avg_width": 5,
+        "n_distinct": 10568.0,
+        "correlation": 0.0330647,
+        "data_type": "character varying",
+        "table_size": 134170.0
+      },
+      {
+        "tablename": "kind_type",
+        "attname": "id",
+        "null_frac": 0.0,
+        "avg_width": 4,
+        "n_distinct": -1.0,
+        "correlation": 1.0,
+        "data_type": "integer",
+        "table_size": 7.0
+      },
+      {
+        "tablename": "kind_type",
+        "attname": "kind",
+        "null_frac": 0.0,
+        "avg_width": 10,
+        "n_distinct": -1.0,
+        "correlation": -0.0714286,
+        "data_type": "character varying",
+        "table_size": 7.0
+      },
+      {
+        "tablename": "link_type",
+        "attname": "id",
+        "null_frac": 0.0,
+        "avg_width": 4,
+        "n_distinct": -1.0,
+        "correlation": 1.0,
+        "data_type": "integer",
+        "table_size": 18.0
+      },
+      {
+        "tablename": "link_type",
+        "attname": "link",
+        "null_frac": 0.0,
+        "avg_width": 12,
+        "n_distinct": -1.0,
+        "correlation": -0.0216718,
+        "data_type": "character varying",
+        "table_size": 18.0
+      },
+      {
+        "tablename": "movie_companies",
+        "attname": "movie_id",
+        "null_frac": 0.0,
+        "avg_width": 4,
+        "n_distinct": -0.18398,
+        "correlation": 0.445258,
+        "data_type": "integer",
+        "table_size": 2609130.0
+      },
+      {
+        "tablename": "movie_companies",
+        "attname": "company_id",
+        "null_frac": 0.0,
+        "avg_width": 4,
+        "n_distinct": 19940.0,
+        "correlation": 0.594939,
+        "data_type": "integer",
+        "table_size": 2609130.0
+      },
+      {
+        "tablename": "movie_companies",
+        "attname": "company_type_id",
+        "null_frac": 0.0,
+        "avg_width": 4,
+        "n_distinct": 2.0,
+        "correlation": 1.0,
+        "data_type": "integer",
+        "table_size": 2609130.0
+      },
+      {
+        "tablename": "movie_companies",
+        "attname": "note",
+        "null_frac": 0.488133,
+        "avg_width": 24,
+        "n_distinct": 5820.0,
+        "correlation": 0.202969,
+        "data_type": "character varying",
+        "table_size": 2609130.0
+      },
+      {
+        "tablename": "movie_info_idx",
+        "attname": "id",
+        "null_frac": 0.0,
+        "avg_width": 4,
+        "n_distinct": -1.0,
+        "correlation": 1.0,
+        "data_type": "integer",
+        "table_size": 1380040.0
+      },
+      {
+        "tablename": "movie_info_idx",
+        "attname": "movie_id",
+        "null_frac": 0.0,
+        "avg_width": 4,
+        "n_distinct": -0.330579,
+        "correlation": 0.999366,
+        "data_type": "integer",
+        "table_size": 1380040.0
+      },
+      {
+        "tablename": "movie_info_idx",
+        "attname": "info_type_id",
+        "null_frac": 0.0,
+        "avg_width": 4,
+        "n_distinct": 4.0,
+        "correlation": 0.3399,
+        "data_type": "integer",
+        "table_size": 1380040.0
+      },
+      {
+        "tablename": "movie_info_idx",
+        "attname": "info",
+        "null_frac": 0.0,
+        "avg_width": 6,
+        "n_distinct": 11323.0,
+        "correlation": -0.0446478,
+        "data_type": "character varying",
+        "table_size": 1380040.0
+      },
+      {
+        "tablename": "movie_info_idx",
+        "attname": "note",
+        "null_frac": 1.0,
+        "avg_width": 0,
+        "n_distinct": 0.0,
+        "correlation": null,
+        "data_type": "character varying",
+        "table_size": 1380040.0
+      },
+      {
+        "tablename": "movie_keyword",
+        "attname": "id",
+        "null_frac": 0.0,
+        "avg_width": 4,
+        "n_distinct": -1.0,
+        "correlation": 1.0,
+        "data_type": "integer",
+        "table_size": 4523930.0
+      },
+      {
+        "tablename": "movie_keyword",
+        "attname": "movie_id",
+        "null_frac": 0.0,
+        "avg_width": 4,
+        "n_distinct": 100434.0,
+        "correlation": 0.999406,
+        "data_type": "integer",
+        "table_size": 4523930.0
+      },
+      {
+        "tablename": "movie_keyword",
+        "attname": "keyword_id",
+        "null_frac": 0.0,
+        "avg_width": 4,
+        "n_distinct": 14596.0,
+        "correlation": 0.0221261,
+        "data_type": "integer",
+        "table_size": 4523930.0
+      },
+      {
+        "tablename": "movie_link",
+        "attname": "id",
+        "null_frac": 0.0,
+        "avg_width": 4,
+        "n_distinct": -1.0,
+        "correlation": 1.0,
+        "data_type": "integer",
+        "table_size": 29997.0
+      },
+      {
+        "tablename": "title",
+        "attname": "imdb_index",
+        "null_frac": 0.9897,
+        "avg_width": 2,
+        "n_distinct": 8.0,
+        "correlation": 0.392427,
+        "data_type": "character varying",
+        "table_size": 2528520.0
+      },
+      {
+        "tablename": "title",
+        "attname": "kind_id",
+        "null_frac": 0.0,
+        "avg_width": 4,
+        "n_distinct": 6.0,
+        "correlation": -0.39281,
+        "data_type": "integer",
+        "table_size": 2528520.0
+      },
+      {
+        "tablename": "movie_link",
+        "attname": "movie_id",
+        "null_frac": 0.0,
+        "avg_width": 4,
+        "n_distinct": -0.213721,
+        "correlation": 0.992493,
+        "data_type": "integer",
+        "table_size": 29997.0
+      },
+      {
+        "tablename": "movie_link",
+        "attname": "linked_movie_id",
+        "null_frac": 0.0,
+        "avg_width": 4,
+        "n_distinct": -0.539021,
+        "correlation": -0.0323019,
+        "data_type": "integer",
+        "table_size": 29997.0
+      },
+      {
+        "tablename": "name",
+        "attname": "id",
+        "null_frac": 0.0,
+        "avg_width": 4,
+        "n_distinct": -1.0,
+        "correlation": 1.0,
+        "data_type": "integer",
+        "table_size": 4167400.0
+      },
+      {
+        "tablename": "name",
+        "attname": "name",
+        "null_frac": 0.0,
+        "avg_width": 15,
+        "n_distinct": -0.459342,
+        "correlation": 0.264479,
+        "data_type": "character varying",
+        "table_size": 4167400.0
+      },
+      {
+        "tablename": "name",
+        "attname": "imdb_index",
+        "null_frac": 0.787533,
+        "avg_width": 2,
+        "n_distinct": 73.0,
+        "correlation": 0.158134,
+        "data_type": "character varying",
+        "table_size": 4167400.0
+      },
+      {
+        "tablename": "name",
+        "attname": "imdb_id",
+        "null_frac": 1.0,
+        "avg_width": 4,
+        "n_distinct": 0.0,
+        "correlation": null,
+        "data_type": "integer",
+        "table_size": 4167400.0
+      },
+      {
+        "tablename": "name",
+        "attname": "gender",
+        "null_frac": 0.350033,
+        "avg_width": 2,
+        "n_distinct": 2.0,
+        "correlation": -0.36318,
+        "data_type": "character varying",
+        "table_size": 4167400.0
+      },
+      {
+        "tablename": "name",
+        "attname": "name_pcode_cf",
+        "null_frac": 0.0,
+        "avg_width": 5,
+        "n_distinct": 12501.0,
+        "correlation": 0.264425,
+        "data_type": "character varying",
+        "table_size": 4167400.0
+      },
+      {
+        "tablename": "name",
+        "attname": "name_pcode_nf",
+        "null_frac": 0.0235333,
+        "avg_width": 5,
+        "n_distinct": 10774.0,
+        "correlation": 0.00367313,
+        "data_type": "character varying",
+        "table_size": 4167400.0
+      },
+      {
+        "tablename": "name",
+        "attname": "surname_pcode",
+        "null_frac": 0.225333,
+        "avg_width": 4,
+        "n_distinct": 2698.0,
+        "correlation": 0.266029,
+        "data_type": "character varying",
+        "table_size": 4167400.0
+      },
+      {
+        "tablename": "name",
+        "attname": "md5sum",
+        "null_frac": 0.0,
+        "avg_width": 33,
+        "n_distinct": -1.0,
+        "correlation": -0.00149875,
+        "data_type": "character varying",
+        "table_size": 4167400.0
+      },
+      {
+        "tablename": "role_type",
+        "attname": "id",
+        "null_frac": 0.0,
+        "avg_width": 4,
+        "n_distinct": -1.0,
+        "correlation": 1.0,
+        "data_type": "integer",
+        "table_size": 12.0
+      },
+      {
+        "tablename": "role_type",
+        "attname": "role",
+        "null_frac": 0.0,
+        "avg_width": 11,
+        "n_distinct": -1.0,
+        "correlation": 0.475524,
+        "data_type": "character varying",
+        "table_size": 12.0
+      },
+      {
+        "tablename": "title",
+        "attname": "id",
+        "null_frac": 0.0,
+        "avg_width": 4,
+        "n_distinct": -1.0,
+        "correlation": 0.998087,
+        "data_type": "integer",
+        "table_size": 2528520.0
+      },
+      {
+        "tablename": "title",
+        "attname": "title",
+        "null_frac": 0.0,
+        "avg_width": 17,
+        "n_distinct": 140042.0,
+        "correlation": 0.407198,
+        "data_type": "character varying",
+        "table_size": 2528520.0
+      },
+      {
+        "tablename": "title",
+        "attname": "phonetic_code",
+        "null_frac": 0.286733,
+        "avg_width": 5,
+        "n_distinct": 11744.0,
+        "correlation": 0.215804,
+        "data_type": "character varying",
+        "table_size": 2528520.0
+      },
+      {
+        "tablename": "title",
+        "attname": "episode_of_id",
+        "null_frac": 0.387667,
+        "avg_width": 4,
+        "n_distinct": 14683.0,
+        "correlation": 0.993808,
+        "data_type": "integer",
+        "table_size": 2528520.0
+      },
+      {
+        "tablename": "title",
+        "attname": "season_nr",
+        "null_frac": 0.561333,
+        "avg_width": 4,
+        "n_distinct": 64.0,
+        "correlation": 0.336976,
+        "data_type": "integer",
+        "table_size": 2528520.0
+      },
+      {
+        "tablename": "title",
+        "attname": "episode_nr",
+        "null_frac": 0.5618,
+        "avg_width": 4,
+        "n_distinct": 1182.0,
+        "correlation": 0.0325594,
+        "data_type": "integer",
+        "table_size": 2528520.0
+      },
+      {
+        "tablename": "title",
+        "attname": "series_years",
+        "null_frac": 0.9637,
+        "avg_width": 9,
+        "n_distinct": 231.0,
+        "correlation": 0.0288789,
+        "data_type": "character varying",
+        "table_size": 2528520.0
+      },
+      {
+        "tablename": "title",
+        "attname": "md5sum",
+        "null_frac": 0.0,
+        "avg_width": 33,
+        "n_distinct": -1.0,
+        "correlation": 0.00181751,
+        "data_type": "character varying",
+        "table_size": 2528520.0
+      },
+      {
+        "tablename": "movie_info",
+        "attname": "id",
+        "null_frac": 0.0,
+        "avg_width": 4,
+        "n_distinct": -1.0,
+        "correlation": -0.499112,
+        "data_type": "integer",
+        "table_size": 14785000.0
+      },
+      {
+        "tablename": "movie_info",
+        "attname": "movie_id",
+        "null_frac": 0.0,
+        "avg_width": 4,
+        "n_distinct": 346155.0,
+        "correlation": 0.12697,
+        "data_type": "integer",
+        "table_size": 14785000.0
+      },
+      {
+        "tablename": "movie_info",
+        "attname": "info_type_id",
+        "null_frac": 0.0,
+        "avg_width": 4,
+        "n_distinct": 69.0,
+        "correlation": -0.117796,
+        "data_type": "integer",
+        "table_size": 14785000.0
+      },
+      {
+        "tablename": "movie_info",
+        "attname": "info",
+        "null_frac": 0.0,
+        "avg_width": 44,
+        "n_distinct": 20913.0,
+        "correlation": -0.0911363,
+        "data_type": "character varying",
+        "table_size": 14785000.0
+      },
+      {
+        "tablename": "movie_info",
+        "attname": "note",
+        "null_frac": 0.903667,
+        "avg_width": 19,
+        "n_distinct": 1956.0,
+        "correlation": -0.0386137,
+        "data_type": "character varying",
+        "table_size": 14785000.0
+      },
+      {
+        "tablename": "person_info",
+        "attname": "id",
+        "null_frac": 0.0,
+        "avg_width": 4,
+        "n_distinct": -1.0,
+        "correlation": 1.0,
+        "data_type": "integer",
+        "table_size": 2965440.0
+      },
+      {
+        "tablename": "person_info",
+        "attname": "person_id",
+        "null_frac": 0.0,
+        "avg_width": 4,
+        "n_distinct": 121266.0,
+        "correlation": 0.398355,
+        "data_type": "integer",
+        "table_size": 2965440.0
+      },
+      {
+        "tablename": "person_info",
+        "attname": "info",
+        "null_frac": 0.0,
+        "avg_width": 95,
+        "n_distinct": 155154.0,
+        "correlation": 0.0205751,
+        "data_type": "character varying",
+        "table_size": 2965440.0
+      },
+      {
+        "tablename": "person_info",
+        "attname": "note",
+        "null_frac": 0.971667,
+        "avg_width": 14,
+        "n_distinct": 2325.0,
+        "correlation": 0.0422107,
+        "data_type": "character varying",
+        "table_size": 2965440.0
+      }
+    ],
+    "table_stats": [
+      {
+        "relname": "aka_name",
+        "reltuples": 901343.0,
+        "relpages": 11396
+      },
+      {
+        "relname": "aka_title",
+        "reltuples": 361472.0,
+        "relpages": 6192
+      },
+      {
+        "relname": "cast_info",
+        "reltuples": 36261200.0,
+        "relpages": 252687
+      },
+      {
+        "relname": "char_name",
+        "reltuples": 3140290.0,
+        "relpages": 36448
+      },
+      {
+        "relname": "comp_cast_type",
+        "reltuples": 4.0,
+        "relpages": 1
+      },
+      {
+        "relname": "company_name",
+        "reltuples": 234997.0,
+        "relpages": 2995
+      },
+      {
+        "relname": "company_type",
+        "reltuples": 4.0,
+        "relpages": 1
+      },
+      {
+        "relname": "complete_cast",
+        "reltuples": 135086.0,
+        "relpages": 731
+      },
+      {
+        "relname": "info_type",
+        "reltuples": 113.0,
+        "relpages": 1
+      },
+      {
+        "relname": "keyword",
+        "reltuples": 134170.0,
+        "relpages": 949
+      },
+      {
+        "relname": "kind_type",
+        "reltuples": 7.0,
+        "relpages": 1
+      },
+      {
+        "relname": "link_type",
+        "reltuples": 18.0,
+        "relpages": 1
+      },
+      {
+        "relname": "pg_statistic",
+        "reltuples": 501.0,
+        "relpages": 44
+      },
+      {
+        "relname": "pg_type",
+        "reltuples": 429.0,
+        "relpages": 10
+      },
+      {
+        "relname": "movie_companies",
+        "reltuples": 2609130.0,
+        "relpages": 18790
+      },
+      {
+        "relname": "movie_info_idx",
+        "reltuples": 1380040.0,
+        "relpages": 7935
+      },
+      {
+        "relname": "movie_keyword",
+        "reltuples": 4523930.0,
+        "relpages": 24454
+      },
+      {
+        "relname": "movie_link",
+        "reltuples": 29997.0,
+        "relpages": 163
+      },
+      {
+        "relname": "pg_policy",
+        "reltuples": 0.0,
+        "relpages": 0
+      },
+      {
+        "relname": "pg_authid",
+        "reltuples": 6.0,
+        "relpages": 1
+      },
+      {
+        "relname": "name",
+        "reltuples": 4167400.0,
+        "relpages": 55613
+      },
+      {
+        "relname": "role_type",
+        "reltuples": 12.0,
+        "relpages": 1
+      },
+      {
+        "relname": "title",
+        "reltuples": 2528520.0,
+        "relpages": 35998
+      },
+      {
+        "relname": "movie_info",
+        "reltuples": 14785000.0,
+        "relpages": 161993
+      },
+      {
+        "relname": "person_info",
+        "reltuples": 2965440.0,
+        "relpages": 51051
+      },
+      {
+        "relname": "pg_user_mapping",
+        "reltuples": 0.0,
+        "relpages": 0
+      },
+      {
+        "relname": "pg_subscription",
+        "reltuples": 0.0,
+        "relpages": 0
+      },
+      {
+        "relname": "pg_attribute",
+        "reltuples": 2966.0,
+        "relpages": 54
+      },
+      {
+        "relname": "pg_proc",
+        "reltuples": 2894.0,
+        "relpages": 74
+      },
+      {
+        "relname": "pg_class",
+        "reltuples": 407.0,
+        "relpages": 11
+      },
+      {
+        "relname": "pg_attrdef",
+        "reltuples": 0.0,
+        "relpages": 0
+      },
+      {
+        "relname": "pg_constraint",
+        "reltuples": 23.0,
+        "relpages": 1
+      },
+      {
+        "relname": "pg_inherits",
+        "reltuples": 0.0,
+        "relpages": 0
+      },
+      {
+        "relname": "pg_index",
+        "reltuples": 167.0,
+        "relpages": 4
+      },
+      {
+        "relname": "pg_operator",
+        "reltuples": 787.0,
+        "relpages": 15
+      },
+      {
+        "relname": "pg_opfamily",
+        "reltuples": 115.0,
+        "relpages": 2
+      },
+      {
+        "relname": "pg_opclass",
+        "reltuples": 133.0,
+        "relpages": 3
+      },
+      {
+        "relname": "pg_am",
+        "reltuples": 6.0,
+        "relpages": 1
+      },
+      {
+        "relname": "pg_amop",
+        "reltuples": 709.0,
+        "relpages": 6
+      },
+      {
+        "relname": "pg_amproc",
+        "reltuples": 411.0,
+        "relpages": 4
+      },
+      {
+        "relname": "pg_language",
+        "reltuples": 4.0,
+        "relpages": 1
+      },
+      {
+        "relname": "pg_largeobject_metadata",
+        "reltuples": 0.0,
+        "relpages": 0
+      },
+      {
+        "relname": "pg_aggregate",
+        "reltuples": 138.0,
+        "relpages": 2
+      },
+      {
+        "relname": "pg_statistic_ext",
+        "reltuples": 0.0,
+        "relpages": 0
+      },
+      {
+        "relname": "pg_rewrite",
+        "reltuples": 121.0,
+        "relpages": 12
+      },
+      {
+        "relname": "pg_trigger",
+        "reltuples": 0.0,
+        "relpages": 0
+      },
+      {
+        "relname": "pg_event_trigger",
+        "reltuples": 0.0,
+        "relpages": 0
+      },
+      {
+        "relname": "pg_description",
+        "reltuples": 4665.0,
+        "relpages": 40
+      },
+      {
+        "relname": "pg_cast",
+        "reltuples": 219.0,
+        "relpages": 2
+      },
+      {
+        "relname": "pg_enum",
+        "reltuples": 0.0,
+        "relpages": 0
+      },
+      {
+        "relname": "pg_namespace",
+        "reltuples": 6.0,
+        "relpages": 1
+      },
+      {
+        "relname": "pg_conversion",
+        "reltuples": 132.0,
+        "relpages": 3
+      },
+      {
+        "relname": "pg_depend",
+        "reltuples": 7480.0,
+        "relpages": 56
+      },
+      {
+        "relname": "pg_database",
+        "reltuples": 23.0,
+        "relpages": 2
+      },
+      {
+        "relname": "pg_db_role_setting",
+        "reltuples": 20.0,
+        "relpages": 1
+      },
+      {
+        "relname": "pg_tablespace",
+        "reltuples": 2.0,
+        "relpages": 1
+      },
+      {
+        "relname": "pg_pltemplate",
+        "reltuples": 8.0,
+        "relpages": 1
+      },
+      {
+        "relname": "pg_auth_members",
+        "reltuples": 3.0,
+        "relpages": 1
+      },
+      {
+        "relname": "pg_shdepend",
+        "reltuples": 6.0,
+        "relpages": 1
+      },
+      {
+        "relname": "pg_shdescription",
+        "reltuples": 3.0,
+        "relpages": 1
+      },
+      {
+        "relname": "pg_ts_config",
+        "reltuples": 16.0,
+        "relpages": 1
+      },
+      {
+        "relname": "pg_ts_config_map",
+        "reltuples": 304.0,
+        "relpages": 2
+      },
+      {
+        "relname": "pg_ts_dict",
+        "reltuples": 16.0,
+        "relpages": 1
+      },
+      {
+        "relname": "pg_ts_parser",
+        "reltuples": 1.0,
+        "relpages": 1
+      },
+      {
+        "relname": "pg_ts_template",
+        "reltuples": 5.0,
+        "relpages": 1
+      },
+      {
+        "relname": "pg_extension",
+        "reltuples": 1.0,
+        "relpages": 1
+      },
+      {
+        "relname": "pg_foreign_data_wrapper",
+        "reltuples": 0.0,
+        "relpages": 0
+      },
+      {
+        "relname": "pg_foreign_server",
+        "reltuples": 0.0,
+        "relpages": 0
+      },
+      {
+        "relname": "pg_foreign_table",
+        "reltuples": 0.0,
+        "relpages": 0
+      },
+      {
+        "relname": "pg_replication_origin",
+        "reltuples": 0.0,
+        "relpages": 0
+      },
+      {
+        "relname": "pg_default_acl",
+        "reltuples": 0.0,
+        "relpages": 0
+      },
+      {
+        "relname": "pg_init_privs",
+        "reltuples": 149.0,
+        "relpages": 2
+      },
+      {
+        "relname": "pg_seclabel",
+        "reltuples": 0.0,
+        "relpages": 0
+      },
+      {
+        "relname": "pg_shseclabel",
+        "reltuples": 0.0,
+        "relpages": 0
+      },
+      {
+        "relname": "pg_collation",
+        "reltuples": 793.0,
+        "relpages": 26
+      },
+      {
+        "relname": "pg_partitioned_table",
+        "reltuples": 0.0,
+        "relpages": 0
+      },
+      {
+        "relname": "pg_range",
+        "reltuples": 6.0,
+        "relpages": 1
+      },
+      {
+        "relname": "pg_transform",
+        "reltuples": 0.0,
+        "relpages": 0
+      },
+      {
+        "relname": "pg_sequence",
+        "reltuples": 0.0,
+        "relpages": 0
+      },
+      {
+        "relname": "pg_publication",
+        "reltuples": 0.0,
+        "relpages": 0
+      },
+      {
+        "relname": "pg_publication_rel",
+        "reltuples": 0.0,
+        "relpages": 0
+      },
+      {
+        "relname": "pg_subscription_rel",
+        "reltuples": 0.0,
+        "relpages": 0
+      },
+      {
+        "relname": "pg_largeobject",
+        "reltuples": 0.0,
+        "relpages": 0
+      },
+      {
+        "relname": "sql_parts",
+        "reltuples": 9.0,
+        "relpages": 1
+      },
+      {
+        "relname": "sql_languages",
+        "reltuples": 4.0,
+        "relpages": 1
+      },
+      {
+        "relname": "sql_features",
+        "reltuples": 671.0,
+        "relpages": 7
+      },
+      {
+        "relname": "sql_implementation_info",
+        "reltuples": 12.0,
+        "relpages": 1
+      },
+      {
+        "relname": "sql_packages",
+        "reltuples": 10.0,
+        "relpages": 1
+      },
+      {
+        "relname": "sql_sizing",
+        "reltuples": 23.0,
+        "relpages": 1
+      },
+      {
+        "relname": "sql_sizing_profiles",
+        "reltuples": 0.0,
+        "relpages": 0
+      }
+    ]
+  },
+  "run_kwargs": null
+}

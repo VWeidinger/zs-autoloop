@@ -6,10 +6,9 @@ from ldb_schema.datasets import Dataset
 from ldb_schema.paths import ClusterPaths, LocalPaths
 from octopus.step import Rsync, KillAllScreens, SetupVenv, RsyncCurrentRepo, SetupRYEVenv
 
-from classes.classes import ModelConfig, ModelType, shorten_model_name
+from classes.classes import ModelConfig, shorten_model_name
 from classes.model_config_helper import parameterized_config
 from scripts.exp_runner.exp_runner import ExpRunner, TrainingServers
-from training.featurizations import PostgresEstWithAdditionalFeats
 
 
 def generate_training_commands(datasets: List[Dataset], seeds: list[int], python_version: str, wandb_project: str,
@@ -166,8 +165,8 @@ def generate_training_commands(datasets: List[Dataset], seeds: list[int], python
                 if training_runs is not None and len(training_runs) > 0:
                     command += f" --workload_runs {training_runs} "
 
-                if target_model.type == ModelType.WL_AGNOSTIC:
-                    command += f" --test_workload_runs {test_runs} "
+                #if target_model.type == ModelType.WL_AGNOSTIC:
+                command += f" --test_workload_runs {test_runs} "
 
                 if target_model.column_statistics:
                     command += f" --column_statistics {target_model.get_column_stats(target_dataset).as_posix()} "
@@ -257,7 +256,7 @@ if __name__ == '__main__':
         Dataset('fhnk', scale=2)
     ]
 
-    seeds = [3]
+    seeds = [5]
     nodes = [
         TrainingServers.NODE00,
         # TrainingServers.NODE01,
@@ -265,6 +264,7 @@ if __name__ == '__main__':
         # TrainingServers.NODE03,
         # TrainingServers.NODE04,
         # TrainingServers.NODE05,
+        # TrainingServers.NODE06
         # TrainingServers.NODE09,
     ]
     sockets = [0, 1]
@@ -315,7 +315,7 @@ if __name__ == '__main__':
             parameterized_config(model_type, wandb_group='baselines',
                                  include_pg_opt_workloads=True,
                                  include_scan_only_hint_workloads=True,
-                                 include_hint_idx_workloads=True,
+                                 #include_hint_idx_workloads=True,
                                  include_complex_many_joins_workloads=True,
                                  include_complex_ranking_workloads=True,
                                  **model_specific_args),  # std
