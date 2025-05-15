@@ -3,10 +3,14 @@ import json
 import os
 
 import pandas as pd
-from cross_db_benchmark.benchmark_tools.parse_run import dumper
-from cross_db_benchmark.benchmark_tools.utils import load_schema_json, load_string_statistics, load_column_statistics, \
-    load_json
+from ldb_schema.load_schema import get_json_schema, load_column_statistics, load_string_statistics, load_json
 from tqdm import tqdm
+
+def dumper(obj):
+    try:
+        return obj.toJSON()
+    except:
+        return obj.__dict__
 
 
 def create_sentences(dataset, plan_paths, data_dir, target):
@@ -21,7 +25,7 @@ def create_sentences(dataset, plan_paths, data_dir, target):
             augment_regex_patterns(p, regex_patterns, col_stats)
 
     # load statistics
-    schema = load_schema_json(dataset)
+    schema = get_json_schema(dataset)
     column_statistics = load_column_statistics(dataset, namespace=False)
     string_statistics = load_string_statistics(dataset, namespace=False)
 

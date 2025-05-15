@@ -3,8 +3,8 @@ import multiprocessing
 import os
 import time
 
-from cross_db_benchmark.benchmark_tools.utils import load_json
 from gensim.models import Word2Vec
+from ldb_schema.load_schema import load_json
 
 
 def compute_word_embeddings(source, target):

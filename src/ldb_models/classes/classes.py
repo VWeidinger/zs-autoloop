@@ -164,12 +164,10 @@ class ModelConfig:
         return source_path.Data.evaluation / model_name / database.db_name
 
     def get_statistics(self, source_path: Paths, dataset: Dataset, format: InputFormats) -> Path:
-        # if self.name in [ModelName.MSCN, ModelName.QUERY_FORMER]:
-        #    if dataset == Dataset('imdb'):
-        #        return source_path.Data. / dataset.db_name / 'statistics_combined.json'
-        #    else:
-        #        return source_path.Data.augmented_plans_baseline / dataset.db_name / 'statistics.json'
-        return source_path.Data.root / 'feature_statistics' / f'{format}_feature_statistics.json'
+        if self.type == ModelType.WL_DRIVEN:
+            return source_path.Data.root / 'feature_statistics' / f'{format}_feature_statistics_{dataset.db_name}.json'
+        elif self.type == ModelType.WL_AGNOSTIC:
+            return source_path.Data.root / 'feature_statistics' / f'{format}_feature_statistics.json'
 
     def get_column_stats(self, dataset: Dataset) -> Optional[Path]:
         if self.column_statistics:
