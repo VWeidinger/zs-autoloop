@@ -264,10 +264,10 @@ if __name__ == '__main__':
     nodes = [
         # TrainingServers.NODE00,
         # TrainingServers.NODE01,
-        TrainingServers.NODE02,
+        # TrainingServers.NODE02,
         # TrainingServers.NODE03,
         # TrainingServers.NODE04,
-        # TrainingServers.NODE05,
+        TrainingServers.NODE05,
         # TrainingServers.NODE09,
     ]
     sockets = [0, 1]
@@ -292,7 +292,7 @@ if __name__ == '__main__':
     use_romans_runs = False
     assemble_data_up_front = True  # run data / graph assemble up front i.e. during dataset creation instead of collate / training time
     # =================== (pretrained / wandb reuse configs)
-    is_pretrained = True  # if True, assumes that the model is pretrained and does not train it
+    is_pretrained = False  # if True, assumes that the model is pretrained and does not train it
     update_wandb_summary = False  # (works only together with pretrained) if True, it will update the wandb summaries of the first run with this layout
     # ===================
 
@@ -335,7 +335,7 @@ if __name__ == '__main__':
             # # parameterized_config(model_type, wandb_group='whintwl', include_hint_workloads=True,
             # #                      include_pg_opt_workloads=True, **model_specific_args),  # hint
             # parameterized_config(model_type, wandb_group='whint_hintidx', include_pg_opt_workloads=True,
-            #                      include_hint_workloads=True, include_hint_idx_workloads=True, **model_specific_args),
+            #                      include_complex_many_joins_workloads=True, include_hint_idx_workloads=True, **model_specific_args),
             # parameterized_config(model_type, wandb_group='whint_hintidx_mergenlj', include_pg_opt_workloads=True,
             #                      include_hint_workloads=True, include_hint_idx_workloads=True,
             #                      merge_nlj_and_inlj_to_same_op=True, **model_specific_args),
