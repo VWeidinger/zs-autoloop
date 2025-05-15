@@ -9,13 +9,13 @@ import attrs as attrs
 import numpy as np
 import torch
 import torch.optim as opt
-import wandb
 from schedulefree import AdamWScheduleFree
 from torch import nn
 from torch.optim.optimizer import Optimizer
 from torch.utils.data import DataLoader
 from wandb.apis.public import Run
 
+import wandb
 from classes.classes import ModelConfig, E2EModelConfig, ZeroShotModelConfig, MSCNModelConfig, DataLoaderOptions, \
     TlstmModelConfig, FlatModelConfig, ScaledPostgresModelConfig, TabularModelConfig, QPPNetModelConfig, \
     DACEModelConfig, QueryFormerModelConfig, T3ModelConfig
@@ -62,7 +62,9 @@ def init_model(statistics_file: Path,
                                                  label_norm=label_norm)
 
     elif isinstance(config, (E2EModelConfig, MSCNModelConfig, TlstmModelConfig, QueryFormerModelConfig)):
-        assert not assemble_data_up_front, "assemble_data_up_front is not supported for this model type"
+        # assert not assemble_data_up_front, "assemble_data_up_front is not supported for this model type"
+        assemble_data_up_front = False  # assemble_data_up_front is not supported for this model type
+
         _, feature_statistics, train_loader, val_loader, test_loaders, input_dims = \
             create_baseline_dataloader(workload_runs=workload_runs,
                                        statistics_file=statistics_file,
@@ -86,7 +88,8 @@ def init_model(statistics_file: Path,
                                            feature_statistics=feature_statistics)
 
     elif isinstance(config, QPPNetModelConfig):
-        assert not assemble_data_up_front, "assemble_data_up_front is not supported for this model type"
+        # assert not assemble_data_up_front, "assemble_data_up_front is not supported for this model type"
+        assemble_data_up_front = False  # assemble_data_up_front is not supported for this model type
         label_norm, feature_statistics, train_loader, val_loader, test_loaders = \
             create_qppnet_dataloader(workload_runs=workload_runs,
                                      statistics_file=statistics_file,
@@ -100,7 +103,8 @@ def init_model(statistics_file: Path,
                                   label_norm=label_norm)
 
     elif isinstance(config, DACEModelConfig):
-        assert not assemble_data_up_front, "assemble_data_upfront is not supported for this model type"
+        # assert not assemble_data_up_front, "assemble_data_upfront is not supported for this model type"
+        assemble_data_up_front = False  # assemble_data_up_front is not supported for this model type
         feature_statistics, train_loader, val_loader, test_loaders = \
             create_dace_dataloader(workload_runs=workload_runs,
                                    statistics_file=statistics_file,
@@ -109,7 +113,8 @@ def init_model(statistics_file: Path,
         model: nn.Module = DACELora(config=config)
 
     elif isinstance(config, (ScaledPostgresModelConfig, FlatModelConfig, T3ModelConfig)):
-        assert not assemble_data_up_front, "assemble_data_upfront is not supported for this model type"
+        # assert not assemble_data_up_front, "assemble_data_upfront is not supported for this model type"
+        assemble_data_up_front = False  # assemble_data_up_front is not supported for this model type
         model = None
         train_loader, val_loader, test_loaders = None, None, None
         feature_statistics = None

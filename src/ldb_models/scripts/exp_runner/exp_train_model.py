@@ -1,15 +1,14 @@
 import os
 from typing import List
 
-import wandb
 from ldb_schema.datasets import Dataset
 from ldb_schema.paths import ClusterPaths, LocalPaths
 from octopus.step import Rsync, KillAllScreens, SetupVenv, RsyncCurrentRepo, SetupRYEVenv
 
+import wandb
 from classes.classes import ModelConfig, ModelType, shorten_model_name
 from classes.model_config_helper import parameterized_config
 from scripts.exp_runner.exp_runner import ExpRunner, TrainingServers
-from training.featurizations import PostgresEstWithAdditionalFeats
 
 
 def generate_training_commands(datasets: List[Dataset], seeds: list[int], python_version: str, wandb_project: str,
@@ -55,6 +54,12 @@ def generate_training_commands(datasets: List[Dataset], seeds: list[int], python
                 test_runs += " " + target_model.assemble_wl_path(Dataset('imdb'), 'join_order_job_w_idxs_combined',
                                                                  stratified_workloads=False,
                                                                  romans_runs=use_romans_runs)
+
+                # JOBExtended
+                test_runs += " " + target_model.assemble_wl_path(Dataset('imdb'), 'JOBExtended_selection1',
+                                                                 stratified_workloads=False,
+                                                                 romans_runs=use_romans_runs)
+
             if eval_access_path:  # and target_dataset.db_name in ['imdb', 'tpc_h', 'baseball']:
                 # AP without aggregate
                 test_runs += " " + target_model.assemble_wl_path(Dataset('imdb'), "access_path_selection",
@@ -257,9 +262,9 @@ if __name__ == '__main__':
 
     seeds = [3]
     nodes = [
-        TrainingServers.NODE00,
+        # TrainingServers.NODE00,
         # TrainingServers.NODE01,
-        # TrainingServers.NODE02,
+        TrainingServers.NODE02,
         # TrainingServers.NODE03,
         # TrainingServers.NODE04,
         # TrainingServers.NODE05,
@@ -267,7 +272,7 @@ if __name__ == '__main__':
     ]
     sockets = [0, 1]
     out_file_id_offset = 0
-    num_parallel_screens = 4
+    num_parallel_screens = None
     num_parallel_jobs_dgx = 2
     num_parallel_tasks_per_job_dgx = 2
     run_exp_pin = False
@@ -287,7 +292,7 @@ if __name__ == '__main__':
     use_romans_runs = False
     assemble_data_up_front = True  # run data / graph assemble up front i.e. during dataset creation instead of collate / training time
     # =================== (pretrained / wandb reuse configs)
-    is_pretrained = False  # if True, assumes that the model is pretrained and does not train it
+    is_pretrained = True  # if True, assumes that the model is pretrained and does not train it
     update_wandb_summary = False  # (works only together with pretrained) if True, it will update the wandb summaries of the first run with this layout
     # ===================
 
@@ -309,19 +314,19 @@ if __name__ == '__main__':
             model_specific_args = {}
 
         model_configs.extend([
-            # parameterized_config(model_type, wandb_group='baselines', include_pg_opt_workloads=True,
-            #                      **model_specific_args),  # std
-            parameterized_config(model_type, wandb_group='outcolpruning_manyjoins',
-                                 include_scan_only_hint_workloads=True,
-                                 include_hint_idx_workloads=True,
-                                 include_complex_many_joins_workloads=True,
-                                 include_complex_ranking_workloads=True,
-                                 enforce_aggregation_node_at_root=True,
-                                 annotate_base_table_card_to_scan_op=True,
-                                 featurization=PostgresEstWithAdditionalFeats,
-                                 subplan_monotonicity_loss=True,
-                                 subplan_monotonicity_loss_fn='relative_lt_loss',
-                                 apply_outcol_pruning=True, **model_specific_args),  # std
+            parameterized_config(model_type, wandb_group='baselines', include_pg_opt_workloads=True,
+                                 **model_specific_args),  # std
+            # parameterized_config(model_type, wandb_group='outcolpruning_manyjoins',
+            #                      include_scan_only_hint_workloads=True,
+            #                      include_hint_idx_workloads=True,
+            #                      include_complex_many_joins_workloads=True,
+            #                      include_complex_ranking_workloads=True,
+            #                      enforce_aggregation_node_at_root=True,
+            #                      annotate_base_table_card_to_scan_op=True,
+            #                      featurization=PostgresEstWithAdditionalFeats,
+            #                      subplan_monotonicity_loss=True,
+            #                      subplan_monotonicity_loss_fn='relative_lt_loss',
+            #                      apply_outcol_pruning=True, **model_specific_args),  # std
             # parameterized_config(model_type, wandb_group='outcolpruning_manyjoins',
             #                      include_pg_opt_workloads=True,
             #                      include_hint_idx_workloads=True,

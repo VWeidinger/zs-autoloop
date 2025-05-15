@@ -422,6 +422,8 @@ def gen_t3_dataset(workload_runs: List[Path],
     selectivities = []
     join_ops = []
     scan_ops = []
+    num_tables = []
+    plan_depths = []
 
     sqls, hints = [], []  # Required to later evaluate against query optimization
 
@@ -448,6 +450,8 @@ def gen_t3_dataset(workload_runs: List[Path],
         selectivities += plan["selectivity"]
         join_ops += plan["join_op"]
         scan_ops += plan["scan_op"]
+        num_tables.append(plan["num_tables"])
+        plan_depths.append(0)
 
         # assign unique IDs to each operator in the plan
         annotate_op_id(plan)
@@ -482,6 +486,7 @@ def gen_t3_dataset(workload_runs: List[Path],
     assert len(labels) == len(selectivities)
     assert len(labels) == len(join_ops)
     assert len(labels) == len(scan_ops)
+    assert len(labels) == len(num_tables)
 
     if return_dataset:
         # assemble x, y
@@ -502,6 +507,6 @@ def gen_t3_dataset(workload_runs: List[Path],
             train_data = lgb.Dataset(X_train, label=Y_train, feature_name=FeatureMapper.get_names(), params=param)
             val_data = lgb.Dataset(X_val, label=Y_val, reference=train_data, params=param)
 
-        return train_data, val_data, Y_train, Y_val, sqls, hints, selectivities, scan_ops, join_ops
+        return train_data, val_data, Y_train, Y_val, sqls, hints, selectivities, scan_ops, join_ops, num_tables, plan_depths
     else:
-        return benchmark_queries, None, labels, None, sqls, hints, selectivities, scan_ops, join_ops
+        return benchmark_queries, None, labels, None, sqls, hints, selectivities, scan_ops, join_ops, num_tables, plan_depths

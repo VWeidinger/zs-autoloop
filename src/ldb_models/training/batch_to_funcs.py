@@ -5,14 +5,14 @@ from training.training.utils import recursive_to
 
 
 def dace_batch_to(batch, device, label_norm):
-    seq_encodings, attention_masks, loss_masks, run_times, labels, sample_idxs, sqls, hints, selectivity, scan_op, join_op = batch
+    seq_encodings, attention_masks, loss_masks, run_times, labels, sample_idxs, sqls, hints, selectivity, scan_op, join_op, num_tables, plan_depths = batch
     recursive_to(seq_encodings, device)
     recursive_to(attention_masks, device)
     recursive_to(run_times, device)
     recursive_to(loss_masks, device)
     recursive_to(labels, device)
     return (seq_encodings, attention_masks, loss_masks,
-            run_times), labels, sample_idxs, sqls, hints, selectivity, scan_op, join_op
+            run_times), labels, sample_idxs, sqls, hints, selectivity, scan_op, join_op, num_tables, plan_depths
 
 
 def simple_batch_to(batch, device, label_norm):

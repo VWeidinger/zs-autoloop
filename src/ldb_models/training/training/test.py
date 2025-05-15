@@ -35,12 +35,15 @@ def test_model(config: ModelConfig,
     job_total_slowdown = None
     joblight_total_selected_runtime = -1
     joblight_total_slowdown = None
+    jobextended_total_selected_runtime = -1
+    jobextended_total_slowdown = None
     physop_total_selected_runtime = -1
     physop_total_slowdown = None
     physopidx_total_selected_runtime = -1
     physopidx_total_slowdown = None
     accesspath_total_selected_runtime = -1
     accesspath_total_slowdown = None
+
 
     if test_loaders is not None:
         if not (model_dir is None or config.name.NAME is None):
@@ -94,11 +97,13 @@ def test_model(config: ModelConfig,
                 if not is_per_epoch:
                     save_csv([test_stats], str(test_path) + f"_test_stats{file_suffix}.csv")
 
-                if "join_order" in filename:
+                if "join_order" in filename or 'JOBExtended' in filename:
                     if filename == 'join_order':
                         wl_name = 'job_light'  # job_light
                     elif filename.startswith('join_order_job'):  # could also be 'join_order_job_all_valid'
                         wl_name = 'job'
+                    elif 'JOBExtended' in filename:
+                        wl_name = 'job_extended'
                     else:
                         raise ValueError(f"Unknown workload name: {filename}")
                     rt, slowdown = evaluate_join_order(predictions=predictions_dict, is_per_epoch=is_per_epoch,
@@ -111,6 +116,9 @@ def test_model(config: ModelConfig,
                     elif wl_name == 'job_light':
                         joblight_total_selected_runtime = rt
                         joblight_total_slowdown = slowdown
+                    elif wl_name == 'job_extended':
+                        jobextended_total_selected_runtime = rt
+                        jobextended_total_slowdown = slowdown
                     else:
                         raise ValueError(f"Unknown workload name: {wl_name}")
 
