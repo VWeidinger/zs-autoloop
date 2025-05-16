@@ -131,8 +131,6 @@ def extract_predicate_encoding(plan: dict, column_statistics: dict, feature_stat
     # Extracts the predicate encoding from a plan
     predicates = extract_predicates_recursively(plan, column_statistics, feature_statistics, predicates=[])
 
-    print(f"Predicates: {predicates}")
-
     # Use only column ids and sort them - we might later implement more sophisticated encoding as written in the paper
     predicate_ids = []
     for p in predicates:
