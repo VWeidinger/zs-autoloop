@@ -65,15 +65,16 @@ def extract_set_features(plan, feature_statistics, dim_word_hash, dim_word_emdb,
     return table_feats, pred_feats
 
 def get_condition(params: dict, feature_statistics: dict):
-    condition = (params["join"]["table_name1"] + "." + params["join"]["column_name1"] + " " + params["join"][
-        "operator"] + " " + params["join"]["table_name2"] + "." + params["join"]["column_name2"])
+    if "join" in params.keys():
+        condition = (params["join"]["table_name1"] + "." + params["join"]["column_name1"] + " " + params["join"][
+            "operator"] + " " + params["join"]["table_name2"] + "." + params["join"]["column_name2"])
 
-    if condition not in feature_statistics["join"]["value_dict"].keys():
-        condition = (params["join"]["table_name2"] + "." + params["join"]["column_name2"] + " " + params["join"][
-            "operator"] + " " + params["join"]["table_name1"] + "." + params["join"]["column_name1"])
-    assert condition in feature_statistics["join"]["value_dict"].keys(), f"Join condition {condition} not in feature statistics"
+        if condition not in feature_statistics["join"]["value_dict"].keys():
+            condition = (params["join"]["table_name2"] + "." + params["join"]["column_name2"] + " " + params["join"][
+                "operator"] + " " + params["join"]["table_name1"] + "." + params["join"]["column_name1"])
+        assert condition in feature_statistics["join"]["value_dict"].keys(), f"Join condition {condition} not in feature statistics"
 
-    return condition
+        return condition
 
 
 def get_all_join_conds(plan: dict, feature_statistics: dict):
@@ -82,7 +83,9 @@ def get_all_join_conds(plan: dict, feature_statistics: dict):
     if "join" in params.keys():
         if params["join"]["operator"] == str(LogicalOperator.AND):
             for c in plan["children"]:
-                join_conditions += get_condition(c, feature_statistics)
+                cond = get_condition(c, feature_statistics)
+                if cond:
+                    join_conditions += cond
         else:
             join_condition = get_condition(params, feature_statistics)
             join_conditions.append(join_condition)

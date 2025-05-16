@@ -544,6 +544,8 @@ if __name__ == '__main__':
         model_type = 'qppnet'
     elif model_type.startswith('neo'):
         model_type = 'neo'
+    elif model_type.startswith('e2e'):
+        model_type = 'e2e'
     else:
         raise ValueError(f"Model type {model_type} not recognized")
 

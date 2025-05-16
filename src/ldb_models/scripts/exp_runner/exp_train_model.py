@@ -110,6 +110,10 @@ def generate_training_commands(datasets: List[Dataset], seeds: list[int], python
                 model_type = 'qppnet'
             elif model_type.startswith('mscn'):
                 model_type = 'mscn'
+            elif model_type.startswith('e2e'):
+                model_type = 'e2e'
+            elif model_type.startswith('query_former'):
+                model_type = 'query_former'
             else:
                 raise ValueError(f"Model type {model_type} not recognized")
 
@@ -312,9 +316,11 @@ if __name__ == '__main__':
         # 'dace',
         # 'flat',
         # 't3'
-        #"neo"
-        #'qppnet'
-        'mscn'
+        # 'neo'
+        # 'qppnet'
+        # 'mscn'
+        # 'e2e'
+        'query_former'
     ]:
         if model_type == 'dace':
             model_specific_args = {'pad_length': 60}

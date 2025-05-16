@@ -170,7 +170,7 @@ class QueryFormer(nn.Module):
         # Define encoders for further inputs
         self.relative_position_encoder = nn.Embedding(64, config.head_size, padding_idx=0)
         self.height_encoder = nn.Embedding(64, hidden_dim, padding_idx=0)
-        self.join_encoder = nn.Embedding(64, hidden_dim, padding_idx=0)
+        self.join_encoder = nn.Embedding(256, hidden_dim, padding_idx=0)
 
         # Define intermediate transformer layers
         self.input_dropout = nn.Dropout(config.dropout)

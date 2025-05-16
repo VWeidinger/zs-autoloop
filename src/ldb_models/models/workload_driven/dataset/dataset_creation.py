@@ -6,7 +6,7 @@ from ldb_schema.load_schema import load_json
 from torch.utils.data import DataLoader
 
 from classes.classes import ModelConfig, DataLoaderOptions, TPoolModelConfig, TlstmModelConfig, \
-    TestSumModelConfig, MSCNModelConfig, QueryFormerModelConfig, NeoModelConfig
+    TestSumModelConfig, MSCNModelConfig, QueryFormerModelConfig, NeoModelConfig, E2EModelConfig
 from classes.workload_runs import WorkloadRuns
 from models.neo.neo_dataloader import neo_collator
 from models.query_former.dataloader import query_former_plan_collator
@@ -133,7 +133,7 @@ def get_collate_func(model_config: ModelConfig, database_statistics: dict, featu
                      column_statistics: dict,
                      word_embeddings: KeyedVectors,
                      dim_word_hash: int, dim_word_emdb: int, dim_bitmaps: int):
-    if isinstance(model_config, (TPoolModelConfig, TlstmModelConfig, TestSumModelConfig)):
+    if isinstance(model_config, (E2EModelConfig, TPoolModelConfig, TlstmModelConfig, TestSumModelConfig)):
         collate_kwargs = dict(db_statistics=database_statistics,
                               feature_statistics=feature_statistics,
                               column_statistics=column_statistics,

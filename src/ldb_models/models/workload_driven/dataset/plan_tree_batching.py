@@ -31,7 +31,7 @@ def plan_to_graphs(column_statistics, word_embeddings, db_statistics, feature_st
     plan_node_id = len(wl_graph.plan_depths)
     wl_graph.plan_depths.append(depth)
 
-    plan_params = vars(node.plan_parameters)
+    plan_params = node["plan_parameters"]
 
     # add Operation, Metadata (=used tables + columns) and Sample Bitmap
     # operation
@@ -41,25 +41,27 @@ def plan_to_graphs(column_statistics, word_embeddings, db_statistics, feature_st
     dim_cols, _, dim_tables, _ = extract_dimensions(feature_statistics)
 
     col_vec = np.zeros(dim_cols)
-    output_columns = plan_params.get('output_columns')
-    if output_columns is not None:
+    if "output_columns" in plan_params.keys():
+        output_columns = plan_params['output_columns']
         for output_column in output_columns:
-            for c_idx in output_column.columns:
-                col_vec[c_idx] = 1
+            for c_idx in output_column["columns"]:
+                col_vec[c_idx["col_id"]] = 1
 
     # metadata (used columns)
     tab_vec = np.zeros(dim_tables)
-    tab_idx = plan_params.get('table')
-    if tab_idx is not None:
-        tab_vec[int(tab_idx)] = 1
+
+    if "table_id" in plan_params.keys():
+        table_id= plan_params["table_id"]
+        tab_vec[int(table_id)] = 1
 
     # parse predicates into predicate graph and fill sample vector
     predicate_idx = -1
     sample_bitmap = np.zeros(dim_bitmaps)
-    filter_column = plan_params.get('filter_columns')
-    if filter_column is not None:
-        plan_sample_vec = plan_params.get('sample_vec')
+    if "filter" in plan_params.keys():
+        filter_column = plan_params['filter']
+        plan_sample_vec = plan_params['sample_vec']
         assert plan_sample_vec is not None
+
         sample_bitmap[:len(plan_sample_vec)] = plan_sample_vec
         # check if node already exists in the graph
         # filter_node_id = fitler_node_idx.get((filter_column.operator, filter_column.column, database_id))
@@ -78,10 +80,11 @@ def plan_to_graphs(column_statistics, word_embeddings, db_statistics, feature_st
         assert depth == 0
 
     # continue recursively
-    for c in node.children:
-        plan_to_graphs(column_statistics, word_embeddings, db_statistics, feature_statistics, c, wl_graph,
-                       depth=depth + 1, parent_node_id=plan_node_id, dim_word_hash=dim_word_hash,
-                       dim_word_emdb=dim_word_emdb, dim_bitmaps=dim_bitmaps)
+    if "children" in node.keys():
+        for c in node["children"]:
+            plan_to_graphs(column_statistics, word_embeddings, db_statistics, feature_statistics, c, wl_graph,
+                           depth=depth + 1, parent_node_id=plan_node_id, dim_word_hash=dim_word_hash,
+                           dim_word_emdb=dim_word_emdb, dim_bitmaps=dim_bitmaps)
 
 
 def extract_dimensions(feature_statistics, extended=False):
@@ -110,14 +113,14 @@ def parse_baseline_predicates(column_statistics, word_embeddings, db_statistics,
     filter_node_id = len(wl_graph.predicate_depths)
     wl_graph.predicate_depths.append(depth)
 
-    if filter_column.operator == str(LogicalOperator.AND):
+    if filter_column["operator"] == str(LogicalOperator.AND):
         wl_graph.predicate_operators.append(1)
-    elif filter_column.operator == str(LogicalOperator.OR):
+    elif filter_column["operator"] == str(LogicalOperator.OR):
         wl_graph.predicate_operators.append(-1)
     else:
         wl_graph.predicate_operators.append(0)
 
-    if filter_column.operator in {str(LogicalOperator.AND), str(LogicalOperator.OR)}:
+    if filter_column["operator"] in {str(LogicalOperator.AND), str(LogicalOperator.OR)}:
         wl_graph.predicate_features.append([0 for _ in range(10)])
     else:
         pred_feat_vec = encode_predicate(column_statistics, db_statistics, dim_word_emdb, dim_word_hash,
@@ -130,10 +133,11 @@ def parse_baseline_predicates(column_statistics, word_embeddings, db_statistics,
     else:
         assert depth == 0
 
-    for c in filter_column.children:
-        parse_baseline_predicates(column_statistics, word_embeddings, db_statistics, feature_statistics, c,
-                                  wl_graph, depth=depth + 1, parent_predicate=filter_node_id,
-                                  dim_word_hash=dim_word_hash, dim_word_emdb=dim_word_emdb)
+    if "children" in filter_column.keys():
+        for c in filter_column["children"]:
+            parse_baseline_predicates(column_statistics, word_embeddings, db_statistics, feature_statistics, c,
+                                      wl_graph, depth=depth + 1, parent_predicate=filter_node_id,
+                                      dim_word_hash=dim_word_hash, dim_word_emdb=dim_word_emdb)
 
     return filter_node_id
 
@@ -168,8 +172,7 @@ def encode_predicate(column_statistics, db_statistics, dim_word_emdb, dim_word_h
             if filter_column["operator"] in {'LIKE', 'NOT LIKE'}:
                 str_words = [w.strip() for w in filter_column["literal"].split('%') if len(w.strip()) > 0]
             elif filter_column["operator"] in {'IN'}:
-                assert isinstance(filter_column["literal"], list)
-                str_words = filter_column["literal"]
+                str_words = filter_column["literal"].split(",")
             str_words = [f'{col_name}_{w}' for w in str_words]
 
             # average of word embeddings and hashed value representation
@@ -197,7 +200,6 @@ def baseline_plan_collator(plans, feature_statistics=None, db_statistics=None, c
 
     wl_graph = WorkloadDrivenGraph()
 
-    db_statistics = db_statistics[0]
     sql_statements = []
     hints = []
 
@@ -212,7 +214,7 @@ def baseline_plan_collator(plans, feature_statistics=None, db_statistics=None, c
     sample_idxs = []
     for sample_idx, p in plans:
         sample_idxs.append(sample_idx)
-        wl_graph.labels.append(p.plan_runtime)
+        wl_graph.labels.append(p["plan_runtime_ms"])
         num_tables_list.append(p["num_tables"])
         sql_statements.append(p["sql"])
         hints.append(p["hint"])
@@ -220,9 +222,9 @@ def baseline_plan_collator(plans, feature_statistics=None, db_statistics=None, c
         selectivity_list += p["selectivity"]
         scan_op_list += p["scan_op"]
         join_op_list += p["join_op"]
+        graph_depth_list += [0] # TODO: compute real graph depths
 
-
-        plan_to_graphs(column_statistics, word_embeddings, db_statistics, feature_statistics, p, wl_graph,
+        plan_to_graphs(column_statistics, word_embeddings, db_statistics[0], feature_statistics, p, wl_graph,
                        dim_word_hash=dim_word_hash, dim_word_emdb=dim_word_emdb, dim_bitmaps=dim_bitmaps)
 
     pred_graph, plan_pred_ids, plan_pred_ops, pred_feats = predicate_graph(wl_graph)
@@ -353,17 +355,18 @@ def predicate_graph(wl_graph):
 
 
 def plan_batch_to(batch, device, label_norm):
-    label, plan_graph, features, pred_graph, plan_pred_mapping, sample_plan_idxs = batch
+    #label, plan_graph, features, pred_graph, plan_pred_mapping, sample_plan_idxs = batch
+    labels, plan_graph, features, pred_graph, plan_pred_mapping, sample_idxs, sql_statements, hints, selectivity_list, scan_op_list, join_op_list, num_tables_list, graph_depth_list = batch
     # graph, features, label = batch
     recursive_to(features, device)
-    recursive_to(label, device)
+    recursive_to(labels, device)
     recursive_to(plan_pred_mapping, device)
 
     # recursive_to(graph, device)
     plan_graph = plan_graph.to(device)
     pred_graph = pred_graph.to(device)
 
-    return (plan_graph, features, pred_graph, plan_pred_mapping), label, sample_plan_idxs
+    return (plan_graph, features, pred_graph, plan_pred_mapping), labels, sample_idxs, sql_statements, hints, selectivity_list, scan_op_list, join_op_list, num_tables_list, graph_depth_list
 
 
 def pred_node_type(pred_op):

@@ -269,7 +269,7 @@ class ModelConfig:
     def get_data_base_dir(self, stratified_workloads: bool, romans_runs: bool = False) -> Path:
         if stratified_workloads and not romans_runs:  # we do not have roman's runs stratified
             if self.input_format == InputFormats.baseline_parsed:
-                raise NotImplementedError("ToDo")
+                return ClusterPaths().Data.augmented_plans
             elif self.input_format == InputFormats.parsed:
                 return ClusterPaths().Data.parsed_plans_stratified2
             elif self.input_format == InputFormats.json:
@@ -375,6 +375,7 @@ class E2EModelConfig(ModelConfig):
     input_format: str = InputFormats.parsed
     column_statistics: bool = True
     word_embeddings: bool = True
+    device: str = "cuda:[socket]"
 
 
 @attrs.define(frozen=True, slots=False)
@@ -632,6 +633,7 @@ class QueryFormerModelConfig(ModelConfig):
     batch_to_func: Callable = query_former_batch_to
     loss_class_name: str = "QLoss"  # Originally MSELoss
     optimizer_class_name: str = "AdamW"  # Originally Adam
+    device: str = "cuda:[socket]"
 
 
 @attrs.define(frozen=True, slots=False)
