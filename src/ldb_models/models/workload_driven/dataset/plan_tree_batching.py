@@ -4,6 +4,7 @@ import dgl
 import numpy as np
 import torch
 
+from models.zeroshot.postgres_plan_batching import assign_additional_plan_info
 from training.dataset.cmp_operator import LogicalOperator
 from training.training.utils import recursive_to
 
@@ -155,18 +156,18 @@ def encode_predicate(column_statistics, db_statistics, dim_word_emdb, dim_word_h
             if  col_stats['data_type'] == 'float':
                 filter_column["literal"] = float(filter_column["literal"])
             elif col_stats['data_type'] == 'int':
-                filter_column["literal"] = int(filter_column["literal"])
+                filter_column["literal"] = int(float(filter_column["literal"]))
             else:
                 raise ValueError(f"Unknown column type {col_stats['data_type']}")
             val_enc = (filter_column["literal"] - col_stats['min'])
             if col_stats['max'] - col_stats['min'] > 0:
                 val_enc /= (col_stats['max'] - col_stats['min'])
             literal_vec[0] = val_enc
-        elif col_stats['datatype'] in {'categorical', 'misc'}:
+        elif col_stats['data_type'] in {'categorical', 'misc'}:
             str_words = [filter_column["literal"]]
             if filter_column["operator"] in {'LIKE', 'NOT LIKE'}:
-                str_words = [w.strip() for w in filter_column.literal.split('%') if len(w.strip()) > 0]
-            elif filter_column.operator in {'IN'}:
+                str_words = [w.strip() for w in filter_column["literal"].split('%') if len(w.strip()) > 0]
+            elif filter_column["operator"] in {'IN'}:
                 assert isinstance(filter_column["literal"], list)
                 str_words = filter_column["literal"]
             str_words = [f'{col_name}_{w}' for w in str_words]
@@ -197,12 +198,30 @@ def baseline_plan_collator(plans, feature_statistics=None, db_statistics=None, c
     wl_graph = WorkloadDrivenGraph()
 
     db_statistics = db_statistics[0]
+    sql_statements = []
+    hints = []
+
+    # other test information
+    selectivity_list = []
+    scan_op_list = []
+    join_op_list = []
+    num_tables_list = []
+    graph_depth_list = []
 
     # iterate over plans and create lists of edges and features per node
     sample_idxs = []
     for sample_idx, p in plans:
         sample_idxs.append(sample_idx)
         wl_graph.labels.append(p.plan_runtime)
+        num_tables_list.append(p["num_tables"])
+        sql_statements.append(p["sql"])
+        hints.append(p["hint"])
+        assign_additional_plan_info(p, db_statistics)
+        selectivity_list += p["selectivity"]
+        scan_op_list += p["scan_op"]
+        join_op_list += p["join_op"]
+
+
         plan_to_graphs(column_statistics, word_embeddings, db_statistics, feature_statistics, p, wl_graph,
                        dim_word_hash=dim_word_hash, dim_word_emdb=dim_word_emdb, dim_bitmaps=dim_bitmaps)
 
@@ -229,7 +248,7 @@ def baseline_plan_collator(plans, feature_statistics=None, db_statistics=None, c
 
     plan_pred_mapping = torch.from_numpy(np.array(plan_pred_mapping, dtype=np.int64))
 
-    return labels, plan_graph, features, pred_graph, plan_pred_mapping, sample_idxs
+    return labels, plan_graph, features, pred_graph, plan_pred_mapping, sample_idxs, sql_statements, hints, selectivity_list, scan_op_list, join_op_list, num_tables_list, graph_depth_list
 
 
 def tensorize_feats(features):

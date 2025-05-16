@@ -20,7 +20,7 @@ from training.featurizations import Featurization, DACEFeaturization, QPPNetFeat
 
 class InputFormats:
     parsed = "parsed_plans"
-    baseline_parsed = 'baseline'
+    baseline_parsed = 'augmented_plans'
     json = 'json'
 
 
@@ -166,6 +166,8 @@ class ModelConfig:
         return source_path.Data.evaluation / model_name / database.db_name
 
     def get_statistics(self, source_path: Paths, dataset: Dataset, format: InputFormats) -> Path:
+        if format == InputFormats.baseline_parsed:
+            format = InputFormats.parsed
         if self.type == ModelType.WL_DRIVEN:
             return source_path.Data.root / 'feature_statistics' / f'{format}_feature_statistics_{dataset.db_name}.json'
         elif self.type == ModelType.WL_AGNOSTIC:
@@ -179,7 +181,7 @@ class ModelConfig:
 
     def get_word_embeddings(self, source_path: Paths, database: Dataset) -> Optional[Path]:
         if self.word_embeddings:
-            return source_path.Data.sentences / database.db_name / 'word2vec.m'
+            return source_path.Data.sentences / f"{database.db_name}_scaled{database.scale}"/'word2vec.m'
         else:
             return None
 
@@ -546,10 +548,11 @@ class MSCNModelConfig(ModelConfig):
     mscn_est_layers: int = 1
     batch_to_func: Callable = batch_to
     collator_func: Callable = mscn_plan_collator
-    input_format: InputFormats = InputFormats.parsed
+    input_format: InputFormats = InputFormats.baseline_parsed
     column_statistics: bool = True
     word_embeddings: bool = True
     hidden_dim_plan: int = 256
+    device: str = "cuda:[socket]"
 
 @attrs.define(frozen=True, slots=False)
 class DACEModelConfig(ModelConfig):

@@ -32,7 +32,6 @@ def extract_join_recursively(sql: str, hint: str, plan: dict, table_statistics: 
 
         # Quick fix in case of joining three tables - this happens in care cases of transitive joins
         if "children" in join_info:
-            print(f"Joining three tables for {sql}")
             join_info = join_info["children"][0]
 
         # Left side
@@ -44,12 +43,6 @@ def extract_join_recursively(sql: str, hint: str, plan: dict, table_statistics: 
         table_name2 = join_info["table_name2"]
         col_id2 = join_info["col_id2"]
         col_name2 =join_info["column_name2"].replace("id_", "")
-
-        # Check that they are joined on the same column
-        #assert col_name1 == col_name2, f"Column names do not match: {join_info["column_name1"]} != {join_info["column_name2"]}"
-
-        left_table_id = get_table_id(table_name1, table_statistics)
-        right_table_id = get_table_id(table_name2, table_statistics)
 
         # Collect join information
         join_tables.append({"left_table": table_name1,

@@ -154,7 +154,6 @@ def augment_sample_vectors(dataset: str, data_dir: str, plan_path: str, target_p
         out_path = os.path.join(target_path, f'{workload}.json')
         if os.path.exists(out_path):
             print(f'Skip for {out_path}')
-        os.makedirs(os.path.dirname(out_path), exist_ok=True)
 
         for p in tqdm(run["parsed_plans"]):
             augment_sample(table_samples=table_samples,

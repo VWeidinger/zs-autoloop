@@ -108,6 +108,8 @@ def generate_training_commands(datasets: List[Dataset], seeds: list[int], python
                 model_type = 'neo'
             elif model_type.startswith('qppnet'):
                 model_type = 'qppnet'
+            elif model_type.startswith('mscn'):
+                model_type = 'mscn'
             else:
                 raise ValueError(f"Model type {model_type} not recognized")
 
@@ -265,10 +267,10 @@ if __name__ == '__main__':
 
     seeds = [3]
     nodes = [
-        TrainingServers.NODE00,
+        # TrainingServers.NODE00,
         # TrainingServers.NODE01,
         # TrainingServers.NODE02,
-        # TrainingServers.NODE03,
+        TrainingServers.NODE03,
         # TrainingServers.NODE04,
         # TrainingServers.NODE05,
         # TrainingServers.NODE09,
@@ -310,8 +312,9 @@ if __name__ == '__main__':
         # 'dace',
         # 'flat',
         # 't3'
-        "neo"
-        'qppnet'
+        #"neo"
+        #'qppnet'
+        'mscn'
     ]:
         if model_type == 'dace':
             model_specific_args = {'pad_length': 60}
