@@ -104,6 +104,8 @@ def generate_training_commands(datasets: List[Dataset], seeds: list[int], python
                 model_type = 'flat'
             elif model_type.startswith('t3'):
                 model_type = 't3'
+            elif model_type.startswith('neo'):
+                model_type = 'neo'
             elif model_type.startswith('qppnet'):
                 model_type = 'qppnet'
             else:
@@ -219,7 +221,7 @@ if __name__ == '__main__':
     if os.getenv('SSH_PATH') is not None:
         ssh_path = os.getenv('SSH_PATH')
     else:
-        ssh_path = 'ssh'
+        ssh_path = "ssh"
 
     setup_steps = [
         RsyncCurrentRepo(gitignore_path='.gitignore', local_folder_path=LocalPaths().Models.root.as_posix(),
@@ -263,17 +265,17 @@ if __name__ == '__main__':
 
     seeds = [3]
     nodes = [
-        # TrainingServers.NODE00,
+        TrainingServers.NODE00,
         # TrainingServers.NODE01,
         # TrainingServers.NODE02,
         # TrainingServers.NODE03,
         # TrainingServers.NODE04,
         # TrainingServers.NODE05,
-        TrainingServers.NODE09,
+        # TrainingServers.NODE09,
     ]
     sockets = [0, 1]
     out_file_id_offset = 0
-    num_parallel_screens = None
+    num_parallel_screens = 4
     num_parallel_jobs_dgx = 2
     num_parallel_tasks_per_job_dgx = 2
     run_exp_pin = False
@@ -291,7 +293,7 @@ if __name__ == '__main__':
     eval_physical_operator = True and not quick_run  # evaluate physical operator selection
     qo_eval_after_each_epoch = True  # if True, will run a full QO evaluation after each epoch
     use_romans_runs = False
-    assemble_data_up_front = False  # run data / graph assemble up front i.e. during dataset creation instead of collate / training time - this does not yet work for all models
+    assemble_data_up_front = False  # run data / graph assemble up front i.e. during dataset creation instead of collate / training time
     # =================== (pretrained / wandb reuse configs)
     is_pretrained = False  # if True, assumes that the model is pretrained and does not train it
     update_wandb_summary = False  # (works only together with pretrained) if True, it will update the wandb summaries of the first run with this layout
@@ -308,6 +310,7 @@ if __name__ == '__main__':
         # 'dace',
         # 'flat',
         # 't3'
+        "neo"
         'qppnet'
     ]:
         if model_type == 'dace':

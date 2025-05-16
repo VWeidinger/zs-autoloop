@@ -11,7 +11,7 @@ from models.t3.query_plan import CardType
 from models.workload_driven.dataset.mscn_batching import mscn_plan_collator
 from models.workload_driven.dataset.plan_tree_batching import plan_batch_to, baseline_plan_collator
 from models.zeroshot.postgres_plan_batching import postgres_plan_collator
-from training.batch_to_funcs import dace_batch_to, simple_batch_to, batch_to
+from training.batch_to_funcs import dace_batch_to, simple_batch_to, batch_to, neo_batch_to
 from training.featurizations import Featurization, DACEFeaturization, QPPNetFeaturization, \
     PostgresEstSystemCardDetail, DACEFeaturizationNoCosts, QPPNetNoCostsFeaturization, FlatModelFeaturization, \
     FlatModelActCardFeaturization, QPPNetActCardsFeaturization, PostgresTrueCardDetail, DACEActCardFeaturization, \
@@ -72,6 +72,8 @@ class ModelName:
     T3 = Name("t3", "T3")
     T3Flat = Name("t3_flat", "T3 (Flat)")
     T3Tree = Name("t3_tree", "T3 (Tree)")
+
+    NEO = Name("neo", "Neo")
 
 
 class ModelType:
@@ -646,6 +648,21 @@ class T3TreeModelConfig(T3ModelConfig):
 @attrs.define(frozen=True, slots=False)
 class T3FlatModelConfig(T3ModelConfig):
     name: Name = ModelName.T3Flat
+
+@attrs.define(frozen=True, slots=False)
+class NeoModelConfig(ModelConfig):
+    name: Name = ModelName.NEO
+    batch_to_func: Callable = dace_batch_to
+    device: str = "cuda:[socket]"
+    type: ModelType = ModelType.WL_DRIVEN
+    mscn_enc_layers: int = 1
+    mscn_est_layers: int = 1
+    batch_to_func: Callable = batch_to
+    collator_func: Callable = mscn_plan_collator
+    input_format: InputFormats = InputFormats.parsed
+    column_statistics: bool = False
+    word_embeddings: bool = False
+    batch_to_func: callable = neo_batch_to
 
 
 @attrs.define(frozen=True, slots=False)

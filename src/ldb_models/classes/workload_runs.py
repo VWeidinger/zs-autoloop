@@ -43,7 +43,11 @@ class WorkloadRuns:
     def check_model_compability(self, model_config: ModelConfig, mode: str, is_pretrained: bool = False) -> None:
         if mode == "train":
             if model_config.type == ModelType.WL_DRIVEN:
-                assert len(self.train_workload_runs) == 1, "One training workload run is supported for workload driven models"
+                workload_name = set()
+                for workload in self.train_workload_runs:
+                    workload_name.add(os.path.dirname(workload))
+                assert len(workload_name) == 1, "All training workloads should be from the same database"
+                #assert len(self.test_workload_runs) == 0, "No test workload runs are allowed for workload driven models, as the test workload is the same as the training workload"
 
             if model_config.type == ModelType.WL_AGNOSTIC:
                 if not is_pretrained:
