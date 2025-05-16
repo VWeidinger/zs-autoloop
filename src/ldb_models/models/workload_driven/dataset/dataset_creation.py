@@ -229,10 +229,9 @@ def create_baseline_dataloader(workload_runs: WorkloadRuns,
         print(
             f"Created datasets of size: train {len(train_dataset)}, validation: {len(val_dataset)}, test: {len(test_dataset)}")
 
-        # ToDo: Rewrite this for new plan format
-        #assert_db_stats_consistence(database_statistics, database_statistics, train_dataset)
-        #assert_db_stats_consistence(database_statistics, database_statistics, val_dataset)
-        #assert_db_stats_consistence(database_statistics, database_statistics, test_dataset)
+        assert_db_stats_consistence(database_statistics, database_statistics, train_dataset)
+        assert_db_stats_consistence(database_statistics, database_statistics, val_dataset)
+        assert_db_stats_consistence(database_statistics, database_statistics, test_dataset)
 
         # plan_collator does the heavy lifting of creating the graphs and extracting the features and thus requires both
         # database statistics but also feature statistics
@@ -260,8 +259,7 @@ def create_baseline_dataloader(workload_runs: WorkloadRuns,
                                 stratify_dataset=data_loader_options.stratify_dataset,
                                 stratify_per_wl_file=data_loader_options.stratify_per_wl_file)
 
-            # ToDo: Rewrite this for new plan format
-            #assert_db_stats_consistence(database_statistics, database_statistics, test_dataset)
+            assert_db_stats_consistence(database_statistics, database_statistics, test_dataset)
 
             test_collate_fn, input_dims = get_collate_func(model_config=model_config,
                                                            database_statistics=database_statistics,
