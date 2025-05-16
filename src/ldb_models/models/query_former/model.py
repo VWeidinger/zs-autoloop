@@ -221,7 +221,7 @@ class QueryFormer(nn.Module):
         embedded_features = embedded_features + encoded_heights
 
         # Add join encodings to the embedded features
-        joins = joins.repeat(1, 6)
+        joins = joins.repeat(1, 1)
         embedded_joins = self.join_encoder(joins.long())
         embedded_features = embedded_features + embedded_joins
 

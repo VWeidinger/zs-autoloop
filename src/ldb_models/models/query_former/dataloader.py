@@ -254,7 +254,7 @@ def encode_query_plan(query_index: int,
                       max_node: int = 30,
                       rel_pos_max: int = 20,
                       max_filter_number: int = 5,
-                      max_num_joins: int = 15,
+                      max_num_joins: int = 30,
                       histogram_bin_size: int = 10):
     # Get Join IDs per query
     join_ids = []
