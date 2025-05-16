@@ -44,7 +44,6 @@ class WorkloadRuns:
         if mode == "train":
             if model_config.type == ModelType.WL_DRIVEN:
                 assert len(self.train_workload_runs) == 1, "One training workload run is supported for workload driven models"
-                assert len(self.test_workload_runs) == 0, "No test workload runs are allowed for workload driven models, as the test workload is the same as the training workload"
 
             if model_config.type == ModelType.WL_AGNOSTIC:
                 if not is_pretrained:

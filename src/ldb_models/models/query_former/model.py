@@ -60,7 +60,7 @@ class FeatureEmbedding(nn.Module):
         num_tables = feature_statistics['tablename']['no_vals']
         self.table_embedding = nn.Embedding(num_tables + 2, embedding_size)
 
-        num_columns = int(feature_statistics['columns']['max'])
+        num_columns = int(feature_statistics['col_id']['max'])
         self.column_embedding = nn.Embedding(num_columns + 2, embedding_size)
 
         num_filter_operators = feature_statistics['operator']['no_vals']

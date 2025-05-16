@@ -163,7 +163,7 @@ class QPPNet(nn.Module):
         # Compute and collect loss for current node type
         self.loss_fxn.update_operator_loss(node_type=node_type, predicted_operator_time=predicted_operator_time, label=label)
 
-        return pred_vector, predicted_operator_time #/ 1000
+        return pred_vector, predicted_operator_time / 1000
 
     def zero_grad(self, set_to_none: bool = True) -> None:
         """Clear previous gradients of the neural units"""

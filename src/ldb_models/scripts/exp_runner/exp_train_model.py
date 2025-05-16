@@ -104,6 +104,8 @@ def generate_training_commands(datasets: List[Dataset], seeds: list[int], python
                 model_type = 'flat'
             elif model_type.startswith('t3'):
                 model_type = 't3'
+            elif model_type.startswith('qppnet'):
+                model_type = 'qppnet'
             else:
                 raise ValueError(f"Model type {model_type} not recognized")
 
@@ -169,8 +171,7 @@ def generate_training_commands(datasets: List[Dataset], seeds: list[int], python
                 if training_runs is not None and len(training_runs) > 0:
                     command += f" --workload_runs {training_runs} "
 
-                if target_model.type == ModelType.WL_AGNOSTIC:
-                    command += f" --test_workload_runs {test_runs} "
+                command += f" --test_workload_runs {test_runs} "
 
                 if target_model.column_statistics:
                     command += f" --column_statistics {target_model.get_column_stats(target_dataset).as_posix()} "
@@ -218,7 +219,7 @@ if __name__ == '__main__':
     if os.getenv('SSH_PATH') is not None:
         ssh_path = os.getenv('SSH_PATH')
     else:
-        ssh_path = None
+        ssh_path = 'ssh'
 
     setup_steps = [
         RsyncCurrentRepo(gitignore_path='.gitignore', local_folder_path=LocalPaths().Models.root.as_posix(),
@@ -267,8 +268,8 @@ if __name__ == '__main__':
         # TrainingServers.NODE02,
         # TrainingServers.NODE03,
         # TrainingServers.NODE04,
-        TrainingServers.NODE05,
-        # TrainingServers.NODE09,
+        # TrainingServers.NODE05,
+        TrainingServers.NODE09,
     ]
     sockets = [0, 1]
     out_file_id_offset = 0
@@ -290,7 +291,7 @@ if __name__ == '__main__':
     eval_physical_operator = True and not quick_run  # evaluate physical operator selection
     qo_eval_after_each_epoch = True  # if True, will run a full QO evaluation after each epoch
     use_romans_runs = False
-    assemble_data_up_front = True  # run data / graph assemble up front i.e. during dataset creation instead of collate / training time
+    assemble_data_up_front = False  # run data / graph assemble up front i.e. during dataset creation instead of collate / training time - this does not yet work for all models
     # =================== (pretrained / wandb reuse configs)
     is_pretrained = False  # if True, assumes that the model is pretrained and does not train it
     update_wandb_summary = False  # (works only together with pretrained) if True, it will update the wandb summaries of the first run with this layout
@@ -300,13 +301,14 @@ if __name__ == '__main__':
     model_configs = []
     for model_type in [
         # 'postgres',
-        'zeroshot',
+        # 'zeroshot',
         # 'zeroshot_low_min',
         # 'zeroshot_xl',
         # 'zeroshot_timeout',
         # 'dace',
         # 'flat',
         # 't3'
+        'qppnet'
     ]:
         if model_type == 'dace':
             model_specific_args = {'pad_length': 60}

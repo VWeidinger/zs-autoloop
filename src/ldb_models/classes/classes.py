@@ -269,7 +269,7 @@ class ModelConfig:
             elif self.input_format == InputFormats.parsed:
                 return ClusterPaths().Data.parsed_plans_stratified2
             elif self.input_format == InputFormats.json:
-                raise NotImplementedError("ToDo")
+                return ClusterPaths().Data.json_plans_stratified
         else:
             if self.input_format == InputFormats.baseline_parsed:
                 return ClusterPaths().Data.augmented_plans
@@ -547,7 +547,7 @@ class MSCNModelConfig(ModelConfig):
     input_format: InputFormats = InputFormats.parsed
     column_statistics: bool = True
     word_embeddings: bool = True
-
+    hidden_dim_plan: int = 256
 
 @attrs.define(frozen=True, slots=False)
 class DACEModelConfig(ModelConfig):

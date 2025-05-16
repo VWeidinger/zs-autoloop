@@ -86,10 +86,10 @@ def plan_to_graphs(column_statistics, word_embeddings, db_statistics, feature_st
 def extract_dimensions(feature_statistics, extended=False):
     dim_pred_op = feature_statistics['operator']['no_vals']
     dim_ops = feature_statistics['op_name']['no_vals']
-    dim_cols = max(int(feature_statistics['columns']['max']), int(feature_statistics['column']['max'])) + 1
-    dim_tables = int(feature_statistics['table']['max']) + 1
+    dim_cols = max(int(feature_statistics['col_id']['max']), int(feature_statistics['col_id']['max'])) + 1
+    dim_tables = int(feature_statistics['table_id']['max']) + 1
     if extended:
-        dim_joins = feature_statistics['join_conds']['no_vals']
+        dim_joins = feature_statistics['join']['no_vals']
         dim_aggs = feature_statistics['aggregation']['no_vals']
         return dim_cols, dim_ops, dim_tables, dim_pred_op, dim_joins, dim_aggs
 
@@ -141,27 +141,34 @@ def encode_predicate(column_statistics, db_statistics, dim_word_emdb, dim_word_h
                      word_embeddings):
     dim_cols, _, _, dim_pred_op = extract_dimensions(feature_statistics)
     col_vec = np.zeros(dim_cols)
-    col_vec[filter_column.column] = 1
-    operation_vec = encode_one_hot('operator', feature_statistics, filter_column.operator)
+    col_vec[filter_column["col_id"]] = 1
+    operation_vec = encode_one_hot('operator', feature_statistics, filter_column["operator"])
     # find out how to encode the column
-    col_name = db_statistics.column_stats[filter_column.column].attname
-    table_name = db_statistics.column_stats[filter_column.column].tablename
+    col_name = db_statistics["column_stats"][filter_column["col_id"]]["attname"]
+    table_name = db_statistics["column_stats"][filter_column["col_id"]]["tablename"]
     col_stats = column_statistics[table_name][col_name]
     literal_vec = np.zeros(dim_word_emdb + dim_word_hash)
-    if filter_column.operator not in {'IS NULL', 'IS NOT NULL'}:
-        if col_stats['datatype'] in {'float', 'int'}:
-            assert filter_column.literal is not None
-            val_enc = (filter_column.literal - col_stats['min'])
+    if filter_column["operator"] not in {'IS NULL', 'IS NOT NULL'}:
+        if col_stats['data_type'] in {'float', 'int'}:
+            assert filter_column["literal"] is not None
+            # cast literal
+            if  col_stats['data_type'] == 'float':
+                filter_column["literal"] = float(filter_column["literal"])
+            elif col_stats['data_type'] == 'int':
+                filter_column["literal"] = int(filter_column["literal"])
+            else:
+                raise ValueError(f"Unknown column type {col_stats['data_type']}")
+            val_enc = (filter_column["literal"] - col_stats['min'])
             if col_stats['max'] - col_stats['min'] > 0:
                 val_enc /= (col_stats['max'] - col_stats['min'])
             literal_vec[0] = val_enc
         elif col_stats['datatype'] in {'categorical', 'misc'}:
-            str_words = [filter_column.literal]
-            if filter_column.operator in {'LIKE', 'NOT LIKE'}:
+            str_words = [filter_column["literal"]]
+            if filter_column["operator"] in {'LIKE', 'NOT LIKE'}:
                 str_words = [w.strip() for w in filter_column.literal.split('%') if len(w.strip()) > 0]
             elif filter_column.operator in {'IN'}:
-                assert isinstance(filter_column.literal, list)
-                str_words = filter_column.literal
+                assert isinstance(filter_column["literal"], list)
+                str_words = filter_column["literal"]
             str_words = [f'{col_name}_{w}' for w in str_words]
 
             # average of word embeddings and hashed value representation

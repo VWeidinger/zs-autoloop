@@ -518,6 +518,12 @@ if __name__ == '__main__':
         model_type = 'flat'
     elif model_type.startswith('t3'):
         model_type = 't3'
+    elif model_type.startswith('mscn'):
+        model_type = 'mscn'
+    elif model_type.startswith('query_former'):
+        model_type = 'query_former'
+    elif model_type.startswith('qppnet'):
+        model_type = 'qppnet'
     else:
         raise ValueError(f"Model type {model_type} not recognized")
 
