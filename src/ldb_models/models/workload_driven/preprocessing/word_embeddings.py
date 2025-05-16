@@ -1,3 +1,4 @@
+import argparse
 import logging
 import multiprocessing
 import os
@@ -35,3 +36,13 @@ def compute_word_embeddings(source, target):
     # w2v_model.wv['Carrier_EV']
     w2v_model.wv.save(target)
     print('model saved')
+
+if __name__ == '__main__':
+  argparser = argparse.ArgumentParser()
+  argparser.add_argument('--source', type=str, required=True,
+                            help='Path to the json file with sentences')
+  argparser.add_argument('--target', type=str, required=True,
+                            help='Path to the target word2vec model')
+
+  args = argparser.parse_args()
+  compute_word_embeddings(source=args.source, target=args.target)
