@@ -16,13 +16,15 @@ from torch.optim.optimizer import Optimizer
 from torch.utils.data import DataLoader
 from wandb.apis.public import Run
 
+import wandb
 from classes.classes import ModelConfig, E2EModelConfig, ZeroShotModelConfig, MSCNModelConfig, DataLoaderOptions, \
     TlstmModelConfig, FlatModelConfig, ScaledPostgresModelConfig, TabularModelConfig, QPPNetModelConfig, \
-    DACEModelConfig, QueryFormerModelConfig, T3ModelConfig, ZeroShotVAEModelConfig
+    DACEModelConfig, QueryFormerModelConfig, T3ModelConfig, ZeroShotVAEModelConfig, NeoModelConfig
 from classes.model_config_helper import get_model_config
 from classes.workload_runs import WorkloadRuns
 from models.dace.dace_dataset import create_dace_dataloader
 from models.dace.dace_model import DACELora
+from models.neo.neo_model import TreeConvolution
 from models.qppnet.qppnet_dataloader import create_qppnet_dataloader
 from models.qppnet.qppnet_model import QPPNet
 from models.query_former.model import QueryFormer
@@ -69,7 +71,9 @@ def init_model(statistics_file: Path,
 
 
     elif isinstance(config, (E2EModelConfig, MSCNModelConfig, TlstmModelConfig, QueryFormerModelConfig)):
-        assert not assemble_data_up_front, "assemble_data_up_front is not supported for this model type"
+        # assert not assemble_data_up_front, "assemble_data_up_front is not supported for this model type"
+        assemble_data_up_front = False  # assemble_data_up_front is not supported for this model type
+
         _, feature_statistics, train_loader, val_loader, test_loaders, input_dims = \
             create_baseline_dataloader(workload_runs=workload_runs,
                                        statistics_file=statistics_file,
@@ -92,8 +96,22 @@ def init_model(statistics_file: Path,
                                            label_norm=None,
                                            feature_statistics=feature_statistics)
 
+    elif isinstance(config, NeoModelConfig):
+        _, feature_statistics, train_loader, val_loader, test_loaders, input_dims = \
+            create_baseline_dataloader(workload_runs=workload_runs,
+                                       statistics_file=statistics_file,
+                                       column_statistics=column_statistics,
+                                       word_embeddings=word_embeddings,
+                                       model_config=config,
+                                       data_loader_options=DataLoaderOptions())
+
+        model: nn.Module = TreeConvolution(model_config=config,
+                                           input_dims=input_dims,
+                                           feature_statistics=feature_statistics)
+
     elif isinstance(config, QPPNetModelConfig):
-        assert not assemble_data_up_front, "assemble_data_up_front is not supported for this model type"
+        # assert not assemble_data_up_front, "assemble_data_up_front is not supported for this model type"
+        assemble_data_up_front = False  # assemble_data_up_front is not supported for this model type
         label_norm, feature_statistics, train_loader, val_loader, test_loaders = \
             create_qppnet_dataloader(workload_runs=workload_runs,
                                      statistics_file=statistics_file,
@@ -107,7 +125,8 @@ def init_model(statistics_file: Path,
                                   label_norm=label_norm)
 
     elif isinstance(config, DACEModelConfig):
-        assert not assemble_data_up_front, "assemble_data_upfront is not supported for this model type"
+        # assert not assemble_data_up_front, "assemble_data_upfront is not supported for this model type"
+        assemble_data_up_front = False  # assemble_data_up_front is not supported for this model type
         feature_statistics, train_loader, val_loader, test_loaders = \
             create_dace_dataloader(workload_runs=workload_runs,
                                    statistics_file=statistics_file,
@@ -116,7 +135,8 @@ def init_model(statistics_file: Path,
         model: nn.Module = DACELora(config=config)
 
     elif isinstance(config, (ScaledPostgresModelConfig, FlatModelConfig, T3ModelConfig)):
-        assert not assemble_data_up_front, "assemble_data_upfront is not supported for this model type"
+        # assert not assemble_data_up_front, "assemble_data_upfront is not supported for this model type"
+        assemble_data_up_front = False  # assemble_data_up_front is not supported for this model type
         model = None
         train_loader, val_loader, test_loaders = None, None, None
         feature_statistics = None
@@ -218,6 +238,9 @@ def use_model(mode: str,
                     continue
                 test_after_epoch_dataloaders.append(dl)
                 test_after_epoch_testfiles.append(wl_file)
+    else:
+        test_after_epoch_dataloaders = []
+        test_after_epoch_testfiles = []
 
     found = False
     rank_found = False
@@ -520,6 +543,16 @@ if __name__ == '__main__':
         model_type = 'flat'
     elif model_type.startswith('t3'):
         model_type = 't3'
+    elif model_type.startswith('mscn'):
+        model_type = 'mscn'
+    elif model_type.startswith('query_former'):
+        model_type = 'query_former'
+    elif model_type.startswith('qppnet'):
+        model_type = 'qppnet'
+    elif model_type.startswith('neo'):
+        model_type = 'neo'
+    elif model_type.startswith('e2e'):
+        model_type = 'e2e'
     else:
         raise ValueError(f"Model type {model_type} not recognized")
 

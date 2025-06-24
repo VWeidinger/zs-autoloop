@@ -1,15 +1,14 @@
 import os
 from typing import List
 
-import wandb
 from ldb_schema.datasets import Dataset
 from ldb_schema.paths import ClusterPaths, LocalPaths
 from octopus.step import Rsync, KillAllScreens, SetupVenv, RsyncCurrentRepo, SetupRYEVenv
 
+import wandb
 from classes.classes import ModelConfig, ModelType, shorten_model_name
 from classes.model_config_helper import parameterized_config
 from scripts.exp_runner.exp_runner import ExpRunner, TrainingServers
-from training.featurizations import PostgresEstWithAdditionalFeats
 
 
 def generate_training_commands(datasets: List[Dataset], seeds: list[int], python_version: str, wandb_project: str,
@@ -55,6 +54,12 @@ def generate_training_commands(datasets: List[Dataset], seeds: list[int], python
                 test_runs += " " + target_model.assemble_wl_path(Dataset('imdb'), 'join_order_job_w_idxs_combined',
                                                                  stratified_workloads=False,
                                                                  romans_runs=use_romans_runs)
+
+                # JOBExtended
+                test_runs += " " + target_model.assemble_wl_path(Dataset('imdb'), 'JOBExtended_selection1',
+                                                                 stratified_workloads=False,
+                                                                 romans_runs=use_romans_runs)
+
             if eval_access_path:  # and target_dataset.db_name in ['imdb', 'tpc_h', 'baseball']:
                 # AP without aggregate
                 test_runs += " " + target_model.assemble_wl_path(Dataset('imdb'), "access_path_selection",
@@ -99,6 +104,16 @@ def generate_training_commands(datasets: List[Dataset], seeds: list[int], python
                 model_type = 'flat'
             elif model_type.startswith('t3'):
                 model_type = 't3'
+            elif model_type.startswith('neo'):
+                model_type = 'neo'
+            elif model_type.startswith('qppnet'):
+                model_type = 'qppnet'
+            elif model_type.startswith('mscn'):
+                model_type = 'mscn'
+            elif model_type.startswith('e2e'):
+                model_type = 'e2e'
+            elif model_type.startswith('query_former'):
+                model_type = 'query_former'
             else:
                 raise ValueError(f"Model type {model_type} not recognized")
 
@@ -164,8 +179,7 @@ def generate_training_commands(datasets: List[Dataset], seeds: list[int], python
                 if training_runs is not None and len(training_runs) > 0:
                     command += f" --workload_runs {training_runs} "
 
-                if target_model.type == ModelType.WL_AGNOSTIC:
-                    command += f" --test_workload_runs {test_runs} "
+                command += f" --test_workload_runs {test_runs} "
 
                 if target_model.column_statistics:
                     command += f" --column_statistics {target_model.get_column_stats(target_dataset).as_posix()} "
@@ -213,7 +227,7 @@ if __name__ == '__main__':
     if os.getenv('SSH_PATH') is not None:
         ssh_path = os.getenv('SSH_PATH')
     else:
-        ssh_path = None
+        ssh_path = "ssh"
 
     setup_steps = [
         RsyncCurrentRepo(gitignore_path='.gitignore', local_folder_path=LocalPaths().Models.root.as_posix(),
@@ -257,10 +271,10 @@ if __name__ == '__main__':
 
     seeds = [3]
     nodes = [
-        TrainingServers.NODE00,
+        # TrainingServers.NODE00,
         # TrainingServers.NODE01,
         # TrainingServers.NODE02,
-        # TrainingServers.NODE03,
+        TrainingServers.NODE03,
         # TrainingServers.NODE04,
         # TrainingServers.NODE05,
         # TrainingServers.NODE09,
@@ -285,7 +299,7 @@ if __name__ == '__main__':
     eval_physical_operator = True and not quick_run  # evaluate physical operator selection
     qo_eval_after_each_epoch = True  # if True, will run a full QO evaluation after each epoch
     use_romans_runs = False
-    assemble_data_up_front = True  # run data / graph assemble up front i.e. during dataset creation instead of collate / training time
+    assemble_data_up_front = False  # run data / graph assemble up front i.e. during dataset creation instead of collate / training time
     # =================== (pretrained / wandb reuse configs)
     is_pretrained = False  # if True, assumes that the model is pretrained and does not train it
     update_wandb_summary = False  # (works only together with pretrained) if True, it will update the wandb summaries of the first run with this layout
@@ -295,14 +309,19 @@ if __name__ == '__main__':
     model_configs = []
     for model_type in [
         # 'postgres',
-        'zeroshot',
+        # 'zeroshot',
         # 'zeroshot_low_min',
         # 'zeroshot_xl',
         # 'zeroshot_timeout',
         # 'dace',
         # 'flat',
         # 't3',
-        # 'zeroshot_vae'
+        # 'zeroshot_vae',
+        # 'neo',
+        # 'qppnet',
+        # 'mscn',
+        # 'e2e',
+        'query_former'
     ]:
         if model_type == 'dace':
             model_specific_args = {'pad_length': 60}
@@ -310,19 +329,19 @@ if __name__ == '__main__':
             model_specific_args = {}
 
         model_configs.extend([
-            # parameterized_config(model_type, wandb_group='baselines', include_pg_opt_workloads=True,
-            #                      **model_specific_args),  # std
-            parameterized_config(model_type, wandb_group='outcolpruning_manyjoins',
-                                 include_scan_only_hint_workloads=True,
-                                 include_hint_idx_workloads=True,
-                                 include_complex_many_joins_workloads=True,
-                                 include_complex_ranking_workloads=True,
-                                 enforce_aggregation_node_at_root=True,
-                                 annotate_base_table_card_to_scan_op=True,
-                                 featurization=PostgresEstWithAdditionalFeats,
-                                 subplan_monotonicity_loss=True,
-                                 subplan_monotonicity_loss_fn='relative_lt_loss',
-                                 apply_outcol_pruning=True, **model_specific_args),  # std
+            parameterized_config(model_type, wandb_group='baselines', include_pg_opt_workloads=True,
+                                 **model_specific_args),  # std
+            # parameterized_config(model_type, wandb_group='outcolpruning_manyjoins',
+            #                      include_scan_only_hint_workloads=True,
+            #                      include_hint_idx_workloads=True,
+            #                      include_complex_many_joins_workloads=True,
+            #                      include_complex_ranking_workloads=True,
+            #                      enforce_aggregation_node_at_root=True,
+            #                      annotate_base_table_card_to_scan_op=True,
+            #                      featurization=PostgresEstWithAdditionalFeats,
+            #                      subplan_monotonicity_loss=True,
+            #                      subplan_monotonicity_loss_fn='relative_lt_loss',
+            #                      apply_outcol_pruning=True, **model_specific_args),  # std
             # parameterized_config(model_type, wandb_group='outcolpruning_manyjoins',
             #                      include_pg_opt_workloads=True,
             #                      include_hint_idx_workloads=True,
@@ -331,7 +350,7 @@ if __name__ == '__main__':
             # # parameterized_config(model_type, wandb_group='whintwl', include_hint_workloads=True,
             # #                      include_pg_opt_workloads=True, **model_specific_args),  # hint
             # parameterized_config(model_type, wandb_group='whint_hintidx', include_pg_opt_workloads=True,
-            #                      include_hint_workloads=True, include_hint_idx_workloads=True, **model_specific_args),
+            #                      include_complex_many_joins_workloads=True, include_hint_idx_workloads=True, **model_specific_args),
             # parameterized_config(model_type, wandb_group='whint_hintidx_mergenlj', include_pg_opt_workloads=True,
             #                      include_hint_workloads=True, include_hint_idx_workloads=True,
             #                      merge_nlj_and_inlj_to_same_op=True, **model_specific_args),

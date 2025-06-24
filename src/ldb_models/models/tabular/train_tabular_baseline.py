@@ -138,7 +138,7 @@ def train_tabular_model(workload_runs: WorkloadRuns,
         # assemble model path
         model_path = f'{model_dir}_{config.seed}_{config.name.NAME}.txt'
         bst.save_model(model_path)
-        print(f'Model saved to {model_dir}_{config.seed}.txt')
+        print(f'Model saved to {model_path}.txt')
 
         # wrap the model in the T3Model class
         if isinstance(config, T3FlatModelConfig):
@@ -196,6 +196,19 @@ def predict_tabular_model(config: ModelConfig,
         pred_func = m.predict
         gen_dataset_func = gen_postgres_cost_dataset
     elif isinstance(config, T3ModelConfig):
+        model_path = f'{model_dir}_{config.seed}_{config.name.NAME}.txt'
+        print(f"Loading model from {model_path}")
+        bst = lgb.Booster(model_file=model_path)
+        print(f'Model saved to {model_dir}_{config.seed}.txt')
+
+        # wrap the model in the T3Model class
+        if isinstance(config, T3FlatModelConfig):
+            t3_model = FlatTreeModel(bst)
+        elif isinstance(config, T3TreeModelConfig):
+            t3_model = TreeModel(bst)
+        else:
+            t3_model = PerTupleTreeModel(bst)
+        assert t3_model is not None
         pred_func = t3_model.estimate_runtime_wrapper  # use the list-predict wrapper
         gen_dataset_func = functools.partial(gen_t3_dataset, model_config=config, verbose=False, return_dataset=False)
     else:
@@ -208,7 +221,7 @@ def predict_tabular_model(config: ModelConfig,
 
     test_datasets = []
     for test_wl in workload_runs.test_workload_runs:
-        x_test, _, y_test, _, test_sqls, test_hints, test_selectivities, test_scan_op_list, test_join_op_list \
+        x_test, _, y_test, _, test_sqls, test_hints, test_selectivities, test_scan_op_list, test_join_op_list, test_num_tables, test_plan_depths \
             = gen_dataset_func(workload_runs=[test_wl],
                                statistics_file=statistics_file,
                                cap_training_samples=cap_training_samples,
@@ -219,7 +232,8 @@ def predict_tabular_model(config: ModelConfig,
                                is_test=True
                                )
         test_datasets.append(
-            (x_test, y_test, test_sqls, test_hints, test_selectivities, test_scan_op_list, test_join_op_list))
+            (x_test, y_test, test_sqls, test_hints, test_selectivities, test_scan_op_list, test_join_op_list,
+             test_num_tables, test_plan_depths))
 
     # retrieve metrics similar to the ones used for QLoss
     metrics = init_metrics('QLoss')
@@ -229,6 +243,8 @@ def predict_tabular_model(config: ModelConfig,
     job_total_slowdown = None
     joblight_total_selected_runtime = -1
     joblight_total_slowdown = None
+    jobextended_total_selected_runtime = -1
+    jobextended_total_slowdown = None
     physop_total_selected_runtime = -1
     physop_total_slowdown = None
     physopidx_total_selected_runtime = -1
@@ -236,7 +252,8 @@ def predict_tabular_model(config: ModelConfig,
     accesspath_total_selected_runtime = -1
     accesspath_total_slowdown = None
 
-    for (x_test, y_test, sqls, hints, selectivities, scan_ops, join_ops), test_path in zip(test_datasets,
+    for (x_test, y_test, sqls, hints, selectivities, scan_ops, join_ops, num_tables, plan_depths), test_path in zip(
+            test_datasets,
                                                                                            workload_runs.target_test_csv_paths):
         print(f"Starting validation for {test_path}")
         test_stats = dict()
@@ -266,7 +283,10 @@ def predict_tabular_model(config: ModelConfig,
             hints=hints,
             selectivitys=selectivities,
             scan_ops=scan_ops,
-            join_ops=join_ops)
+            join_ops=join_ops,
+            num_tables=num_tables,
+            plan_depths=plan_depths
+        )
         if log_all_queries:
             save_csv(rows, target_csv_path=str(test_path) + "_test_pred.csv")
 
@@ -278,11 +298,13 @@ def predict_tabular_model(config: ModelConfig,
         if wandb_run:
             wandb_run.summary.update(prefix_dict(test_stats, f'{test_file_name}.json/test_'))
 
-        if "join_order" in str(test_path):
+        if "join_order" in str(test_path) or 'JOBExtended' in test_file_name:
             if test_file_name == 'join_order':
                 wl_name = 'job_light'  # job_light
             elif test_file_name in ['join_order_job', 'join_order_job_w_idxs_combined']:
                 wl_name = 'job'
+            elif 'JOBExtended' in test_file_name:
+                wl_name = 'job_extended'
             else:
                 raise ValueError(f"Unknown workload name: {test_file_name}")
             rt, slowdown = evaluate_join_order(predictions=rows, wandb_run=wandb_run, wl_name=wl_name)
@@ -292,6 +314,9 @@ def predict_tabular_model(config: ModelConfig,
             elif wl_name == 'job_light':
                 joblight_total_selected_runtime = rt
                 joblight_total_slowdown = slowdown
+            elif wl_name == 'job_extended':
+                jobextended_total_selected_runtime = rt
+                jobextended_total_slowdown = slowdown
             else:
                 raise ValueError(f"Unknown workload name: {wl_name}")
 
@@ -353,7 +378,7 @@ def gen_postgres_cost_dataset(workload_runs: List[Path],
     feature_vecs = []
     labels = []
     sqls, hints = [], []  # Required to later evaluate against join order
-    selectivities, join_ops, scan_ops = [], [], []
+    selectivities, join_ops, scan_ops, num_tables, plan_depths = [], [], [], [], []
     for plan in plans:
         # append to all feature vectors and runtime labels
         feature_vecs.append([plan["plan_parameters"]["pg_cost"]])
@@ -365,6 +390,8 @@ def gen_postgres_cost_dataset(workload_runs: List[Path],
         selectivities += plan["selectivity"]
         join_ops += plan["join_op"]
         scan_ops += plan["scan_op"]
+        num_tables.append(plan["num_tables"])
+        plan_depths.append(0)
 
     X_train, X_val, Y_train, Y_val = slice_train_val(cap_training_samples,
                                                      feature_vecs,
@@ -373,7 +400,7 @@ def gen_postgres_cost_dataset(workload_runs: List[Path],
                                                      val_ratio,
                                                      shuffle)
 
-    return X_train, X_val, Y_train, Y_val, sqls, hints, selectivities, scan_ops, join_ops
+    return X_train, X_val, Y_train, Y_val, sqls, hints, selectivities, scan_ops, join_ops, num_tables, plan_depths
 
 
 def gen_flattened_dataset(workload_runs: List[Path],
@@ -395,11 +422,7 @@ def gen_flattened_dataset(workload_runs: List[Path],
                                                     augment_with_subplans=model_config.train_on_subplans and not is_test,
                                                     merge_nlj_and_inlj_to_same_op=model_config.merge_nlj_and_inlj_to_same_op,
                                                     remove_join_cond_from_plan=model_config.remove_join_cond_from_plan, )
-    feature_vecs = []
-    labels = []
-    selectivities = []
-    join_ops = []
-    scan_ops = []
+    feature_vecs, labels, selectivities, join_ops, scan_ops, num_tables, plan_depths = [], [], [], [], [], [], []
 
     sqls, hints = [], []  # Required to later evaluate against query optimization
     for plan in plans:
@@ -409,6 +432,8 @@ def gen_flattened_dataset(workload_runs: List[Path],
         selectivities += plan["selectivity"]
         join_ops += plan["join_op"]
         scan_ops += plan["scan_op"]
+        num_tables.append(plan["num_tables"])
+        plan_depths.append(0)
 
         # number an operator occurs
         feature_num_vec = np.zeros(no_ops)
@@ -442,7 +467,7 @@ def gen_flattened_dataset(workload_runs: List[Path],
         labels.append(plan["plan_runtime_ms"] / 1000)
     X_train, X_val, Y_train, Y_val = slice_train_val(cap_training_samples, feature_vecs, labels, plans, val_ratio,
                                                      shuffle=shuffle)
-    return X_train, X_val, Y_train, Y_val, sqls, hints, selectivities, scan_ops, join_ops
+    return X_train, X_val, Y_train, Y_val, sqls, hints, selectivities, scan_ops, join_ops, num_tables, plan_depths
 
 
 def extract_card(p, act_card):

@@ -96,7 +96,7 @@ def read_workload_runs(workload_run_paths: List[Path],
     for path_index, (path, run) in enumerate(zip(workload_run_paths, run_list)):
         database_statistics[path_index] = run["database_stats"]
 
-        if input_format == InputFormats.parsed:
+        if input_format in [InputFormats.parsed, InputFormats.baseline_parsed]:
             assert "parsed_plans" in run, f"parsed_plans not in {path}, did you maybe used JSON query plans?"
             file_plans = run['parsed_plans']
         elif input_format == InputFormats.json:
@@ -122,7 +122,7 @@ def read_workload_runs(workload_run_paths: List[Path],
         per_file_plans = []
 
         for p_id, plan in enumerate(file_plans):
-            if input_format == InputFormats.parsed:
+            if input_format in [InputFormats.parsed, InputFormats.baseline_parsed]:
                 if not include_timeout_queries and plan["timeout"]:  # Skip timeout queries
                     timeout_ctr += 1
                     continue
@@ -139,10 +139,11 @@ def read_workload_runs(workload_run_paths: List[Path],
                 if not include_hint_not_obeyed_queries and plan["invalid_hint"]:  # Skip queries with invalid hints
                     hint_not_obeyed_ctr += 1
                     continue
-                if not include_zero_card_queries and plan[
-                    "zero_card"]:  # TODO this annotation is not 100% correct in the json plans (plan parsed is fixing this)!
-                    include_zero_card_queries_ctr += 1
-                    continue
+                #  TODO this annotation is not 100% correct in the json plans (plan parsed is fixing this)!
+                #if not include_zero_card_queries and plan[
+                #    "zero_card"]:  #
+                #    include_zero_card_queries_ctr += 1
+                #    continue
             else:
                 raise ValueError(f"Input format {input_format} not supported")
 
@@ -171,11 +172,11 @@ def read_workload_runs(workload_run_paths: List[Path],
                 break
 
         # extract the timeout thresholds used during query execution
-        per_file_timeout_thresholds = set([p['timeout_threshold'] for p in per_file_plans])  # in ms
-        if len(per_file_timeout_thresholds) != 1:
-            print(f"Multiple timeout thresholds in {path}: {per_file_timeout_thresholds}")
+        # per_file_timeout_thresholds = set([p['timeout_threshold'] for p in per_file_plans])  # in ms
+        #if len(per_file_timeout_thresholds) != 1:
+        #    print(f"Multiple timeout thresholds in {path}: {per_file_timeout_thresholds}")
 
-        timeout_thresholds_set.update(per_file_timeout_thresholds)
+        # timeout_thresholds_set.update(per_file_timeout_thresholds)
 
         if augment_with_subplans:
             # augment the plans with subplans
@@ -210,11 +211,11 @@ def read_workload_runs(workload_run_paths: List[Path],
         if any([blacklist in str(path) for blacklist in stratify_file_blacklist]):
             # Do not stratify if the file is in the blacklist
             pass
-        elif stratify_per_wl_file:
-            per_file_plans = stratify_plans(
-                plans=per_file_plans, max_runtime_ms=per_file_timeout_thresholds[0], output_identifier_hint=str(path),
-                print_distr_stats=True, shuffle_before=True
-            )
+        #elif stratify_per_wl_file:
+        #    per_file_plans = stratify_plans(
+        #        plans=per_file_plans, max_runtime_ms=per_file_timeout_thresholds[0], output_identifier_hint=str(path),
+        #        print_distr_stats=True, shuffle_before=True
+        #    )
 
         print(
             f'Loaded {len(per_file_plans)}/{len(file_plans)} plans from {path} (include timeout: {include_timeout_queries} (excluded: {timeout_ctr}), '

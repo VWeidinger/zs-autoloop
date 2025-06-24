@@ -121,7 +121,7 @@ def dace_collator(batch: Tuple, feature_statistics: dict, config: DACEModelConfi
     op_name_to_one_hot = get_op_name_to_one_hot(feature_statistics)
 
     labels, sample_idxs, seq_encodings, attention_masks, loss_masks, all_runtimes = [], [], [], [], [], []
-    all_sqls, all_hints, all_selectivities, all_scan_ops, all_join_ops = [], [], [], [], []
+    all_sqls, all_hints, all_selectivities, all_scan_ops, all_join_ops, all_num_tables, all_plan_depths = [], [], [], [], [], [], []
 
     for sample_idx, p in batch:
         sample_idxs.append(sample_idx)
@@ -132,6 +132,8 @@ def dace_collator(batch: Tuple, feature_statistics: dict, config: DACEModelConfi
         all_selectivities += p["selectivity"]
         all_scan_ops += p["scan_op"]
         all_join_ops += p["join_op"]
+        all_num_tables.append(p["num_tables"])
+        all_plan_depths.append(0)
 
         try:
             seq_encoding, attention_mask, loss_mask, run_times = get_plan_encoding(query_plan=p,
@@ -156,7 +158,7 @@ def dace_collator(batch: Tuple, feature_statistics: dict, config: DACEModelConfi
     attention_masks = torch.stack(attention_masks)
     loss_masks = torch.stack(loss_masks)
 
-    return seq_encodings, attention_masks, loss_masks, all_runtimes, labels, sample_idxs, all_sqls, all_hints, all_selectivities, all_scan_ops, all_join_ops
+    return seq_encodings, attention_masks, loss_masks, all_runtimes, labels, sample_idxs, all_sqls, all_hints, all_selectivities, all_scan_ops, all_join_ops, all_num_tables, all_plan_depths
 
 
 def get_op_name_to_one_hot(feature_statistics: dict) -> dict:

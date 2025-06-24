@@ -4,10 +4,11 @@ from typing import List, Tuple
 
 import numpy as np
 import torch
-from torch import Tensor
 
 from models.query_former.utils import TreeNode, pad_attn_bias_unsqueeze, floyd_warshall_transform, pad_1d_unsqueeze, \
     pad_rel_pos_unsqueeze, pad_2d_unsqueeze
+from models.workload_driven.dataset.mscn_batching import get_all_join_conds
+from models.zeroshot.postgres_plan_batching import assign_additional_plan_info
 from training.dataset.cmp_operator import LogicalOperator
 from training.training.utils import recursive_to
 
@@ -146,7 +147,8 @@ def recursively_convert_plan(plan: SimpleNamespace,
                              dim_bitmaps: int = 1000,
                              max_filter_number: int = 5,
                              histogram_bin_size: int = 10) -> TreeNode:
-    plan_parameters = vars(plan.plan_parameters)
+
+    plan_parameters = plan["plan_parameters"]
 
     # 1. Get operator type and type id
     operator_name = plan_parameters['op_name']
@@ -160,7 +162,7 @@ def recursively_convert_plan(plan: SimpleNamespace,
     # Parse and encode filters and sample vectors.
     # Each operator has a filter according to the original code. It however can be "empty"
     filter_info = [None]
-    empty_filter_vec = np.array([feature_statistics['column']['max'] + 1,        # dummy column
+    empty_filter_vec = np.array([feature_statistics['col_id']['max'] + 1,        # dummy column
                                  feature_statistics['operator']['no_vals'] + 1,  # dummy operator
                                  0.0]                                            # dummy literal
                                ).reshape(1, 3)
@@ -222,24 +224,27 @@ def recursively_convert_plan(plan: SimpleNamespace,
     assert not np.isnan(tree_node.feature_vector).any(), "NaN in feature vector"
 
     # Recursively convert children
-    for children in plan.children:
-        children.parent = plan  # Add parent plan to children as well.
-        child = recursively_convert_plan(plan=children,
-                                         index=index,
-                                         feature_statistics=feature_statistics,
-                                         column_statistics=column_statistics,
-                                         database_statistics=database_statistics,
-                                         dim_word_embedding=dim_word_embedding,
-                                         dim_word_hash=dim_word_hash,
-                                         word_embeddings=word_embeddings,
-                                         max_filter_number=max_filter_number)
+    if "children" in plan_parameters.keys():
+        for child in plan_parameters["children"]:
+            child.parent = plan
+
+            child["parent"] = plan  # Add parent plan to children as well.
+            child = recursively_convert_plan(plan=child,
+                                             index=index,
+                                             feature_statistics=feature_statistics,
+                                             column_statistics=column_statistics,
+                                             database_statistics=database_statistics,
+                                             dim_word_embedding=dim_word_embedding,
+                                             dim_word_hash=dim_word_hash,
+                                             word_embeddings=word_embeddings,
+                                             max_filter_number=max_filter_number)
         tree_node.parent = plan
         tree_node.add_child(child)
     return tree_node
 
 
 def encode_query_plan(query_index: int,
-                      query_plan: SimpleNamespace,
+                      query_plan: dict,
                       feature_statistics: dict,
                       column_statistics: dict,
                       word_embeddings: object,
@@ -249,12 +254,15 @@ def encode_query_plan(query_index: int,
                       max_node: int = 30,
                       rel_pos_max: int = 20,
                       max_filter_number: int = 5,
-                      max_num_joins: int = 5,
+                      max_num_joins: int = 30,
                       histogram_bin_size: int = 10):
     # Get Join IDs per query
     join_ids = []
-    for join_cond in query_plan.join_conds:
-        join_ids.append(feature_statistics['join_conds']['value_dict'][join_cond])
+
+    join_conditions = get_all_join_conds(query_plan, feature_statistics)
+    for join_cond in join_conditions:
+        join_ids.append(feature_statistics['join']['value_dict'][join_cond])
+
     for i in range(len(join_ids), max_num_joins):
         join_ids.append(0)
     join_ids = torch.Tensor(np.array(join_ids).reshape(1, max_num_joins))
@@ -314,15 +322,15 @@ def encode_query_plan(query_index: int,
 
 def query_former_plan_collator(plans: List[SimpleNamespace],
                                feature_statistics: dict = None,
-                               db_statistics: SimpleNamespace = None,
+                               db_statistics: dict = None,
                                column_statistics: dict = None,
                                word_embeddings=None,
                                dim_word_hash=None,
                                dim_word_embedding=None,
                                histogram_bin_size: int = None,
                                max_num_filters: int = None,
-                               dim_bitmaps=None) -> Tuple[
-    Tuple[Tensor, Tensor, Tensor, Tensor, Tensor], Tensor, List[int]]:
+                               dim_bitmaps=None):
+
     labels = []
     all_features = []
     all_join_ids = []
@@ -331,7 +339,28 @@ def query_former_plan_collator(plans: List[SimpleNamespace],
     all_node_heights = []
     sample_idxs = []
 
+    #Additional information
+    sql_statements = []
+    hints = []
+
+    # other test information
+    selectivity_list = []
+    scan_op_list = []
+    join_op_list = []
+    num_tables_list = []
+    graph_depth_list = []
+
+
     for plan_index, p in plans:
+        num_tables_list.append(p["num_tables"])
+        sql_statements.append(p["sql"])
+        hints.append(p["hint"])
+        assign_additional_plan_info(p, db_statistics)
+        selectivity_list += p["selectivity"]
+        scan_op_list += p["scan_op"]
+        join_op_list += p["join_op"]
+        graph_depth_list += [0] # ToDo
+
         features, join_ids, attention_bias, rel_pos, node_heights = encode_query_plan(query_index=plan_index,
                                                                                       query_plan=p,
                                                                                       feature_statistics=feature_statistics,
@@ -350,7 +379,7 @@ def query_former_plan_collator(plans: List[SimpleNamespace],
         all_rel_pos.append(rel_pos)
         all_node_heights.append(node_heights)
         sample_idxs.append(plan_index)
-        labels.append(torch.tensor(p.plan_runtime) / 1000)
+        labels.append(torch.tensor(p["plan_runtime_ms"]) / 1000)
 
     all_features = torch.cat(all_features)
     all_join_ids = torch.cat(all_join_ids)
@@ -359,11 +388,11 @@ def query_former_plan_collator(plans: List[SimpleNamespace],
     all_node_heights = torch.cat(all_node_heights)
 
     return (all_features, all_join_ids, all_attention_bias, all_rel_pos, all_node_heights), torch.Tensor(
-        labels), sample_idxs
-
+        labels), sample_idxs, sql_statements, hints, selectivity_list, scan_op_list, join_op_list, num_tables_list, graph_depth_list
 
 def query_former_batch_to(batch, device, label_norm):
-    (features, join_ids, attention_bias, rel_pos, node_heights), label, sample_idxs = batch
+    ((features, join_ids, attention_bias, rel_pos, node_heights), label, sample_idxs,
+     sql_statements, hints, selectivity_list, scan_op_list, join_op_list, num_tables_list, graph_depth_list) = batch
     if label_norm is not None:
         label = label_norm.transform(np.asarray(label).reshape(-1, 1))
         label = label.reshape(-1)
@@ -374,4 +403,5 @@ def query_former_batch_to(batch, device, label_norm):
     recursive_to(attention_bias, device)
     recursive_to(rel_pos, device)
     recursive_to(node_heights, device)
-    return (features, join_ids, attention_bias, rel_pos, node_heights), label, sample_idxs
+    return ((features, join_ids, attention_bias, rel_pos, node_heights), label, sample_idxs,
+            sql_statements, hints, selectivity_list, scan_op_list, join_op_list, num_tables_list, graph_depth_list)

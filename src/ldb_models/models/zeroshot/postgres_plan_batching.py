@@ -193,6 +193,16 @@ def plan_to_graph(node, database_id, plan_depths, plan_features, plan_to_plan_ed
 
     # featurize join conditions
     join = plan_params.get('join')
+
+    # check if JOIN is a condition of the form: t1.c1 = t1.c2 (i.e. it is a filter rather than a join)
+    # in this case skip this join
+    if is_scan_op and join is not None:
+        if join['table_name1'] == join['table_name2']:
+            # this is a filter rather than a join
+            # currently we cannot featurize this
+            # skip this
+            join = None
+
     if join is not None:
         assert 'is_index_cond' in join, f'No is_index_cond in join: {join} / {node}'
         db_column_features = db_statistics[database_id]["column_stats"]

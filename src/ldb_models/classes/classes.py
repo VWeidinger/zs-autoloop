@@ -11,7 +11,7 @@ from models.t3.query_plan import CardType
 from models.workload_driven.dataset.mscn_batching import mscn_plan_collator
 from models.workload_driven.dataset.plan_tree_batching import plan_batch_to, baseline_plan_collator
 from models.zeroshot.postgres_plan_batching import postgres_plan_collator
-from training.batch_to_funcs import dace_batch_to, simple_batch_to, batch_to
+from training.batch_to_funcs import dace_batch_to, simple_batch_to, batch_to, neo_batch_to
 from training.featurizations import Featurization, DACEFeaturization, QPPNetFeaturization, \
     PostgresEstSystemCardDetail, DACEFeaturizationNoCosts, QPPNetNoCostsFeaturization, FlatModelFeaturization, \
     FlatModelActCardFeaturization, QPPNetActCardsFeaturization, PostgresTrueCardDetail, DACEActCardFeaturization, \
@@ -20,7 +20,7 @@ from training.featurizations import Featurization, DACEFeaturization, QPPNetFeat
 
 class InputFormats:
     parsed = "parsed_plans"
-    baseline_parsed = 'baseline'
+    baseline_parsed = 'augmented_plans'
     json = 'json'
 
 
@@ -72,6 +72,8 @@ class ModelName:
     T3 = Name("t3", "T3")
     T3Flat = Name("t3_flat", "T3 (Flat)")
     T3Tree = Name("t3_tree", "T3 (Tree)")
+
+    NEO = Name("neo", "Neo")
 
 
 class ModelType:
@@ -164,12 +166,12 @@ class ModelConfig:
         return source_path.Data.evaluation / model_name / database.db_name
 
     def get_statistics(self, source_path: Paths, dataset: Dataset, format: InputFormats) -> Path:
-        # if self.name in [ModelName.MSCN, ModelName.QUERY_FORMER]:
-        #    if dataset == Dataset('imdb'):
-        #        return source_path.Data. / dataset.db_name / 'statistics_combined.json'
-        #    else:
-        #        return source_path.Data.augmented_plans_baseline / dataset.db_name / 'statistics.json'
-        return source_path.Data.root / 'feature_statistics' / f'{format}_feature_statistics.json'
+        if format == InputFormats.baseline_parsed:
+            format = InputFormats.parsed
+        if self.type == ModelType.WL_DRIVEN:
+            return source_path.Data.root / 'feature_statistics' / f'{format}_feature_statistics_{dataset.db_name}.json'
+        elif self.type == ModelType.WL_AGNOSTIC:
+            return source_path.Data.root / 'feature_statistics' / f'{format}_feature_statistics.json'
 
     def get_column_stats(self, dataset: Dataset) -> Optional[Path]:
         if self.column_statistics:
@@ -179,7 +181,7 @@ class ModelConfig:
 
     def get_word_embeddings(self, source_path: Paths, database: Dataset) -> Optional[Path]:
         if self.word_embeddings:
-            return source_path.Data.sentences / database.db_name / 'word2vec.m'
+            return source_path.Data.sentences / f"{database.db_name}_scaled{database.scale}"/'word2vec.m'
         else:
             return None
 
@@ -267,11 +269,11 @@ class ModelConfig:
     def get_data_base_dir(self, stratified_workloads: bool, romans_runs: bool = False) -> Path:
         if stratified_workloads and not romans_runs:  # we do not have roman's runs stratified
             if self.input_format == InputFormats.baseline_parsed:
-                raise NotImplementedError("ToDo")
+                return ClusterPaths().Data.augmented_plans
             elif self.input_format == InputFormats.parsed:
                 return ClusterPaths().Data.parsed_plans_stratified2
             elif self.input_format == InputFormats.json:
-                raise NotImplementedError("ToDo")
+                return ClusterPaths().Data.json_plans_stratified
         else:
             if self.input_format == InputFormats.baseline_parsed:
                 return ClusterPaths().Data.augmented_plans
@@ -373,6 +375,7 @@ class E2EModelConfig(ModelConfig):
     input_format: str = InputFormats.parsed
     column_statistics: bool = True
     word_embeddings: bool = True
+    device: str = "cuda:[socket]"
 
 
 @attrs.define(frozen=True, slots=False)
@@ -554,10 +557,11 @@ class MSCNModelConfig(ModelConfig):
     mscn_est_layers: int = 1
     batch_to_func: Callable = batch_to
     collator_func: Callable = mscn_plan_collator
-    input_format: InputFormats = InputFormats.parsed
+    input_format: InputFormats = InputFormats.baseline_parsed
     column_statistics: bool = True
     word_embeddings: bool = True
-
+    hidden_dim_plan: int = 256
+    device: str = "cuda:[socket]"
 
 @attrs.define(frozen=True, slots=False)
 class DACEModelConfig(ModelConfig):
@@ -637,6 +641,7 @@ class QueryFormerModelConfig(ModelConfig):
     batch_to_func: Callable = query_former_batch_to
     loss_class_name: str = "QLoss"  # Originally MSELoss
     optimizer_class_name: str = "AdamW"  # Originally Adam
+    device: str = "cuda:[socket]"
 
 
 @attrs.define(frozen=True, slots=False)
@@ -656,6 +661,21 @@ class T3TreeModelConfig(T3ModelConfig):
 @attrs.define(frozen=True, slots=False)
 class T3FlatModelConfig(T3ModelConfig):
     name: Name = ModelName.T3Flat
+
+@attrs.define(frozen=True, slots=False)
+class NeoModelConfig(ModelConfig):
+    name: Name = ModelName.NEO
+    batch_to_func: Callable = dace_batch_to
+    device: str = "cuda:[socket]"
+    type: ModelType = ModelType.WL_DRIVEN
+    mscn_enc_layers: int = 1
+    mscn_est_layers: int = 1
+    batch_to_func: Callable = batch_to
+    collator_func: Callable = mscn_plan_collator
+    input_format: InputFormats = InputFormats.parsed
+    column_statistics: bool = False
+    word_embeddings: bool = False
+    batch_to_func: callable = neo_batch_to
 
 
 @attrs.define(frozen=True, slots=False)

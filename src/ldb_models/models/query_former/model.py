@@ -60,7 +60,7 @@ class FeatureEmbedding(nn.Module):
         num_tables = feature_statistics['tablename']['no_vals']
         self.table_embedding = nn.Embedding(num_tables + 2, embedding_size)
 
-        num_columns = int(feature_statistics['columns']['max'])
+        num_columns = int(feature_statistics['col_id']['max'])
         self.column_embedding = nn.Embedding(num_columns + 2, embedding_size)
 
         num_filter_operators = feature_statistics['operator']['no_vals']
@@ -170,7 +170,7 @@ class QueryFormer(nn.Module):
         # Define encoders for further inputs
         self.relative_position_encoder = nn.Embedding(64, config.head_size, padding_idx=0)
         self.height_encoder = nn.Embedding(64, hidden_dim, padding_idx=0)
-        self.join_encoder = nn.Embedding(64, hidden_dim, padding_idx=0)
+        self.join_encoder = nn.Embedding(256, hidden_dim, padding_idx=0)
 
         # Define intermediate transformer layers
         self.input_dropout = nn.Dropout(config.dropout)
@@ -221,7 +221,7 @@ class QueryFormer(nn.Module):
         embedded_features = embedded_features + encoded_heights
 
         # Add join encodings to the embedded features
-        joins = joins.repeat(1, 6)
+        joins = joins.repeat(1, 1)
         embedded_joins = self.join_encoder(joins.long())
         embedded_features = embedded_features + embedded_joins
 

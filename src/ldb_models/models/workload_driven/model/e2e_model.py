@@ -28,7 +28,7 @@ class E2EModel(nn.Module):
         self.label_norm = None
 
         # original architecture by Sun et al.
-        if isinstance(model_config, TPoolModelConfig):
+        if isinstance(model_config, E2EModelConfig):
             self.tree_models = nn.ModuleDict({
                 'and': PoolingConv(PoolingType.MIN),
                 'or': PoolingConv(PoolingType.MAX),

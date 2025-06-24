@@ -143,7 +143,8 @@ class ExpRunner:
                        hardware_desc='c8220',
                        ssh_hostkeys=str(LocalPaths().known_hosts),
                        use_slurm="dgx" in ssh_hostname,
-                       use_run_exp="dgx" not in ssh_hostname and "cloudlab" not in ssh_hostname,
+                       use_run_exp="dgx" not in ssh_hostname and "cloudlab" not in ssh_hostname and ssh_hostname not in [
+                           'c05.lab.tuda.systems'],  # temporary fix for until run_exp is installed on c05
                        python_version=self.python_version,
                        test_connection=False,
                        available_sockets=available_sockets if not 'dgx' in ssh_hostname else [0],

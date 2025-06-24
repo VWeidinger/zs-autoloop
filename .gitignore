@@ -3,6 +3,9 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+# Local data for testing purposes
+data/
+
 # C extensions
 *.so
 
@@ -160,3 +163,4 @@ src/ldb_models/evaluation/wandb
 src/ldb_models/evaluation/artifacts
 src/ldb_models/evaluation/wandb_df_cache.pkl
 tmp/
+wandb/
