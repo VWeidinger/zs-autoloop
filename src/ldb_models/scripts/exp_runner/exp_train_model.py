@@ -315,11 +315,12 @@ if __name__ == '__main__':
         # 'zeroshot_timeout',
         # 'dace',
         # 'flat',
-        # 't3'
-        # 'neo'
-        # 'qppnet'
-        # 'mscn'
-        # 'e2e'
+        # 't3',
+        # 'zeroshot_vae',
+        # 'neo',
+        # 'qppnet',
+        # 'mscn',
+        # 'e2e',
         'query_former'
     ]:
         if model_type == 'dace':

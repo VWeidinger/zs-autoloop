@@ -19,7 +19,7 @@ from wandb.apis.public import Run
 import wandb
 from classes.classes import ModelConfig, E2EModelConfig, ZeroShotModelConfig, MSCNModelConfig, DataLoaderOptions, \
     TlstmModelConfig, FlatModelConfig, ScaledPostgresModelConfig, TabularModelConfig, QPPNetModelConfig, \
-    DACEModelConfig, QueryFormerModelConfig, T3ModelConfig, NeoModelConfig
+    DACEModelConfig, QueryFormerModelConfig, T3ModelConfig, ZeroShotVAEModelConfig, NeoModelConfig
 from classes.model_config_helper import get_model_config
 from classes.workload_runs import WorkloadRuns
 from models.dace.dace_dataset import create_dace_dataloader
@@ -33,6 +33,7 @@ from models.workload_driven.dataset.dataset_creation import create_baseline_data
 from models.workload_driven.model.e2e_model import E2EModel
 from models.workload_driven.model.mscn_model import MSCNModel
 from models.zeroshot.specific_models.postgres_zero_shot import PostgresZeroShotModel
+from models.zeroshot.specific_models.postgres_zero_shot_vae import PostgresZeroShotModelVAE
 from train import train_model
 from training.bound_predictions_with_history import PredictionBounder
 from training.dataset.dataset_creation import create_zeroshot_dataloader
@@ -50,7 +51,7 @@ def init_model(statistics_file: Path,
                quick_run: bool = False,
                assemble_data_up_front: bool = False) \
         -> (Optional[nn.Module], DataLoader, DataLoader, List[DataLoader]):
-    if isinstance(config, ZeroShotModelConfig):
+    if isinstance(config, (ZeroShotModelConfig, ZeroShotVAEModelConfig)):
         label_norm, feature_statistics, train_loader, val_loader, test_loaders = \
             create_zeroshot_dataloader(workload_runs=workload_runs,
                                        statistics_file=statistics_file,
@@ -59,9 +60,15 @@ def init_model(statistics_file: Path,
                                        quick_run=quick_run,
                                        assemble_graphs_up_front=assemble_data_up_front)
 
-        model: nn.Module = PostgresZeroShotModel(model_config=config,
-                                                 feature_statistics=feature_statistics,
-                                                 label_norm=label_norm)
+        if isinstance(config, ZeroShotVAEModelConfig):
+            model: nn.Module = PostgresZeroShotModelVAE(model_config=config,
+                                                        feature_statistics=feature_statistics,
+                                                        label_norm=label_norm)
+        elif isinstance(config, ZeroShotModelConfig):
+            model: nn.Module = PostgresZeroShotModel(model_config=config,
+                                                     feature_statistics=feature_statistics,
+                                                     label_norm=label_norm)
+
 
     elif isinstance(config, (E2EModelConfig, MSCNModelConfig, TlstmModelConfig, QueryFormerModelConfig)):
         # assert not assemble_data_up_front, "assemble_data_up_front is not supported for this model type"
