@@ -114,6 +114,8 @@ def generate_training_commands(datasets: List[Dataset], seeds: list[int], python
                 model_type = 'e2e'
             elif model_type.startswith('query_former'):
                 model_type = 'query_former'
+            elif model_type.startswith("spn"):
+                model_type = 'spn'
             else:
                 raise ValueError(f"Model type {model_type} not recognized")
 
@@ -274,10 +276,10 @@ if __name__ == '__main__':
         # TrainingServers.NODE00,
         # TrainingServers.NODE01,
         # TrainingServers.NODE02,
-        TrainingServers.NODE03,
+        # TrainingServers.NODE03,
         # TrainingServers.NODE04,
         # TrainingServers.NODE05,
-        # TrainingServers.NODE09,
+        TrainingServers.NODE09,
     ]
     sockets = [0, 1]
     out_file_id_offset = 0
@@ -321,7 +323,8 @@ if __name__ == '__main__':
         # 'qppnet',
         # 'mscn',
         # 'e2e',
-        'query_former'
+        #'query_former'
+        'spn',
     ]:
         if model_type == 'dace':
             model_specific_args = {'pad_length': 60}

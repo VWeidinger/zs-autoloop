@@ -37,6 +37,7 @@ class ModelName:
     FLAT: Name = Name("flat", "Flat Vector")
     FLAT_ACT_CARDS = Name("flat_act_cards", "Flat Vector (act. card.)")
     FLAT_STRATIFIED = Name("flat_stratified", "Flat Vector (stratified)")
+    SPN = Name("spn", "SPN")
 
     MSCN = Name("mscn", "MSCN")
     E2E = Name("e2e", "E2E")
@@ -312,6 +313,13 @@ class FlatModelActCardModelConfig(FlatModelConfig):
     input_format: str = InputFormats.parsed
     featurization: Featurization = FlatModelActCardFeaturization
 
+@attrs.define(frozen=True, slots=False)
+class SPNModelConfig(TabularModelConfig):
+    name: Name = ModelName.SPN
+    type: ModelType = ModelType.WL_AGNOSTIC
+    device: str = "cpu"
+    input_format: str = InputFormats.parsed
+    featurization: Featurization = FlatModelFeaturization
 
 @attrs.define(frozen=True, slots=False)
 class ScaledPostgresModelConfig(TabularModelConfig):
@@ -372,7 +380,7 @@ class E2EModelConfig(ModelConfig):
     hidden_dim_pred: int = 256
     batch_to_func: Callable = plan_batch_to
     collator_func: Callable = baseline_plan_collator
-    input_format: str = InputFormats.parsed
+    input_format: str = InputFormats.baseline_parsed
     column_statistics: bool = True
     word_embeddings: bool = True
     device: str = "cuda:[socket]"

@@ -19,7 +19,7 @@ from wandb.apis.public import Run
 import wandb
 from classes.classes import ModelConfig, E2EModelConfig, ZeroShotModelConfig, MSCNModelConfig, DataLoaderOptions, \
     TlstmModelConfig, FlatModelConfig, ScaledPostgresModelConfig, TabularModelConfig, QPPNetModelConfig, \
-    DACEModelConfig, QueryFormerModelConfig, T3ModelConfig, ZeroShotVAEModelConfig, NeoModelConfig
+    DACEModelConfig, QueryFormerModelConfig, T3ModelConfig, ZeroShotVAEModelConfig, NeoModelConfig, SPNModelConfig
 from classes.model_config_helper import get_model_config
 from classes.workload_runs import WorkloadRuns
 from models.dace.dace_dataset import create_dace_dataloader
@@ -41,7 +41,6 @@ from training.dataset.plan_dataset import OHEMPlanDataset
 from training.training.checkpoint import load_checkpoint
 from training.training.metrics import Metric, RankAccuracy, init_metrics
 from training.training.test import test_model
-
 
 def init_model(statistics_file: Path,
                column_statistics: Path,
@@ -134,7 +133,7 @@ def init_model(statistics_file: Path,
                                    dataloader_options=DataLoaderOptions())
         model: nn.Module = DACELora(config=config)
 
-    elif isinstance(config, (ScaledPostgresModelConfig, FlatModelConfig, T3ModelConfig)):
+    elif isinstance(config, (ScaledPostgresModelConfig, FlatModelConfig, T3ModelConfig, SPNModelConfig)):
         # assert not assemble_data_up_front, "assemble_data_upfront is not supported for this model type"
         assemble_data_up_front = False  # assemble_data_up_front is not supported for this model type
         model = None
@@ -553,6 +552,8 @@ if __name__ == '__main__':
         model_type = 'neo'
     elif model_type.startswith('e2e'):
         model_type = 'e2e'
+    elif model_type.startswith('spn'):
+        model_type = 'spn'
     else:
         raise ValueError(f"Model type {model_type} not recognized")
 

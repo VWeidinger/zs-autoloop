@@ -1,6 +1,7 @@
 import functools
 import math
 import os
+import pickle
 import time
 from pathlib import Path
 from typing import Optional, List, Tuple
@@ -15,7 +16,7 @@ from wandb.apis.public import Run
 
 from classes.classes import FlatModelConfig, ModelConfig, ScaledPostgresModelConfig, \
     AnalyticalEstCardModelConfig, AnalyticalActCardModelConfig, DataLoaderOptions, T3ModelConfig, T3FlatModelConfig, \
-    T3TreeModelConfig
+    T3TreeModelConfig, SPNModelConfig
 from classes.workload_runs import WorkloadRuns
 from models.t3.model import T3Model, TreeModel, FlatTreeModel, PerTupleTreeModel
 from models.t3.t3_dataloader import gen_t3_dataset
@@ -31,6 +32,10 @@ from training.training.metrics import init_metrics
 from training.training.utils import prefix_dict
 from training.training.validate import to_rows
 
+from spn.algorithms.LearningWrappers import learn_parametric
+from spn.structure.Base import Context
+from spn.structure.leaves.parametric.Parametric import Gaussian
+from spn.algorithms.MPE import mpe
 
 def train_tabular_model(workload_runs: WorkloadRuns,
                         config: ModelConfig,
@@ -55,7 +60,7 @@ def train_tabular_model(workload_runs: WorkloadRuns,
 
     param_dict = {}
     # create tabular representation using the corresponding method
-    if isinstance(config, FlatModelConfig):
+    if isinstance(config, FlatModelConfig) or isinstance(config, SPNModelConfig):
         gen_dataset_func = gen_flattened_dataset
     elif isinstance(config, ScaledPostgresModelConfig):
         gen_dataset_func = gen_postgres_cost_dataset
@@ -84,7 +89,7 @@ def train_tabular_model(workload_runs: WorkloadRuns,
             featurization = config.featurization
         else:
             featurization = None
-        x_train, x_test, y_train, y_test, sqls, hints, selectivities, scan_op, join_op = gen_dataset_func(
+        x_train, x_test, y_train, y_test, sqls, hints, selectivities, scan_op, join_op, num_tables, plan_depths = gen_dataset_func(
             workload_runs=workload_runs.train_workload_runs,
             statistics_file=statistics_file,
             cap_training_samples=cap_training_samples,
@@ -124,6 +129,7 @@ def train_tabular_model(workload_runs: WorkloadRuns,
         joblib.dump(m, f'{model_dir}_{config.seed}.pkl')
         print(f'Model saved to {model_dir}_{config.seed}.pkl')
         os.chmod(f'{model_dir}_{config.seed}.pkl', 0o777)
+
     elif isinstance(config, T3ModelConfig):
         param = {"objective": "mape", "verbose": 2 if verbose else -1}
         bst = lgb.Booster(param, x_train)
@@ -147,6 +153,26 @@ def train_tabular_model(workload_runs: WorkloadRuns,
             model = TreeModel(bst)
         else:
             model = PerTupleTreeModel(bst)
+
+    elif isinstance(config, SPNModelConfig):
+        # Merge x_train and y_train into a single dataset (see SPN documentation)
+        if len(x_train.shape) == 1:
+            x_train = x_train.reshape(-1, 1)
+        if len(y_train.shape) == 1:
+            y_train = y_train.reshape(-1, 1)
+        train = np.hstack((x_train, y_train))
+        ds_context = Context(parametric_types=[Gaussian]*train.shape[1]).add_domains(train)
+
+        print("Learning SPN with Gaussian leaves...")
+        spn = learn_parametric(train, ds_context, min_instances_slice=20)
+
+        print("Saving SPN model...")
+        model_path = f'{model_dir}_{config.seed}_{config.name.NAME}.pkl'
+
+        with open(f'{model_path}', 'wb') as f:
+            pickle.dump(spn, f)
+        print(f'Model saved to {model_path}')
+
     else:
         raise NotImplementedError('Not supported tabular model')
 
@@ -187,7 +213,6 @@ def predict_tabular_model(config: ModelConfig,
 
         # Partially apply the predict_with_lower_bound function
         pred_func = functools.partial(predict_with_lower_bound, lower_bound=0.01)
-
         gen_dataset_func = gen_flattened_dataset
 
     elif isinstance(config, ScaledPostgresModelConfig):
@@ -211,6 +236,16 @@ def predict_tabular_model(config: ModelConfig,
         assert t3_model is not None
         pred_func = t3_model.estimate_runtime_wrapper  # use the list-predict wrapper
         gen_dataset_func = functools.partial(gen_t3_dataset, model_config=config, verbose=False, return_dataset=False)
+
+    elif isinstance(config, SPNModelConfig):
+        model_path = f'{model_dir}_{config.seed}_{config.name.NAME}.pkl'
+        print(f"Loading model from {model_path}")
+        with open(f'{model_path}', 'rb') as f:
+            spn_loaded = pickle.load(f)
+        assert spn_loaded is not None, f"SPN model {model_path} could not be loaded"
+        pred_func = lambda x: mpe(spn_loaded, x)
+        gen_dataset_func = gen_flattened_dataset
+
     else:
         raise NotImplementedError('Not supported tabular model')
 
@@ -258,7 +293,15 @@ def predict_tabular_model(config: ModelConfig,
         print(f"Starting validation for {test_path}")
         test_stats = dict()
         start_t = time.perf_counter()
-        pred_runtimes = pred_func(x_test)
+        if isinstance(config, SPNModelConfig):
+            if len(x_test.shape) == 1:
+                x_test = x_test.reshape(-1, 1)
+            test = np.hstack((x_test, np.full((x_test.shape[0], 1), np.nan)))
+            pred_runtimes = mpe(spn_loaded, test)
+            pred_runtimes = pred_runtimes[:, -1]
+
+        else:
+            pred_runtimes = pred_func(x_test)
         test_stats.update(
             test_time=time.perf_counter() - start_t,
             no_test_points=len(y_test),
