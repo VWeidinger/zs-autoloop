@@ -107,7 +107,7 @@ def get_parameterized_model_config(model_name: str, m_args: Dict) -> ModelConfig
             continue
 
         # detect str key/value arguments
-        str_keywords = ['ohem_slice_by', 'subplan_monotonicity_loss_fn']
+        str_keywords = ['ohem_slice_by', 'subplan_monotonicity_loss_fn','loss_class_name']
         found = False
         for str_keyword in str_keywords:
             if arg.startswith(str_keyword):

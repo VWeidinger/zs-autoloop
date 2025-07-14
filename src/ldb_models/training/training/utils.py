@@ -10,21 +10,24 @@ from dgl import DGLHeteroGraph
 from training.training.operator_tree import OperatorTree
 
 
-def recursive_to(iterable, device):
-    if isinstance(iterable, (dgl.DGLGraph, DGLHeteroGraph)):
-        iterable.to(device, non_blocking=True)
-    if isinstance(iterable, torch.Tensor):
-        iterable.data = iterable.data.to(device, non_blocking=True)
-    elif isinstance(iterable, collections.abc.Mapping):
-        for v in iterable.values():
-            recursive_to(v, device)
-    elif isinstance(iterable, OperatorTree):
-        iterable.encoded_features = iterable.encoded_features.to(device, non_blocking=True)
-        for c in iterable.children:
+def recursive_to(obj, device):
+    if isinstance(obj, (dgl.DGLGraph, DGLHeteroGraph)):
+        return obj.to(device, non_blocking=True)
+    elif isinstance(obj, torch.Tensor):
+        return obj.to(device, non_blocking=True)
+    elif isinstance(obj, collections.abc.Mapping):
+        return type(obj)({k: recursive_to(v, device) for k, v in obj.items()})
+    elif isinstance(obj, OperatorTree):
+        obj.encoded_features = obj.encoded_features.to(device, non_blocking=True)
+        for c in obj.children:
             recursive_to(c, device)
-    elif isinstance(iterable, (list, tuple)):
-        for v in iterable:
-            recursive_to(v, device)
+        return obj
+    elif isinstance(obj, list):
+        return [recursive_to(v, device) for v in obj]
+    elif isinstance(obj, tuple):
+        return tuple(recursive_to(v, device) for v in obj)
+    else:
+        return obj
 
 
 def flatten_dict(d, parent_key='', sep='_'):

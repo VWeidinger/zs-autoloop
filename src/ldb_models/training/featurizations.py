@@ -8,6 +8,19 @@ class Featurization:
     OUTPUT_COLUMN_FEATURES = field()
     TABLE_FEATURES = field()
 
+    SCAN_FEATURES = field() # White-Mamba Model
+    JOIN_FEATURES = field() # White-Mamba Model
+
+class MambaFeaturization(Featurization):
+    SCAN_FEATURES = ['est_card', 'est_width', 'op_name','base_table_card','est_loops']
+    JOIN_FEATURES = ['est_card', 'est_children_card','est_width', 'op_name', 'left_child_card','right_child_card']
+
+class MambaWFilter(MambaFeaturization):
+    SCAN_FEATURES = ['est_card', 'est_width', 'op_name','base_table_card','est_loops','filter_flat_vector']
+
+class MambaFull(MambaFeaturization):
+    JOIN_FEATURES = ['est_card', 'est_children_card','est_width', 'op_name', 'left_child_card','right_child_card', 'left_is_pk', 'right_is_pk']
+    SCAN_FEATURES = ['est_card', 'est_width', 'op_name','base_table_card','est_loops','filter_flat_vector', 'outcols_flat_vector']
 
 class DACEFeaturization(Featurization):
     PLAN_FEATURES = ["op_name", "pg_cost", "est_card"]

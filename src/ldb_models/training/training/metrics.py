@@ -156,7 +156,10 @@ class SelectedRuntime(Metric):
         super().__init__(metric_name='runtime', **kwargs)
 
     def evaluate_metric(self, labels=None, preds=None, probs=None):
-        index_of_minimal_prediction = preds.idxmin()
+        if isinstance(preds,np.ndarray):
+            index_of_minimal_prediction = np.argmin(preds)
+        else:
+            index_of_minimal_prediction = preds.idxmin()
         runtime_of_minimal_prediction = labels[index_of_minimal_prediction]
         return runtime_of_minimal_prediction
 
@@ -178,7 +181,10 @@ class SurpassedPlans(Metric):
         super().__init__(metric_name='missed_plans_fraction', **kwargs)
 
     def evaluate_metric(self, labels=None, preds=None, probs=None):
-        index_of_minimal_prediction = preds.idxmin()
+        if isinstance(preds, np.ndarray):
+            index_of_minimal_prediction = np.argmin(preds)
+        else:
+            index_of_minimal_prediction = preds.idxmin()
         runtime_of_minimal_prediction = labels[index_of_minimal_prediction]
         masks = labels < runtime_of_minimal_prediction
         missed_plans_fraction = 1 - masks.sum() / len(labels)

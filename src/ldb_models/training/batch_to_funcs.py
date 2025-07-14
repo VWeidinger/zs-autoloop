@@ -26,7 +26,7 @@ def simple_batch_to(batch, device, label_norm):
     return query_plans, labels, sample_idxs, sqls, hints, selectivity, scan_op, join_op, num_tables, plan_depths
 
 
-def batch_to(batch, device, label_norm):
+def zs_batch_to(batch, device, label_norm):
     graph, features, label, sample_idxs, sqls, hints, selectivity, scan_op, join_op, num_tables, plan_depths = batch
 
     # normalize the labels for training
@@ -58,3 +58,19 @@ def neo_batch_to(batch, device, label_norm):
     recursive_to(indexes, device)
     recursive_to(labels, device)
     return (query_encodings, trees, indexes), labels, sample_idxs, sqls, hints, selectivity, scan_op, join_op, num_tables, plan_depths
+
+def mamba_batch_to(batch, device, label_norm):
+    edge_ids, edge_left_right_information, plan_ids, node_depths, node_type_lookup, node_type_id_lookup, join_features, scan_features, labels, sample_idxs, sql_statements, hints, selectivity, scan_op, join_op, num_tables, plan_depths = batch
+
+    # normalize the labels for training
+    if label_norm is not None:
+        labels = label_norm.transform(np.asarray(labels).reshape(-1, 1))
+        labels = labels.reshape(-1)
+
+    labels = torch.as_tensor(labels, device=device, dtype=torch.float)
+
+    # Batch device transfer for all tensors/lists and overwrite variables
+    data = (edge_ids, edge_left_right_information, plan_ids, node_depths, node_type_lookup, node_type_id_lookup, join_features, scan_features)
+    data = recursive_to(data, device)
+
+    return data, labels, sample_idxs, sql_statements, hints, selectivity, scan_op, join_op, num_tables, plan_depths

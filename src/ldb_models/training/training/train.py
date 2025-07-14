@@ -16,13 +16,12 @@ from models.workload_driven.model.e2e_model import E2EModel
 from models.workload_driven.model.mscn_model import MSCNModel
 from models.zeroshot.specific_models.postgres_zero_shot import PostgresZeroShotModel
 from models.zeroshot.subplan_runtime_helper import extract_smaller_larger_preds_tensor_for_subplan_graphs
-from training.batch_to_funcs import batch_to
 from training.losses import LessThanLoss, RelativeLessThanLoss
 
 
 def train_epoch(epoch_stats: dict, train_loader: DataLoader, model: nn.Module,
                 optimizer: Optimizer, max_epoch_tuples: int, model_config: ModelConfig,
-                custom_batch_to=batch_to, profiler: Optional[torch.profiler.profile] = None):
+                custom_batch_to=None, profiler: Optional[torch.profiler.profile] = None):
     model.train()
     if isinstance(optimizer, AdamWScheduleFree):
         # set into train mode
@@ -79,6 +78,7 @@ def train_epoch(epoch_stats: dict, train_loader: DataLoader, model: nn.Module,
             monotonicity_loss = None
 
         # Loss computation
+        assert len(output)==len(label), f"Output length {len(output)} does not match label length {len(label)}"
         loss = model.loss_fxn(output, label)
 
         if perform_subplan_monotonicity_loss:

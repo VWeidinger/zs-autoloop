@@ -11,11 +11,12 @@ from models.t3.query_plan import CardType
 from models.workload_driven.dataset.mscn_batching import mscn_plan_collator
 from models.workload_driven.dataset.plan_tree_batching import plan_batch_to, baseline_plan_collator
 from models.zeroshot.postgres_plan_batching import postgres_plan_collator
-from training.batch_to_funcs import dace_batch_to, simple_batch_to, batch_to, neo_batch_to
+from training.batch_to_funcs import dace_batch_to, simple_batch_to, zs_batch_to, neo_batch_to, mamba_batch_to
 from training.featurizations import Featurization, DACEFeaturization, QPPNetFeaturization, \
     PostgresEstSystemCardDetail, DACEFeaturizationNoCosts, QPPNetNoCostsFeaturization, FlatModelFeaturization, \
     FlatModelActCardFeaturization, QPPNetActCardsFeaturization, PostgresTrueCardDetail, DACEActCardFeaturization, \
-    PostgresEstWithPGCost
+    PostgresEstWithPGCost, MambaFeaturization
+from models.white_mamba.mamba_dataset import mamba_plan_collator
 
 
 class InputFormats:
@@ -75,6 +76,7 @@ class ModelName:
     T3Tree = Name("t3_tree", "T3 (Tree)")
 
     NEO = Name("neo", "Neo")
+    MAMBA = Name("mamba", "Mamba")
 
 
 class ModelType:
@@ -101,6 +103,9 @@ def shorten_model_name(name: str) -> str:
     name = name.replace('tablecardatscan', 'tcardscan')
     name = name.replace('PostgresEstWithAdditionalFeats', 'addfeats')
     name = name.replace('include_complex_many_joins_workloads', 'manyjoins')
+    name = name.replace('loss_class_name', '')
+    name = name.replace('layer_norm', 'layern')
+    name = name.replace('add_child_type_info_to_messages', 'childtypeinfo')
     return name
 
 
@@ -258,9 +263,9 @@ class ModelConfig:
         test_paths.append(
             self.assemble_wl_path(target_db, "workload_200k_s1", stratified_workloads=True, romans_runs=romans_runs))
 
-        # always test on scan-only: check understanding of idx/seq scan costs
-        test_paths.append(self.assemble_wl_path(target_db, "scan_only_s1_access_path_hints", stratified_workloads=True,
-                                                romans_runs=romans_runs))
+        # # always test on scan-only: check understanding of idx/seq scan costs
+        # test_paths.append(self.assemble_wl_path(target_db, "scan_only_s1_access_path_hints", stratified_workloads=True,
+        #                                         romans_runs=romans_runs))
 
         # also test on complex ranking
         # test_paths.append(self.assemble_wl_path(target_db, "full_qo_complex_workload_200k_s1", stratified_workloads=True, romans_runs=romans_runs))
@@ -275,6 +280,8 @@ class ModelConfig:
                 return ClusterPaths().Data.parsed_plans_stratified2
             elif self.input_format == InputFormats.json:
                 return ClusterPaths().Data.json_plans_stratified
+            else:
+                raise ValueError(f"Unknown input format: {self.input_format}")
         else:
             if self.input_format == InputFormats.baseline_parsed:
                 return ClusterPaths().Data.augmented_plans
@@ -285,6 +292,8 @@ class ModelConfig:
                     return ClusterPaths().Data.root / "runs_roman" / "parsed_plans"
             elif self.input_format == InputFormats.json:
                 return ClusterPaths().Data.json_plans
+            else:
+                raise ValueError(f"Unknown input format: {self.input_format}")
 
 
 @attrs.define(frozen=True, slots=False)
@@ -402,6 +411,50 @@ class TestSumModelConfig(E2EModelConfig):
 
 
 @attrs.define(frozen=True, slots=False)
+class MambaModelConfig(ModelConfig):
+    name: Name = ModelName.MAMBA
+    type: ModelType = ModelType.WL_AGNOSTIC
+    featurization: Featurization = MambaFeaturization
+    loss_class_name: str = "QLoss"
+    loss_class_kwargs: dict = dict()
+
+    batch_to_func: Callable = mamba_batch_to
+    collator_func: Callable = mamba_plan_collator
+    input_format: InputFormats = InputFormats.parsed
+    device: str = "cuda:[socket]"  # Device selection is handled by octopus
+
+    hidden_dim: int = 128
+    output_dim: int = 1
+
+    fc_out_kwargs: dict = dict(activation_class_name='LeakyReLU',
+                               activation_class_kwargs={},
+                               norm_class_name='Identity',
+                               norm_class_kwargs={},
+                               residual=False,
+                               dropout=False,
+                               p_dropout=0.0,
+                               activation=True,
+                               inplace=True)
+    final_mlp_kwargs: dict = dict(width_factor=1.5,
+                                  n_layers=4, )
+    msg_layer_kwargs: dict = dict(width_factor=0.6,
+                                   n_layers=2)
+    node_type_kwargs: dict = dict(width_factor=1.5,
+                                  n_layers=4,
+                                  one_hot_embeddings=True,
+                                  max_emb_dim=32,
+                                  drop_whole_embeddings=False, 
+                                  apply_optimized_nte=True)
+    final_mlp_kwargs.update(**fc_out_kwargs)
+    msg_layer_kwargs.update(**fc_out_kwargs)
+    node_type_kwargs.update(**fc_out_kwargs)
+
+    layer_norm: bool = False  # use layer norm in the message passing layers
+    add_child_type_info_to_messages: bool = False # add child type information to the messages in the message passing layers
+    use_dcn: bool = False  # use deep cross network in the feature extraction layers
+    residual_connection: bool = False  # use residual connections skipping the message aggregation layer (before layer norm)
+
+@attrs.define(frozen=True, slots=False)
 class ZeroShotModelConfig(ModelConfig):
     name: Name = ModelName.ZEROSHOT
     type: ModelType = ModelType.WL_AGNOSTIC
@@ -435,7 +488,7 @@ class ZeroShotModelConfig(ModelConfig):
     output_dim: int = 1
     batch_size: int = 256
     tree_layer_name: str = 'MscnConv'  # GATConv MscnConv
-    batch_to_func: Callable = batch_to
+    batch_to_func: Callable = zs_batch_to
     collator_func: Callable = postgres_plan_collator
     input_format: InputFormats = InputFormats.parsed
     device: str = "cuda:[socket]"  # Device selection is handled by octopus
@@ -563,7 +616,7 @@ class MSCNModelConfig(ModelConfig):
     type: ModelType = ModelType.WL_DRIVEN
     mscn_enc_layers: int = 1
     mscn_est_layers: int = 1
-    batch_to_func: Callable = batch_to
+    batch_to_func: Callable = zs_batch_to
     collator_func: Callable = mscn_plan_collator
     input_format: InputFormats = InputFormats.baseline_parsed
     column_statistics: bool = True
@@ -673,12 +726,11 @@ class T3FlatModelConfig(T3ModelConfig):
 @attrs.define(frozen=True, slots=False)
 class NeoModelConfig(ModelConfig):
     name: Name = ModelName.NEO
-    batch_to_func: Callable = dace_batch_to
     device: str = "cuda:[socket]"
     type: ModelType = ModelType.WL_DRIVEN
     mscn_enc_layers: int = 1
     mscn_est_layers: int = 1
-    batch_to_func: Callable = batch_to
+    batch_to_func: Callable = zs_batch_to
     collator_func: Callable = mscn_plan_collator
     input_format: InputFormats = InputFormats.parsed
     column_statistics: bool = False

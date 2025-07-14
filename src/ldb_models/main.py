@@ -3,7 +3,7 @@ import copy
 import functools
 from datetime import datetime
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 import attrs as attrs
 import numpy as np
@@ -19,7 +19,8 @@ from wandb.apis.public import Run
 import wandb
 from classes.classes import ModelConfig, E2EModelConfig, ZeroShotModelConfig, MSCNModelConfig, DataLoaderOptions, \
     TlstmModelConfig, FlatModelConfig, ScaledPostgresModelConfig, TabularModelConfig, QPPNetModelConfig, \
-    DACEModelConfig, QueryFormerModelConfig, T3ModelConfig, ZeroShotVAEModelConfig, NeoModelConfig, SPNModelConfig
+    DACEModelConfig, QueryFormerModelConfig, T3ModelConfig, ZeroShotVAEModelConfig, NeoModelConfig, SPNModelConfig, MambaModelConfig
+
 from classes.model_config_helper import get_model_config
 from classes.workload_runs import WorkloadRuns
 from models.dace.dace_dataset import create_dace_dataloader
@@ -28,6 +29,7 @@ from models.neo.neo_model import TreeConvolution
 from models.qppnet.qppnet_dataloader import create_qppnet_dataloader
 from models.qppnet.qppnet_model import QPPNet
 from models.query_former.model import QueryFormer
+from models.white_mamba.mamba_model import MambaModel
 from models.tabular.train_tabular_baseline import train_tabular_model, predict_tabular_model
 from models.workload_driven.dataset.dataset_creation import create_baseline_dataloader
 from models.workload_driven.model.e2e_model import E2EModel
@@ -49,8 +51,8 @@ def init_model(statistics_file: Path,
                word_embeddings: Path,
                quick_run: bool = False,
                assemble_data_up_front: bool = False) \
-        -> (Optional[nn.Module], DataLoader, DataLoader, List[DataLoader]):
-    if isinstance(config, (ZeroShotModelConfig, ZeroShotVAEModelConfig)):
+        -> Tuple[Optional[nn.Module], DataLoader, DataLoader, List[DataLoader]]:
+    if isinstance(config, (ZeroShotModelConfig, ZeroShotVAEModelConfig, MambaModelConfig)):
         label_norm, feature_statistics, train_loader, val_loader, test_loaders = \
             create_zeroshot_dataloader(workload_runs=workload_runs,
                                        statistics_file=statistics_file,
@@ -67,6 +69,11 @@ def init_model(statistics_file: Path,
             model: nn.Module = PostgresZeroShotModel(model_config=config,
                                                      feature_statistics=feature_statistics,
                                                      label_norm=label_norm)
+        elif isinstance(config, MambaModelConfig):
+            model: nn.Module = MambaModel(model_config=config,
+                                            feature_statistics=feature_statistics)
+        else:
+            raise NotImplementedError(f"Model type {config.name.NAME} not implemented")
 
 
     elif isinstance(config, (E2EModelConfig, MSCNModelConfig, TlstmModelConfig, QueryFormerModelConfig)):
@@ -552,6 +559,8 @@ if __name__ == '__main__':
         model_type = 'neo'
     elif model_type.startswith('e2e'):
         model_type = 'e2e'
+    elif model_type.startswith('mamba'):
+        model_type = 'mamba'
     elif model_type.startswith('spn'):
         model_type = 'spn'
     else:

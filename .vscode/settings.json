@@ -1,0 +1,7 @@
+{
+    "python.analysis.extraPaths": [
+        "./src/ldb_models"
+    ],
+    "python.envFile": "${workspaceFolder}/.vscode/.env",
+    
+}

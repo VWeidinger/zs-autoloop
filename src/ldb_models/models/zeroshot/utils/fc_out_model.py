@@ -87,6 +87,7 @@ class FcLayer(DynamicLayer):
                  **kwargs):
         super().__init__(**kwargs)
 
+        assert layer_out > 0, "Output dimension must be greater than 0, but got 0. Check the model configuration."
         layers = [nn.Linear(layer_in, layer_out)]
         if activation:
             layers.append(self.get_act())
@@ -111,6 +112,8 @@ class FcOutModel(DynamicLayer):
                  residual=True, task=None, **kwargs):
         super().__init__(**kwargs)
 
+        assert output_dim > 0 , "Output dimension must be greater than 0, but got 0. Check the model configuration."
+
         self.task = task
         self.output_dim = output_dim
         self.input_dim = input_dim
@@ -123,6 +126,9 @@ class FcOutModel(DynamicLayer):
             bound = 1 / math.sqrt(self.output_dim)
             init.uniform_(self.replacement_param, -bound, bound)
             return
+
+        assert width_factor is not None, "Width factor must be specified for the output model."
+        assert self.input_dim is not None, "Input dimension must be specified for the output model."
 
         layer_dims = [self.input_dim] + [int(width_factor * self.input_dim)] * n_layers + [self.output_dim]
 

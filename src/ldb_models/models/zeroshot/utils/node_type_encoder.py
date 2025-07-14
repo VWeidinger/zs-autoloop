@@ -8,14 +8,16 @@ from models.zeroshot.utils.embeddings import EmbeddingInitializer
 from models.zeroshot.utils.fc_out_model import FcOutModel
 from training.preprocessing.feature_statistics import FeatureType
 
-
 class NodeTypeEncoder(FcOutModel):
     """
     Model to encode one type of nodes in the graph (with particular features)
     """
 
     def __init__(self, features: List[str], feature_statistics: dict, max_emb_dim=32, drop_whole_embeddings=False,
-                 one_hot_embeddings=True, **kwargs):
+                 one_hot_embeddings=True, apply_optimized_nte=False, apply_dcn:bool=False,num_dcn_layers:int=1, **kwargs):
+        self.apply_optimized_nte = apply_optimized_nte
+        self.apply_dcn = apply_dcn # apply deep cross network to the input features
+        self.num_dcn_layers = num_dcn_layers
 
         for f in features:
             if f not in feature_statistics:
@@ -51,7 +53,13 @@ class NodeTypeEncoder(FcOutModel):
                 self.input_dim += embd.emb_dim
             else:
                 raise NotImplementedError
+        
+        assert self.input_dim > 0, "Input dimension must be greater than 0, but got 0. Check the features and feature statistics."
         super().__init__(input_dim=self.input_dim, **kwargs)
+
+        if self.apply_dcn:
+            # add dcm
+            self.dcn = DCNLayer(self.input_dim, num_layers=self.num_dcn_layers)
 
         self.embeddings = nn.ModuleDict(embeddings)
 
@@ -67,19 +75,68 @@ class NodeTypeEncoder(FcOutModel):
 
         assert input.shape[
                    1] == self.input_feature_idx, f'{input.shape} != {self.input_feature_idx} / features: {self.features}'
-        encoded_input = []
-        for feat, feat_type, feat_idxs in zip(self.features, self.feature_types, self.feature_idxs):
-            feat_data = input[:, feat_idxs]
+        
+        # Prepare masks for numeric and categorical features
+        numeric_idxs = [i for i, t in enumerate(self.feature_types) if t == FeatureType.numeric]
+        categorical_idxs = [i for i, t in enumerate(self.feature_types) if t == FeatureType.categorical]
 
-            if feat_type == FeatureType.numeric:
-                encoded_input.append(feat_data)
-            elif feat_type == FeatureType.categorical:
-                feat_data = torch.reshape(feat_data, (-1,))
-                embd_data = self.embeddings[feat](feat_data.long())
-                encoded_input.append(embd_data)
-            else:
-                raise NotImplementedError
+        encoded_input = []
+        if not self.apply_optimized_nte:
+            for feat, feat_type, feat_idxs in zip(self.features, self.feature_types, self.feature_idxs):
+                feat_data = input[:, feat_idxs]
+                if feat_type == FeatureType.numeric:
+                    encoded_input.append(feat_data)
+                elif feat_type == FeatureType.categorical:
+                    feat_data = torch.reshape(feat_data, (-1,))
+                    embd_data = self.embeddings[feat](feat_data.long())
+                    encoded_input.append(embd_data)
+                else:
+                    raise NotImplementedError
+        else:
+            # apply optimized nte has been introduced with the white-mamba model
+            # all other models trained earlier do not use it. Since it changes the input order, this is not compatible with the old models.
+            if numeric_idxs:
+                # Stack all numeric columns together
+                numeric_feat_idxs = np.concatenate([self.feature_idxs[i] for i in numeric_idxs])
+                numeric_data = input[:, numeric_feat_idxs]
+                encoded_input.append(numeric_data)
+
+            if categorical_idxs:
+                # Stack all categorical columns together
+                cat_feat_idxs = [self.feature_idxs[i][0] for i in categorical_idxs]
+                cat_data = input[:, cat_feat_idxs].long()  # shape: (batch, num_cat)
+                # For each categorical feature, apply its embedding
+                cat_embs = []
+                for j, i in enumerate(categorical_idxs):
+                    emb = self.embeddings[self.features[i]]
+                    embd_data = emb(cat_data[:, j])
+                    cat_embs.append(embd_data)
+                encoded_input.extend(cat_embs)
 
         input_enc = torch.cat(encoded_input, dim=1)
 
+        if self.apply_dcn:
+            input_enc = self.dcn(input_enc)
+
         return self.fcout(input_enc)
+
+class DCNLayer(nn.Module):
+    def __init__(self, input_dim, num_layers=2):
+        super().__init__()
+        self.num_layers = num_layers
+        self.cross_weights = nn.ParameterList()
+        self.cross_bias = nn.ParameterList()
+        for _ in range(num_layers):
+            w = nn.Parameter(torch.empty(input_dim, 1))
+            nn.init.xavier_uniform_(w)
+            self.cross_weights.append(w)
+            b = nn.Parameter(torch.zeros(input_dim))
+            self.cross_bias.append(b)
+
+    def forward(self, x0):
+        x = x0
+        for w, b in zip(self.cross_weights, self.cross_bias):
+            xw = torch.matmul(x, w)  # (batch, 1)
+            cross = x0 * xw + b.unsqueeze(0)  # (batch, input_dim)
+            x = cross + x
+        return x

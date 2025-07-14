@@ -6,9 +6,15 @@ from ldb_schema.paths import ClusterPaths, LocalPaths
 from octopus.step import Rsync, KillAllScreens, SetupVenv, RsyncCurrentRepo, SetupRYEVenv
 
 import wandb
-from classes.classes import ModelConfig, ModelType, shorten_model_name
+
+# add to python path
+import sys
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+
+from classes.classes import ModelConfig, shorten_model_name
 from classes.model_config_helper import parameterized_config
 from scripts.exp_runner.exp_runner import ExpRunner, TrainingServers
+from training.featurizations import MambaFull
 
 
 def generate_training_commands(datasets: List[Dataset], seeds: list[int], python_version: str, wandb_project: str,
@@ -24,7 +30,7 @@ def generate_training_commands(datasets: List[Dataset], seeds: list[int], python
                                update_wandb_summary: bool = False,
                                assemble_data_up_front: bool = False) -> List[str]:
     if update_wandb_summary:
-        assert is_pretrained, f"update_wandb_summary only works with pretrained models"
+        assert is_pretrained, "update_wandb_summary only works with pretrained models"
 
     if test_against:
         print(f'Testing the models against {test_against}')
@@ -114,6 +120,8 @@ def generate_training_commands(datasets: List[Dataset], seeds: list[int], python
                 model_type = 'e2e'
             elif model_type.startswith('query_former'):
                 model_type = 'query_former'
+            elif model_type.startswith('mamba'):
+                model_type = 'mamba'
             elif model_type.startswith("spn"):
                 model_type = 'spn'
             else:
@@ -273,7 +281,7 @@ if __name__ == '__main__':
 
     seeds = [3]
     nodes = [
-        # TrainingServers.NODE00,
+        TrainingServers.NODE00,
         # TrainingServers.NODE01,
         # TrainingServers.NODE02,
         # TrainingServers.NODE03,
@@ -281,11 +289,11 @@ if __name__ == '__main__':
         # TrainingServers.NODE05,
         TrainingServers.NODE09,
     ]
-    sockets = [0, 1]
-    out_file_id_offset = 0
-    num_parallel_screens = 4
-    num_parallel_jobs_dgx = 2
-    num_parallel_tasks_per_job_dgx = 2
+    sockets = [0,1]
+    out_file_id_offset = 1
+    num_parallel_screens = len(sockets)
+    num_parallel_jobs_dgx = 1
+    num_parallel_tasks_per_job_dgx = 1
     run_exp_pin = False
 
     # ===================
@@ -301,7 +309,7 @@ if __name__ == '__main__':
     eval_physical_operator = True and not quick_run  # evaluate physical operator selection
     qo_eval_after_each_epoch = True  # if True, will run a full QO evaluation after each epoch
     use_romans_runs = False
-    assemble_data_up_front = False  # run data / graph assemble up front i.e. during dataset creation instead of collate / training time
+    assemble_data_up_front = True  # run data / graph assemble up front i.e. during dataset creation instead of collate / training time
     # =================== (pretrained / wandb reuse configs)
     is_pretrained = False  # if True, assumes that the model is pretrained and does not train it
     update_wandb_summary = False  # (works only together with pretrained) if True, it will update the wandb summaries of the first run with this layout
@@ -323,8 +331,10 @@ if __name__ == '__main__':
         # 'qppnet',
         # 'mscn',
         # 'e2e',
+        # 'query_former'
+        'mamba'
         #'query_former'
-        'spn',
+        #'spn',
     ]:
         if model_type == 'dace':
             model_specific_args = {'pad_length': 60}
@@ -332,245 +342,16 @@ if __name__ == '__main__':
             model_specific_args = {}
 
         model_configs.extend([
-            parameterized_config(model_type, wandb_group='baselines', include_pg_opt_workloads=True,
-                                 **model_specific_args),  # std
-            # parameterized_config(model_type, wandb_group='outcolpruning_manyjoins',
-            #                      include_scan_only_hint_workloads=True,
-            #                      include_hint_idx_workloads=True,
-            #                      include_complex_many_joins_workloads=True,
-            #                      include_complex_ranking_workloads=True,
-            #                      enforce_aggregation_node_at_root=True,
-            #                      annotate_base_table_card_to_scan_op=True,
-            #                      featurization=PostgresEstWithAdditionalFeats,
-            #                      subplan_monotonicity_loss=True,
-            #                      subplan_monotonicity_loss_fn='relative_lt_loss',
-            #                      apply_outcol_pruning=True, **model_specific_args),  # std
-            # parameterized_config(model_type, wandb_group='outcolpruning_manyjoins',
-            #                      include_pg_opt_workloads=True,
-            #                      include_hint_idx_workloads=True,
-            #                      include_complex_many_joins_workloads=True,
-            #                      apply_outcol_pruning=True, **model_specific_args),  # std
-            # # parameterized_config(model_type, wandb_group='whintwl', include_hint_workloads=True,
-            # #                      include_pg_opt_workloads=True, **model_specific_args),  # hint
-            # parameterized_config(model_type, wandb_group='whint_hintidx', include_pg_opt_workloads=True,
-            #                      include_complex_many_joins_workloads=True, include_hint_idx_workloads=True, **model_specific_args),
-            # parameterized_config(model_type, wandb_group='whint_hintidx_mergenlj', include_pg_opt_workloads=True,
-            #                      include_hint_workloads=True, include_hint_idx_workloads=True,
-            #                      merge_nlj_and_inlj_to_same_op=True, **model_specific_args),
-
-            # parameterized_config(model_type, wandb_group='whint_hintidx_nojoincond', include_pg_opt_workloads=True,
-            #                      include_hint_workloads=True, include_hint_idx_workloads=True,
-            #                      remove_join_cond_from_plan=True, **model_specific_args) if model_type == 'zeroshot' else None,
-            # parameterized_config(model_type, wandb_group='wranking', include_pg_opt_workloads=True,
-            #                      include_complex_ranking_workloads=True,
-            #                      **model_specific_args),
-            # parameterized_config(model_type, wandb_group='wranking_subplanmon', include_pg_opt_workloads=True,
-            #                      include_complex_ranking_workloads=True,
-            #                      subplan_monotonicity_loss=True,
-            #                      **model_specific_args),
-            # parameterized_config(model_type, wandb_group='wranking_subplanmon_relloss', include_pg_opt_workloads=True,
-            #                      include_complex_ranking_workloads=True,
-            #                      subplan_monotonicity_loss=True,
-            #                      subplan_monotonicity_loss_fn='relative_lt_loss',
-            #                      **model_specific_args),
-
-            # access path tests
-            # parameterized_config(model_type, wandb_group='scanonly',
-            #                      include_scan_only_hint_workloads=True,
-            #                      **model_specific_args),
-            # parameterized_config(model_type, wandb_group='scanonly',
-            #                      include_scan_only_hint_workloads=True,
-            #                      prohibit_aggregation_node_at_root=True,
-            #                      epochs=100,
-            #                      **model_specific_args),
-            # parameterized_config(model_type, wandb_group='scanonly',
-            #                      include_scan_only_hint_workloads=True,
-            #                      prohibit_aggregation_node_at_root=True,
-            #                      featurization=PostgresEstWithAdditionalFeats,
-            #                      epochs=100,
-            #                      **model_specific_args),
-            # parameterized_config(model_type, wandb_group='scanonly',
-            #                      include_scan_only_hint_workloads=True,
-            #                      featurization=PostgresEstWithIsJoinCond,
-            #                      epochs=100,
-            #                      **model_specific_args),
-            # parameterized_config(model_type, wandb_group='scanonly',
-            #                      include_scan_only_hint_workloads=True,
-            #                      annotate_base_table_card_to_scan_op=True,
-            #                      featurization=PostgresEstWithIsJoinCond,
-            #                      epochs=100,
-            #                      **model_specific_args),
-            # parameterized_config(model_type, wandb_group='scanonly',
-            #                      include_scan_only_hint_workloads=True,
-            #                      prohibit_aggregation_node_at_root=True,
-            #                      annotate_base_table_card_to_scan_op=True,
-            #                      epochs=100,
-            #                      **model_specific_args),
-            # parameterized_config(model_type, wandb_group='scanonly',
-            #                      include_scan_only_hint_workloads=True,
-            #                      prohibit_aggregation_node_at_root=True,
-            #                      annotate_base_table_card_to_scan_op=True,
-            #                      featurization=PostgresEstWithAdditionalFeats,
-            #                      epochs=100,
-            #                      **model_specific_args),
-
-            # parameterized_config(model_type, wandb_group='wranking_subplanmon_relloss_addfeats',
-            #                      include_pg_opt_workloads=True,
-            #                      include_complex_ranking_workloads=True,
-            #                      subplan_monotonicity_loss=True,
-            #                      subplan_monotonicity_loss_fn='relative_lt_loss',
-            #                      featurization=PostgresEstWithAdditionalFeats,
-            #                      **model_specific_args),
-            # parameterized_config(model_type, wandb_group='pg_no_opname',
-            #                      include_pg_opt_workloads=True,
-            #                      featurization=PostgresEstNoOpname,
-            #                      **model_specific_args),
-            # hint + idx
-            # parameterized_config(model_type, wandb_group='actcard',
-            #                      include_pg_opt_workloads=True,
-            #                      featurization=PostgresTrueCardDetail,
-            #                      **model_specific_args),  # hint-idx
-            # parameterized_config(model_type, wandb_group='actcard',
-            #                      include_hint_idx_workloads=True,
-            #                      include_complex_ranking_workloads=True,
-            #                      featurization=PostgresTrueCardDetail,
-            #                      **model_specific_args),  # hint-idx
-            # parameterized_config(model_type, wandb_group='whintidx', include_hint_idx_workloads=True,
-            #                      include_pg_opt_workloads=True,
-            #                      **model_specific_args),  # hint-idx
-            # # # parameterized_config(model_type, wandb_group='onlyhint', only_hint_workloads=True, **model_specific_args),  # hint_only
-            # parameterized_config(model_type, wandb_group='wcomplex', include_complex_workloads=True,include_pg_opt_workloads=True,
-            #                      **model_specific_args),  # complex
-            # parameterized_config(model_type, wandb_group='whintidx_complex', include_complex_workloads=True,
-            #                      include_pg_opt_workloads=True,
-            #                      include_hint_idx_workloads=True,
-            #                      **model_specific_args),  # complex + hint-idx
-            # parameterized_config(model_type, wandb_group='wIsIdxFeat', featurization = PostgresEstWithIsIndexCond,include_pg_opt_workloads=True, **model_specific_args) if model_type == 'zeroshot' else None,
-            # parameterized_config(model_type, wandb_group='wIsIdxFeat_complex_hintidxs_nopgopt', featurization=PostgresEstWithIsIndexCond, include_complex_workloads=True, include_hint_idx_workloads=True,
-            #                      **model_specific_args) if model_type == 'zeroshot' else None,
-            # parameterized_config(model_type, wandb_group='wIsIdxFeat_complex',
-            #                      featurization=PostgresEstWithIsIndexCond, include_complex_workloads=True,include_pg_opt_workloads=True,
-            #                      **model_specific_args) if model_type == 'zeroshot' else None,
-            # parameterized_config(model_type, wandb_group='wIsIdxFeat_complex_pgopt_scanhint',
-            #                      featurization=PostgresEstWithIsIndexCond, include_complex_workloads=True,
-            #                      include_hint_idx_workloads=True, include_scan_only_hint_workloads=True,
-            #                      **model_specific_args) if model_type == 'zeroshot' else None,
-            # parameterized_config(model_type, wandb_group='notopaggr',include_pg_opt_workloads=True,skip_top_aggregation=True,
-            #                      **model_specific_args) if model_type == 'zeroshot' else None,
-            # parameterized_config(model_type, wandb_group='notopaggr', include_pg_opt_workloads=True, include_scan_only_hint_workloads=True,
-            #                      skip_top_aggregation=True,
-            #                      **model_specific_args) if model_type == 'zeroshot' else None,
-            # parameterized_config(model_type, wandb_group='wsubplans_pgopt_hintidx_complex',
-            #                      include_complex_workloads=True,
-            #                      include_pg_opt_workloads=True,
-            #                      include_hint_idx_workloads=True,
-            #                      train_on_subplans=True,
-            #                      limit_plans_per_file=5000,
-            #                      **model_specific_args),  # w subplans
-            # parameterized_config(model_type, wandb_group='wIsJoinCond_complex_pgopt_hintidx',
-            #                      featurization=PostgresEstWithIsJoinCond, include_complex_workloads=True,
-            #                      include_pg_opt_workloads=True, include_hint_idx_workloads=True,
-            #                      **model_specific_args) if model_type == 'zeroshot' else None,
-            # parameterized_config(model_type, wandb_group='wColFilterEdges_complex_pgopt_hintidx',
-            #                      filter_inline_col_feats=False, include_complex_workloads=True,
-            #                      include_pg_opt_workloads=True, include_hint_idx_workloads=True,
-            #                      **model_specific_args) if model_type == 'zeroshot' else None,
-            # parameterized_config(model_type, wandb_group='wColFilterEdges_wIsJoinCond_complex_pgopt_hintidx',
-            #                      filter_inline_col_feats=False, featurization=PostgresEstWithIsJoinCond,
-            #                      include_complex_workloads=True, include_pg_opt_workloads=True,
-            #                      include_hint_idx_workloads=True,
-            #                      **model_specific_args) if model_type == 'zeroshot' else None,
-            # parameterized_config(model_type, wandb_group='adamwschedulefree_complex_pgopt_hintidx',
-            #                      optimizer_class_name='AdamWScheduleFree', include_complex_workloads=True,
-            #                      include_pg_opt_workloads=True, include_hint_idx_workloads=True,
-            #                      **model_specific_args) if model_type == 'zeroshot' else None,
-            # parameterized_config(model_type, wandb_group='tablecardatscan_complex_pgopt_hintidx',
-            #                      annotate_base_table_card_to_scan_op=True,
-            #                      include_complex_workloads=True, include_pg_opt_workloads=True,
-            #                      include_hint_idx_workloads=True,
-            #                      **model_specific_args) if model_type == 'zeroshot' else None,
-            # parameterized_config(model_type, wandb_group='submonloss_complex_pgopt_hintidx',
-            #                      subplan_monotonicity_loss=True,
-            #                      include_complex_workloads=True, include_pg_opt_workloads=True,
-            #                      include_hint_idx_workloads=True,
-            #                      **model_specific_args) if model_type == 'zeroshot' else None,
-            # parameterized_config(model_type, wandb_group='isidxcond_tablecardatscan_complex_pgopt_hintidx',
-            #                      annotate_base_table_card_to_scan_op=True,
-            #                      featurization=PostgresEstWithIsIndexCond,
-            #                      include_complex_workloads=True, include_pg_opt_workloads=True,
-            #                      include_hint_idx_workloads=True,
-            #                      **model_specific_args) if model_type == 'zeroshot' else None,
-            # parameterized_config(model_type, wandb_group='numloops_complex_pgopt_hintidx',
-            #                      featurization=PostgresEstWithNumLoops,
-            #                      include_complex_workloads=True, include_pg_opt_workloads=True,
-            #                      include_hint_idx_workloads=True,
-            #                      **model_specific_args) if model_type == 'zeroshot' else None,
-            # parameterized_config(model_type,
-            #                      wandb_group='isidxcond_isjoincond_numloops_wcolfilteredges_tablecardatscan_complex_pgopt_hintidx',
-            #                      annotate_base_table_card_to_scan_op=True,
-            #                      featurization=PostgresEstWithAdditionalFeats,
-            #                      filter_inline_col_feats=False,
-            #                      include_complex_workloads=True, include_pg_opt_workloads=True,
-            #                      include_hint_idx_workloads=True, include_scan_only_hint_workloads=True,
-            #                      **model_specific_args) if model_type in ['zeroshot', 'zeroshot_xl'] else None,
-
-            # OHEM test
-            # parameterized_config(model_type,
-            #                      wandb_group='ohem',
-            #                      include_pg_opt_workloads=True,
-            #                      include_scan_only_hint_workloads=True,
-            #                      include_complex_workloads=True,
-            #                      include_hint_workloads=True,
-            #                      include_hint_idx_workloads=True,
-            #                      online_hard_example_mining=True,
-            #                      ohem_initialize_difficulty=True,
-            #                      include_gt30_hints=True,
-            #                      limit_plans_per_file=10000,  # means here limit plans per slice
-            #                      ohem_resort_after_num_epochs=1,
-            #                      ohem_slice_by='dataset',
-            #                      featurization=PostgresEstWithAdditionalFeats,
-            #                      filter_inline_col_feats=False,
-            #                      annotate_base_table_card_to_scan_op=True,
-            #                      # pretrained_model_dir='/mnt/labstore/SIGs/ML/learned_db/models/pm-zeroshot-include_complex_workloads-include_hint_idx_workloads/imdb/',
-            #                      # pretrained_model_name='pm-zeroshot-include_complex_workloads-include_hint_idx_workloads_1',
-            #                      pretrained_model_dir='/mnt/labstore/SIGs/ML/learned_db/models/pm-zeroshot-annotate_base_table_card_to_scan_op-PostgresEstWithAdditionalFeats-filter_inline_col_featsFalse-include_complex_workloads-include_pg_opt_workloads-include_hint_idx_workloads-include_scan_only_hint_workloads/imdb/',
-            #                      pretrained_model_name='pm-zeroshot-annotate_base_table_card_to_scan_op-PostgresEstWithAdditionalFeats-filter_inline_col_featsFalse-include_complex_workloads-include_pg_opt_workloads-include_hint_idx_workloads-include_scan_only_hint_workloads_1') if model_type == 'zeroshot' else None,
+            parameterized_config(model_type, wandb_group='residual', 
+                                 include_pg_opt_workloads=True,
+                                 layer_norm=True, 
+                                 include_hint_idx_workloads=True,
+                                 include_complex_many_joins_workloads=True,
+                                 featurization=MambaFull,
+                                 residual_connection=True,
+                                 optimizer_class_name='AdamWScheduleFree',
+                                 **model_specific_args) if model_type=='mamba' else None,
         ])
-
-    # model_configs = [
-    #     parameterized_config('zeroshot_xl',
-    #                          wandb_group='ohem',
-    #                          include_pg_opt_workloads=True,
-    #                          include_scan_only_hint_workloads=True,
-    #                          include_complex_workloads=True,
-    #                          include_hint_workloads=True,
-    #                          include_hint_idx_workloads=True,
-    #                          online_hard_example_mining=True,
-    #                          ohem_initialize_difficulty=True,
-    #                          include_gt30_hints=True,
-    #                          limit_plans_per_file=10000,  # means here limit plans per slice
-    #                          ohem_resort_after_num_epochs=1,
-    #                          ohem_slice_by='dataset',
-    #                          featurization=PostgresEstWithAdditionalFeats,
-    #                          filter_inline_col_feats=False,
-    #                          annotate_base_table_card_to_scan_op=True,
-    #                          # pretrained_model_dir='/mnt/labstore/SIGs/ML/learned_db/models/pm-zeroshot-include_complex_workloads-include_hint_idx_workloads/imdb/',
-    #                          # pretrained_model_name='pm-zeroshot-include_complex_workloads-include_hint_idx_workloads_1',
-    #                          pretrained_model_dir='/mnt/labstore/SIGs/ML/learned_db/models/pm-zeroshot_xl-annotate_base_table_card_to_scan_op-PostgresEstWithAdditionalFeats-filter_inline_col_featsFalse-include_complex_workloads-include_pg_opt_workloads-include_hint_idx_workloads-include_scan_only_hint_workloads/imdb/',
-    #                          pretrained_model_name='pm-zeroshot_xl-annotate_base_table_card_to_scan_op-PostgresEstWithAdditionalFeats-filter_inline_col_featsFalse-include_complex_workloads-include_pg_opt_workloads-include_hint_idx_workloads-include_scan_only_hint_workloads_1', )
-    # ]
-
-    #     model_configs = [
-    #         parameterized_config('zeroshot_learn_from_timeout',
-    #                              wandb_group='zs_from_timeout',
-    #                              annotate_base_table_card_to_scan_op=True,
-    #                              featurization=PostgresEstWithAdditionalFeats,
-    #                              filter_inline_col_feats=False,
-    #                              include_complex_workloads=True, include_pg_opt_workloads=True,
-    #                              include_hint_idx_workloads=True, include_scan_only_hint_workloads=True,
-    #                              pretrained_model_dir='/mnt/labstore/SIGs/ML/learned_db/models/pm-zeroshot-annotate_base_table_card_to_scan_op-PostgresEstWithAdditionalFeats-filter_inline_col_featsFalse-include_complex_workloads-include_pg_opt_workloads-include_hint_idx_workloads-include_scan_only_hint_workloads/imdb/',
-    #                              pretrained_model_name='pm-zeroshot-annotate_base_table_card_to_scan_op-PostgresEstWithAdditionalFeats-filter_inline_col_featsFalse-include_complex_workloads-include_pg_opt_workloads-include_hint_idx_workloads-include_scan_only_hint_workloads_1')
-    #     ]
 
     model_configs = [model for model in model_configs if model is not None]
 
@@ -578,7 +359,7 @@ if __name__ == '__main__':
                        node_names=[node["hostname"] for node in nodes],
                        python_version='rye',
                        available_sockets=sockets,
-                       num_parallel_screens_or_jobs=num_parallel_screens,
+                       num_parallel_screens_or_jobs=min(num_parallel_screens,len(model_configs)),
                        dgx_num_parallel_screens_or_jobs=num_parallel_jobs_dgx,
                        ssh_path=ssh_path,
                        stop_on_error=False,

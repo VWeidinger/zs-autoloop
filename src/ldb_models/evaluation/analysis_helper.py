@@ -12,22 +12,23 @@ file_cache = dict()
 file_cache_parsed = dict()
 
 
-def load_job_file():
-    job_file = 'imdb_scaled1/join_order_job_w_idxs_combined.json'
+def load_run_file(file_name:str=None):
+    if file_name is None:
+        file_name = 'imdb_scaled1/join_order_job_w_idxs_combined.json'
 
-    if job_file in file_cache:
-        return file_cache[job_file], file_cache_parsed[job_file]
+    if file_name in file_cache:
+        return file_cache[file_name], file_cache_parsed[file_name]
 
-    print(f'Loading job file {job_file}')
-    with open(LocalPaths().Data.json_plans.as_posix() + '/' + job_file, 'r') as f:
+    print(f'Loading job file {file_name}')
+    with open(LocalPaths().Data.json_plans.as_posix() + '/' + file_name, 'r') as f:
         job_data = orjson.loads(f.read())
 
-    print(f'Loaded parsed job file {job_file}')
-    with open(LocalPaths().Data.parsed_plans.as_posix() + '/' + job_file, 'r') as f:
+    print(f'Loaded parsed job file {file_name}')
+    with open(LocalPaths().Data.parsed_plans2.as_posix() + '/' + file_name, 'r') as f:
         job_data_parsed = orjson.loads(f.read())
 
-    file_cache[job_file] = job_data
-    file_cache_parsed[job_file] = job_data_parsed
+    file_cache[file_name] = job_data
+    file_cache_parsed[file_name] = job_data_parsed
     return job_data, job_data_parsed
 
 
@@ -54,13 +55,28 @@ def create_explain_dalibo_entry(query, plan, title):
         raise Exception(f'Failed to create explain entry: {response.text}')
 
 
-def search_plan(target_sql, target_hint):
-    job_data, job_data_parsed = load_job_file()
-
+def search_plan(target_sql, target_hint, dataset='job'):
+    if dataset == 'job':
+        run_data, run_data_parsed = load_run_file('imdb_scaled1/join_order_job_w_idxs_combined.json')
+    elif dataset == 'job_light':
+        run_data, run_data_parsed = load_run_file('imdb_scaled1/join_order.json')
+    elif dataset == 'job_extended':
+        run_data, run_data_parsed = load_run_file('imdb_scaled1/JOBExtended_selection1.json')
+    elif dataset == 'physop':
+        run_data, run_data_parsed = load_run_file('imdb_scaled1/physical_operator.json')
+    elif dataset == 'physop_idx':
+        run_data, run_data_parsed = load_run_file('imdb_scaled1/physical_operator_w_idx.json')
+    elif dataset == 'ap':
+        run_data, run_data_parsed = load_run_file('imdb_scaled1/access_path_selection.json')
+    elif dataset == 'ap_aggr':
+        run_data, run_data_parsed = load_run_file('imdb_scaled1/access_path_selection_with_aggregate.json')
+    else:
+        raise ValueError(f'Unknown dataset: {dataset}')
+    
     matching_files = []
 
     # find raw plan
-    for plan in job_data['query_list']:
+    for plan in run_data['query_list']:
         sql = plan['sql']
         hint = plan['hint']
 
@@ -69,7 +85,7 @@ def search_plan(target_sql, target_hint):
 
     matching_parsed_plans = []
     # find parsed plan
-    for plan in job_data_parsed['parsed_plans']:
+    for plan in run_data_parsed['parsed_plans']:
         sql = plan['sql']
         hint = plan['hint']
 
@@ -80,7 +96,6 @@ def search_plan(target_sql, target_hint):
 
 
 def get_table_df(url: str, label: str, api):
-    print(url)
     artifact = api.artifact(url)
     artifact.download()
 
@@ -88,8 +103,8 @@ def get_table_df(url: str, label: str, api):
     return table.get_dataframe()
 
 
-def get_dataframes_from_run(run: str, df_cache: Dict, api, wandb_project: str = 'learneddb/lcm') -> Dict[str, str]:
-    if run in df_cache:
+def get_dataframes_from_run(run: str, df_cache: Dict, api, wandb_project: str = 'learneddb/lcm', skip_cache:bool=False) -> Dict[str, str]:
+    if run in df_cache and not skip_cache:
         print(f'Found run {run} in cache')
         return df_cache[run]
 
@@ -102,7 +117,11 @@ def get_dataframes_from_run(run: str, df_cache: Dict, api, wandb_project: str = 
 
     for key in instance.summary.keys():
         if key.endswith('pred_table'):
-            df_dict[key] = get_table_df(f'{wandb_project}/run-{run}-{key}:latest', key, api=api)
+            try:
+                df_dict[key] = get_table_df(f'{wandb_project}/run-{run}-{key}:latest', key, api=api)
+            except Exception as e:
+                print(f'Error getting table {key} for run {run}: {e}')
+                df_dict[key] = None
 
     df_cache[run] = df_dict
 

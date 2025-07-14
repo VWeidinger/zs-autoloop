@@ -4,10 +4,10 @@ import torch
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from training.batch_to_funcs import batch_to
+from training.batch_to_funcs import zs_batch_to
 
 
-def inference(dataloader: DataLoader, model, batch_to: Callable = batch_to) -> Tuple[torch.Tensor, torch.Tensor]:
+def inference(dataloader: DataLoader, model, batch_to: Callable = zs_batch_to) -> Tuple[torch.Tensor, torch.Tensor]:
     labels = []
     preds = []
 

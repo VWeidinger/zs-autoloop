@@ -35,22 +35,21 @@ def evaluate_join_order(predictions, wl_name: str, is_per_epoch: bool = False, e
     if is_per_epoch:
         prefix += '-per_epoch'
 
+    spearman_metric = metrics["spearman_corr"]
+
     # Group dataframe by SQL and iterate over each group
     for sql, group_df in prediction_dataframe.groupby("sql"):
-        preds = group_df["prediction"]
-        labels = group_df["label"]
-
-        # print(f"Found {len(group_df)} predictions for SQL query in {sql}")
+        preds = group_df["prediction"].to_numpy()
+        labels = group_df["label"].to_numpy()
 
         if len(group_df) == 1:
             print(f'Join order evaluation: Skipping SQL query in as only one plan was predicted {sql}')
             continue
 
-        if pd.isna(SpearmanRank().evaluate_metric(preds=preds, labels=labels)):
+        # Use numpy for nan/inf handling
+        if np.isnan(spearman_metric.evaluate_metric(preds=preds, labels=labels)):
             print(f'Join order evaluation: found Spearman correlation is invalid/NaN - try to fix / {sql}')
-
-            # replace inf/nan with value
-            preds = preds.replace([np.inf, -np.inf], np.nan).fillna(1000000)
+            preds = np.nan_to_num(preds, nan=1000000, posinf=1000000, neginf=1000000)
 
         for key, metric in metrics.items():
             aggregated_results[key].append(metric.evaluate_metric(preds=preds, labels=labels))
@@ -58,13 +57,14 @@ def evaluate_join_order(predictions, wl_name: str, is_per_epoch: bool = False, e
         search_sql = 'SELECT COUNT(*) FROM title,movie_info,movie_info_idx,movie_companies WHERE title.id=movie_info.movie_id AND title.id=movie_info_idx.movie_id AND title.id=movie_companies.movie_id AND movie_info_idx.info_type_id=101 AND movie_info.info_type_id=3 AND title.production_year>2005 AND title.production_year<2008 AND movie_companies.company_type_id=2;'
         if search_sql == sql:
             # sort both lists by labels
-            sorted_labels, sorted_preds = zip(*sorted(zip(labels, preds)))
-            # assert len(sorted_labels) == len(sorted_preds) and  len(sorted_labels) == 120, "Missing labels for example query"
+            sorted_indices = np.argsort(labels)
+            sorted_labels = labels[sorted_indices]
+            sorted_preds = preds[sorted_indices]
             if wandb_run:
-                # create a plot
+                # create wandb plot
                 data = {prefix: wandb.plot.line_series(
                     xs=[i for i in range(len(sorted_labels))],
-                    ys=[sorted_labels, sorted_preds],
+                    ys=[sorted_labels.tolist(), sorted_preds.tolist()],
                     keys=['Real Runtime', 'Predictions'],
                     title='Runtime Enumeration Plot JOB-Light Query 33',
                     xname='Join Enumeration',
@@ -74,17 +74,17 @@ def evaluate_join_order(predictions, wl_name: str, is_per_epoch: bool = False, e
                 else:
                     wandb_run.log(data)
 
-    selected_runtimes = aggregated_results["selected_runtime"]
-    optimal_runtimes = aggregated_results["optimal_runtime"]
+    selected_runtimes = np.array(aggregated_results["selected_runtime"])
+    optimal_runtimes = np.array(aggregated_results["optimal_runtime"])
 
     # sort by optimal runtime (desc)
-    sorted_indices = [i for i in sorted(range(len(optimal_runtimes)), key=lambda k: optimal_runtimes[k], reverse=True)]
-    optimal_runtimes_sorted = [optimal_runtimes[i] for i in sorted_indices]
-    selected_runtimes_sorted = [selected_runtimes[i] for i in sorted_indices]
+    sorted_indices = np.argsort(optimal_runtimes)[::-1]
+    optimal_runtimes_sorted = optimal_runtimes[sorted_indices]
+    selected_runtimes_sorted = selected_runtimes[sorted_indices]
 
     avg_spearman_corr = np.mean(aggregated_results['spearman_corr'])
-    total_selected_runtime = np.sum(aggregated_results['selected_runtime'])
-    total_optimal_runtime = np.sum(aggregated_results['optimal_runtime'])
+    total_selected_runtime = np.sum(selected_runtimes)
+    total_optimal_runtime = np.sum(optimal_runtimes)
     avg_surpassed_plans = np.mean(aggregated_results['surpassed_plans'])
     avg_q_error = np.mean(aggregated_results['q_error'])
     avg_max_overestimation = np.mean(aggregated_results['max_overestimation'])
@@ -110,7 +110,6 @@ def evaluate_join_order(predictions, wl_name: str, is_per_epoch: bool = False, e
                 f'{prefix}/avg_max_underestimation': avg_max_underestimation,
                 f'{prefix}/num_queries': len(aggregated_results['spearman_corr']),
                 f'{prefix}/num_plans': len(predictions),
-
             }, step=epoch)
         else:
             wandb_run.summary[f'{prefix}/avg_spearman_corr'] = avg_spearman_corr
@@ -124,8 +123,8 @@ def evaluate_join_order(predictions, wl_name: str, is_per_epoch: bool = False, e
             wandb_run.summary[f'{prefix}/num_plans'] = len(predictions)
             wandb_run.log({f'{prefix}_pred_table': wandb.Table(dataframe=prediction_dataframe),
                            f'{prefix}_plot': wandb.plot.line_series(xs=range(len(optimal_runtimes)),
-                                                                    ys=[optimal_runtimes_sorted,
-                                                                        selected_runtimes_sorted],
+                                                                    ys=[optimal_runtimes_sorted.tolist(),
+                                                                        selected_runtimes_sorted.tolist()],
                                                                     keys=["Optimal Runtimes", "Picked Runtimes"],
                                                                     title="JOB - Picked vs. Optimal Runtimes",
                                                                     xname="Query ID", )})
@@ -138,7 +137,7 @@ def evaluate_physical_plan_selection(predictions: dict, with_idxs: bool = False,
                                      epoch: int = None, wandb_run: Run = None):
     """ This method evaluates a given workload of queries, how well physical operators were selected."""
 
-    log_prefix = f'physop_eval'
+    log_prefix = 'physop_eval'
     if with_idxs:
         log_prefix += '_with_idxs'
 
@@ -274,8 +273,8 @@ def create_confusion_matrix_from_str_list(labels, predictions):
     classes_lookup_dict = {c: i for i, c in enumerate(classes)}
 
     # convert str classes to ints
-    labels = [classes_lookup_dict[l] for l in labels]
-    predictions = [classes_lookup_dict[p] for p in predictions]
+    labels = [classes_lookup_dict[label] for label in labels]
+    predictions = [classes_lookup_dict[pred] for pred in predictions]
 
     # Compute the confusion matrix
     cm = confusion_matrix(labels, predictions)
@@ -445,7 +444,7 @@ def evaluate_access_path_selection(predictions: dict, is_per_epoch: bool = False
         overall_predicted_selection.extend(pred_selection)
 
         # calculate accuracy
-        accuracy = np.mean([p == l for p, l in zip(pred_selection, label_selection)])
+        accuracy = np.mean([p == label for p, label in zip(pred_selection, label_selection)])
         balanced_accuracy = balanced_accuracy_score(label_selection, pred_selection)
 
         print(f'{table_name}.{col_name} - Accuracy: {accuracy:.2f} - Balanced Accuracy: {balanced_accuracy:.2f}')
@@ -462,7 +461,7 @@ def evaluate_access_path_selection(predictions: dict, is_per_epoch: bool = False
             time.sleep(0.1)  # Otherwise too many requests for localhost
 
     # log overall accuracy
-    accuracy = np.mean([p == l for p, l in zip(overall_predicted_selection, overall_label_selection)])
+    accuracy = np.mean([p == label for p, label in zip(overall_predicted_selection, overall_label_selection)])
     balanced_accuracy = balanced_accuracy_score(overall_label_selection, overall_predicted_selection)
 
     print(f'Overall - Accuracy: {accuracy:.2f} - Balanced Accuracy: {balanced_accuracy:.2f}')
@@ -513,7 +512,7 @@ def evaluate_access_path_selection(predictions: dict, is_per_epoch: bool = False
         if is_per_epoch:
             wandb_run.log({f'{prefix}/seq_scan_ratio': wandb.Image(plt)}, step=epoch)
         else:
-            print(f'Logging seq_scan_ratio to wandb summary', flush=True)
+            print('Logging seq_scan_ratio to wandb summary', flush=True)
             wandb_run.log({f'{prefix}/seq_scan_ratio': wandb.Image(plt)})
 
     ###

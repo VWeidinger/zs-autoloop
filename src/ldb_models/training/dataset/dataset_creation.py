@@ -7,11 +7,13 @@ from pathlib import Path
 from typing import List, Optional, Dict
 
 import numpy as np
-from ldb_schema.load_schema import load_json
+from ldb_schema.load_schema import load_json, get_json_schema
 from sklearn import preprocessing
 from sklearn.pipeline import Pipeline
 from torch.utils.data import DataLoader
 from tqdm import tqdm
+
+
 
 from classes.classes import ZeroShotModelConfig, DataLoaderOptions, ModelConfig, InputFormats
 from classes.workload_runs import WorkloadRuns
@@ -96,15 +98,21 @@ def read_workload_runs(workload_run_paths: List[Path],
     for path_index, (path, run) in enumerate(zip(workload_run_paths, run_list)):
         database_statistics[path_index] = run["database_stats"]
 
+
         if input_format in [InputFormats.parsed, InputFormats.baseline_parsed]:
             assert "parsed_plans" in run, f"parsed_plans not in {path}, did you maybe used JSON query plans?"
             file_plans = run['parsed_plans']
+            db_name = file_plans[0]['dataset']
         elif input_format == InputFormats.json:
             if "query_list" not in run:
                 raise ValueError(f"This model requires json format, are you sure {path} is in json format?")
             file_plans = run['query_list']
+            db_name = file_plans[0]['dataset']
         else:
             raise ValueError(f"Input format {input_format} not supported")
+
+        # extract db_name from run
+        database_statistics[path_index]['database_name'] = db_name
 
         # check if the file is in the blacklist
         if any([blacklist in str(path) for blacklist in limit_plans_blacklist]):
@@ -362,6 +370,10 @@ def split_plans_in_train_val(plans: List[dict], val_ratio: float, shuffle_before
     return train_indexes, val_indexes
 
 
+@functools.lru_cache(maxsize=None)
+def get_db_schema_info(db_name:str) -> Dict:
+    return get_json_schema(db_name)
+
 def create_datasets(workload_run_paths,
                     model_config: ModelConfig,
                     val_ratio=0.15,
@@ -394,6 +406,10 @@ def create_datasets(workload_run_paths,
     else:
         plans = inject_plans
         database_statistics = inject_database_statistics
+
+    # extract database schema information
+    db_names = dict((db_id, value['database_name']) for db_id, value in database_statistics.items())
+    db_schema_info = dict((db_id, get_json_schema(db_name)) for db_id, db_name in db_names.items())
 
     # derive label normalization
     if apply_ohem:
@@ -513,7 +529,7 @@ def create_datasets(workload_run_paths,
         return dataset
 
     if assemble_graphs:
-        collate_fn = functools.partial(plan_collate_fn, db_statistics=database_statistics)
+        collate_fn = functools.partial(plan_collate_fn, db_statistics=database_statistics, db_schema_info=db_schema_info)
     else:
         collate_fn = None
 
@@ -525,8 +541,7 @@ def create_datasets(workload_run_paths,
         val_dataset = create_dataset(plans, val_indexes, is_validation_set=True, assemble_graphs=assemble_graphs,
                                      assemble_graph_collate_fn=collate_fn)
 
-
-    return label_norm, train_dataset, val_dataset, database_statistics
+    return label_norm, train_dataset, val_dataset, database_statistics, db_schema_info
 
 
 def derive_label_normalizer(loss_class_name, y) -> Pipeline:
@@ -560,7 +575,8 @@ def create_zeroshot_dataloader(workload_runs: WorkloadRuns,
 
     feature_statistics = load_json(str(statistics_file), namespace=False)
     assert feature_statistics != {}, "Feature statistics file is empty!"
-    plan_collator = postgres_plan_collator
+
+    plan_collator = model_config.collator_func
 
     add_pseudo_entries_to_feature_statistics = True
     if add_pseudo_entries_to_feature_statistics:
@@ -585,24 +601,28 @@ def create_zeroshot_dataloader(workload_runs: WorkloadRuns,
                            num_workers=model_config.num_workers,
                            pin_memory=data_loader_options.pin_memory)
 
+    collator_args = {}
+    if isinstance(model_config, ZeroShotModelConfig):
+        collator_args['skip_top_aggregation'] = model_config.skip_top_aggregation
+        collator_args['filter_inline_col_feats'] = model_config.filter_inline_col_feats
+        collator_args['annotate_base_table_card_to_scan_op'] = model_config.annotate_base_table_card_to_scan_op
+        collator_args['enforce_aggregation_node_at_root'] = model_config.enforce_aggregation_node_at_root
+        collator_args['prohibit_aggregation_node_at_root'] = model_config.prohibit_aggregation_node_at_root
+        
     if workload_runs.train_workload_runs and len(workload_runs.train_workload_runs) > 0:
         # Split plans into train/test/validation set
         print("Creating dataloader for training and validation data")
+
         train_collate_fn = functools.partial(
             plan_collator,
             feature_statistics=feature_statistics,
             plan_featurization=model_config.featurization,
-            test_mode=False,
-            skip_top_aggregation=model_config.skip_top_aggregation,
-            filter_inline_col_feats=model_config.filter_inline_col_feats,
-            annotate_base_table_card_to_scan_op=model_config.annotate_base_table_card_to_scan_op,
-            enforce_aggregation_node_at_root=model_config.enforce_aggregation_node_at_root,
-            prohibit_aggregation_node_at_root=model_config.prohibit_aggregation_node_at_root,
+            **collator_args,
             output_tensors=assemble_graphs_up_front,
             # in case we assemble the graphs up front, we directly want to convert to tensors
         )
 
-        label_norm, train_dataset, val_dataset, database_statistics \
+        label_norm, train_dataset, val_dataset, database_statistics, db_schema_info \
             = create_datasets(workload_run_paths=workload_runs.train_workload_runs,
                               model_config=model_config,
                               val_ratio=data_loader_options.val_ratio,
@@ -610,7 +630,7 @@ def create_zeroshot_dataloader(workload_runs: WorkloadRuns,
                               plan_collate_fn=train_collate_fn)
 
         if not assemble_graphs_up_front:
-            train_collate_fn = functools.partial(train_collate_fn, db_statistics=database_statistics)
+            train_collate_fn = functools.partial(train_collate_fn, db_statistics=database_statistics, db_schema_info=db_schema_info)
             dataloader_args.update(collate_fn=train_collate_fn)
         else:
             # overwrite batch size to 1 - since we have already pre-batched everything
@@ -648,17 +668,12 @@ def create_zeroshot_dataloader(workload_runs: WorkloadRuns,
                 plan_collator,
                 feature_statistics=feature_statistics,
                 plan_featurization=model_config.featurization,
-                test_mode=True,
-                skip_top_aggregation=model_config.skip_top_aggregation,
-                filter_inline_col_feats=model_config.filter_inline_col_feats,
-                annotate_base_table_card_to_scan_op=model_config.annotate_base_table_card_to_scan_op,
-                enforce_aggregation_node_at_root=model_config.enforce_aggregation_node_at_root,
-                prohibit_aggregation_node_at_root=model_config.prohibit_aggregation_node_at_root,
+                **collator_args,
                 output_tensors=assemble_graphs_up_front,
                 # in case we assemble the graphs up front, we directly want to convert to tensors
             )
 
-            _, test_dataset, _, test_database_statistics = create_datasets([test_path],
+            _, test_dataset, _, test_database_statistics, test_db_schema_info = create_datasets([test_path],
                                                                            model_config=model_config,
                                                                            shuffle_before_split=False,
                                                                            val_ratio=0.0,
@@ -672,7 +687,7 @@ def create_zeroshot_dataloader(workload_runs: WorkloadRuns,
                                                                            )
 
             if not assemble_graphs_up_front:
-                test_collate_fn = functools.partial(test_collate_fn, db_statistics=test_database_statistics)
+                test_collate_fn = functools.partial(test_collate_fn, db_statistics=test_database_statistics, db_schema_info=test_db_schema_info)
                 dataloader_args.update(collate_fn=test_collate_fn)
             else:
                 # overwrite batch size to 1 - since we have already pre-batched everything

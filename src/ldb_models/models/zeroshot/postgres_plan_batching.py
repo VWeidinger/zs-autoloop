@@ -388,10 +388,54 @@ def parse_predicates(db_column_features, feature_statistics, filter, filter_to_p
                              database_id=database_id, parent_filter_node_id=filter_node_id, depth=depth + 1,
                              is_join=is_join, inline_col_feats=inline_col_feats)
 
+# run the feature scaling
+def apply_feature_scalers(features, feature_statistics, feature_names: List[str]):
+    # convert features to numpy array
+    try:
+        features = np.array(features, dtype=np.float32)
+    except Exception as e:
+        print(len(features), flush=True)
+        if len(features) > 0:
+            print(len(features[0]), flush=True)
 
-def postgres_plan_collator(plans: List[Tuple], feature_statistics: dict[dict] = None, db_statistics: dict = None,
-                           plan_featurization: Featurization = None, test_mode: bool = False,
-                           skip_top_aggregation: bool = False, filter_inline_col_feats: bool = True,
+        raise e
+
+    if len(features) > 0:
+        assert len(features[0]) == len(
+            feature_names), f'Features {len(features[0])} do not match feature names {len(feature_names)}'
+    else:
+        print(f'Empty features: {features} / {feature_names}', flush=True)
+
+    scaled_features = []
+    for i, column in enumerate(feature_names):
+        # extract features of this column
+        column_features = features[:, i]
+
+        # apply scalers
+        if feature_statistics[column].get('type') == str(FeatureType.numeric):
+            scaler = feature_statistics[column]['scaler']
+            scaled = scaler.transform(column_features.reshape((-1, 1))).reshape((-1,))
+        else:
+            scaled = column_features
+
+        assert len(scaled) == len(
+            column_features), f'Scaled features {len(scaled)} do not match original features {len(column_features)}'
+
+        # store in list
+        scaled_features.append(scaled)
+
+    assert len(scaled_features) == len(
+        feature_names), f'Scaled features {len(scaled_features)} do not match original features {len(feature_names)}'
+
+    # concat the features
+    scaled_features = np.stack(scaled_features, axis=1)
+
+    assert scaled_features.shape == features.shape, f'Scaled features shape {scaled_features.shape} does not match original shape {features.shape}'
+
+    return scaled_features
+
+def postgres_plan_collator(plans: List[Tuple], feature_statistics: dict[dict] = None, db_statistics: dict = None, db_schema_info: dict = None,
+                           plan_featurization: Featurization = None, skip_top_aggregation: bool = False, filter_inline_col_feats: bool = True,
                            annotate_base_table_card_to_scan_op: bool = False,
                            enforce_aggregation_node_at_root: bool = False,
                            prohibit_aggregation_node_at_root: bool = False,
@@ -537,52 +581,6 @@ def postgres_plan_collator(plans: List[Tuple], feature_statistics: dict[dict] = 
     assert len(plan_depths) == len(plan_features)
 
     # run the feature scaling
-    def apply_feature_scalers(features, feature_statistics, feature_names: List[str]):
-        # convert features to numpy array
-        try:
-            features = np.array(features, dtype=np.float32)
-        except Exception as e:
-            print(len(features), flush=True)
-            if len(features) > 0:
-                print(len(features[0]), flush=True)
-
-            raise e
-
-        if len(features) > 0:
-            assert len(features[0]) == len(
-                feature_names), f'Features {len(features[0])} do not match feature names {len(feature_names)}'
-        else:
-            print(f'Empty features: {features} / {feature_names}', flush=True)
-
-        scaled_features = []
-        for i, column in enumerate(feature_names):
-            # extract features of this column
-            column_features = features[:, i]
-
-            # apply scalers
-            if feature_statistics[column].get('type') == str(FeatureType.numeric):
-                scaler = feature_statistics[column]['scaler']
-                scaled = scaler.transform(column_features.reshape((-1, 1))).reshape((-1,))
-            else:
-                scaled = column_features
-
-            assert len(scaled) == len(
-                column_features), f'Scaled features {len(scaled)} do not match original features {len(column_features)}'
-
-            # store in list
-            scaled_features.append(scaled)
-
-        assert len(scaled_features) == len(
-            feature_names), f'Scaled features {len(scaled_features)} do not match original features {len(feature_names)}'
-
-        # concat the features
-        scaled_features = np.stack(scaled_features, axis=1)
-
-        assert scaled_features.shape == features.shape, f'Scaled features shape {scaled_features.shape} does not match original shape {features.shape}'
-
-        return scaled_features
-
-    # run the feature scaling
     plan_features = apply_feature_scalers(plan_features, feature_statistics=feature_statistics,
                                           feature_names=plan_featurization.PLAN_FEATURES)
     output_column_features = apply_feature_scalers(output_column_features, feature_statistics=feature_statistics,
@@ -687,11 +685,7 @@ def postgres_plan_collator(plans: List[Tuple], feature_statistics: dict[dict] = 
         labels = torch.from_numpy(labels)
         sample_idxs = torch.from_numpy(np.array(sample_idxs, dtype=np.int64))
 
-    # if test_mode:
-    return graph, features, labels, sample_idxs, sql_statements, hints, selectivity_list, scan_op_list, join_op_list, num_tables_list, graph_depth_list
-    # else:
-    #     return graph, features, labels, sample_idxs, [], [], [], [], [], num_tables_list, graph_depth_list
-
+    return graph, features, labels, sample_idxs, sql_statements, hints, selectivity_list, scan_op_list, join_op_list, num_tables_list, graph_depth_list    
 
 def postprocess_labels(labels):
     labels = np.array(labels, dtype=np.float32)

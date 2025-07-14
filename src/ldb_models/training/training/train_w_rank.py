@@ -13,7 +13,6 @@ from models.query_former.model import QueryFormer
 from models.workload_driven.model.e2e_model import E2EModel
 from models.workload_driven.model.mscn_model import MSCNModel
 from models.zeroshot.specific_models.postgres_zero_shot import PostgresZeroShotModel
-from training.batch_to_funcs import batch_to
 from training.training.metrics import Metric
 
 
@@ -36,7 +35,7 @@ class RankModel(nn.Module):
 
 
 def train_epoch_rank(epoch_stats: dict, train_loader: DataLoader, model: nn.Module,
-                     optimizer: Optimizer, max_epoch_tuples: int, custom_batch_to=batch_to,
+                     optimizer: Optimizer, max_epoch_tuples: int, custom_batch_to=None,
                      profiler: Optional[torch.profiler.profile] = None):
     model.train()
 
@@ -133,7 +132,7 @@ def train_epoch_rank(epoch_stats: dict, train_loader: DataLoader, model: nn.Modu
 
 
 def validate_rank(val_loader: DataLoader, model: nn.Module, epoch_stats: Dict, rank_metric: Metric,
-                  custom_batch_to: Callable = batch_to):
+                  custom_batch_to: Callable = None):
     model.eval()
 
     with torch.autograd.no_grad():
