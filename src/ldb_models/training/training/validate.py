@@ -94,25 +94,27 @@ def validate_model(val_loader: DataLoader,
                                                                                                        subplan_predictions_dict)
 
                 # Loss computation
-                loss = subplan_monotonicity_loss(smaller_tensor, larger_tensor)
+                loss = subplan_monotonicity_loss(smaller_tensor, larger_tensor).cpu()
 
                 # sum up
                 monotonicity_loss += loss
                 val_loss += loss
 
             # sum up mean batch losses
-            val_loss += model.loss_fxn(output, label)
+            val_loss += model.loss_fxn(output, label).cpu()
 
-            # Collect predictions and labels as tensors
+            # inverse transform the predictions and labels
+            curr_pred = output.cpu().numpy()
+            curr_label = label.cpu().numpy()
+
             if model.label_norm is not None:
-                curr_pred = model.label_norm.inverse_transform(output.detach().cpu().numpy())
-                curr_label = model.label_norm.inverse_transform(label.detach().cpu().numpy().reshape(-1, 1)).reshape(-1)
-                preds.append(torch.from_numpy(curr_pred))
-                labels.append(torch.from_numpy(curr_label))
-            else:
-                preds.append(output.detach())
-                labels.append(label.detach())
+                curr_pred = model.label_norm.inverse_transform(curr_pred)
+                curr_label = model.label_norm.inverse_transform(curr_label.reshape(-1,1)).reshape(-1)
+            
+            preds.append(curr_pred.reshape(-1))
+            labels.append(curr_label.reshape(-1))
 
+            # collect hints and sql statements and ...
             all_hints.extend(hints)
             all_sql.extend(sql)
             all_selectivity.extend(selectivity)
@@ -121,9 +123,8 @@ def validate_model(val_loader: DataLoader,
             all_num_tables.extend(num_tables)
             all_plan_depths.extend(plan_depths)
 
-        # Concatenate tensors only once
-        labels = torch.cat(labels).cpu().numpy()
-        preds = torch.cat(preds).cpu().numpy()
+        labels = np.concatenate(labels,axis=0)
+        preds = np.concatenate(preds, axis=0)
 
         if epoch_stats is not None:
             epoch_stats[f'{log_prefix}_time'] = time.perf_counter() - test_start_t

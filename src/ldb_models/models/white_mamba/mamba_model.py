@@ -76,12 +76,6 @@ class DAGDualInputConv(nn.Module):
         # align the left nodes by the dst of their edges - write parent messages to the parent node position in tensor
         # this is necessary to ensure that the left and right messages are correctly aligned
         if left_mask.any():
-            # left_vals = x[src[left_mask]]
-            # left_tgt = tgt[left_mask]
-
-            # # write the left messages to the target nodes
-            # left_msg[left_tgt] = left_vals
-
             left_vals = x.index_select(0, left_src_indices)
             left_tgt = tgt[left_mask]
 
@@ -91,12 +85,6 @@ class DAGDualInputConv(nn.Module):
         # align the edges by their dst node - write child messages to the parent node position in tensor
         # this is necessary to ensure that the left and right messages are correctly aligned
         if right_mask.any():
-            # right_vals = x[src[right_mask]]
-            # right_tgt = tgt[right_mask]
-
-            # # write the right messages to the target nodes
-            # right_msg[right_tgt] = right_vals
-
             right_vals = x.index_select(0, right_src_indices)
             right_tgt = tgt[right_mask]
 
@@ -193,10 +181,6 @@ class DAGLayerwiseNetworkBatched(torch.nn.Module):
             )
             src, tgt = edge_index
             mask = node_depths[src] == layer
-            # mask = (node_depths[src] == layer) & (node_depths[tgt] == layer - 1)
-            # assert mask.sum() == (node_depths == layer).sum(), \
-            #     f"Mask sum {mask.sum()} must equal the number of nodes at depth {layer}: {(node_depths == layer).sum()}"
-            # assert mask.sum() > 0, f"No edges found for layer {layer}. Mask sum is {mask.sum()}."
             sanity_edge_ctr += mask.sum().item()
 
             # filter edges based on the current layer

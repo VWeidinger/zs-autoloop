@@ -413,8 +413,12 @@ def apply_feature_scalers(features, feature_statistics, feature_names: List[str]
 
         # apply scalers
         if feature_statistics[column].get('type') == str(FeatureType.numeric):
-            scaler = feature_statistics[column]['scaler']
-            scaled = scaler.transform(column_features.reshape((-1, 1))).reshape((-1,))
+            try:
+                scaler = feature_statistics[column]['scaler']
+                scaled = scaler.transform(column_features.reshape((-1, 1))).reshape((-1,))
+            except Exception as e:
+                print(f'Error applying scaler for column {column} with features {column_features}', flush=True)
+                raise e
         else:
             scaled = column_features
 

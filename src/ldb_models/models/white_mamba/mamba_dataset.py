@@ -43,6 +43,10 @@ def augment_feature_stats_for_mamba(feature_statistics: Dict):
         "center": 0.5,
     }
 
+    # idxcol entries
+    feature_statistics["idxcol_correlation"] = feature_statistics['correlation']
+    feature_statistics["idxcol_null_frac"] = feature_statistics['null_frac']
+    feature_statistics["idxcol_n_distinct"] = feature_statistics['n_distinct']
 
 def mamba_plan_collator(
     plans: List[Tuple],
@@ -168,11 +172,14 @@ def mamba_plan_collator(
 
     # apply feature scaling
     if len(join_features) > 0:
-        join_features = apply_feature_scalers(
-            join_features,
-            feature_statistics=local_feature_statistics,
-            feature_names=plan_featurization.JOIN_FEATURES,
-        )
+        try:
+            join_features = apply_feature_scalers(
+                join_features,
+                feature_statistics=local_feature_statistics,
+                feature_names=plan_featurization.JOIN_FEATURES,
+            )
+        except Exception as e:
+            print(f"Error applying feature scalers to join features: {e} / {join_features}")
     else:
         join_features = np.zeros(
             (0, len(plan_featurization.JOIN_FEATURES)), dtype=np.float32
@@ -360,13 +367,82 @@ def process_node_features(node, feature_statistics, plan_featurization, db_stati
     plan_params = node["plan_parameters"]
     phys_op = plan_params["op_name"]
 
+    @lru_cache(maxsize=1000)
+    def get_col_stats_for_idx_name(idx_name):
+        if idx_name is None:
+            return None
+        
+        if idx_name.endswith("_pkey"):
+            # special case for primary key index
+            col_name = find_pk_for_table(plan_params["table_name"])
+            idx_col = f'{plan_params["table_name"]}_{col_name}'
+        else:
+            assert idx_name.startswith("idx_"), (
+                f"Index name {idx_name} does not start with 'idx_'."
+            )
+            idx_col = idx_name[4:]  # remove 'idx_' prefix
+
+        for stats in db_statistics[database_id]["column_stats"]:
+            if idx_col.lower() == f'{stats["tablename"].lower()}_{stats["attname"].lower()}':
+                return stats
+        
+        raise ValueError(f"Column stats for index {idx_name} not found in database {database_id}.")
+    
+    @lru_cache(maxsize=1000)
+    def find_pk_for_table(table_name:str):
+        pk_candidates = []
+        for col_name,stats in db_schema_info[database_id]["table_col_info"][table_name].items():
+            if stats['pk']:
+                pk_candidates.append(col_name)
+    
+        # there might be composite primary keys, so we return the first one - this is a simplification
+        assert len(pk_candidates)>=1, f'Expected at least one primary key for table {table_name}, but found {len(pk_candidates)}: {pk_candidates}'
+        return pk_candidates[0]
+
     if phys_op in phys_op_scan_list:
         node_features = []
         for feature_name in plan_featurization.SCAN_FEATURES:
             if feature_name == "base_table_card":
                 base_table_card = db_statistics[database_id]["table_stats"][plan_params["table_id"]]["reltuples"]
-                enc_value = feature_statistics["est_card"]["scaler"].transform(np.array([[base_table_card]])).item()
+                enc_value = encode('est_card',{'est_card':base_table_card},feature_statistics)
                 node_features.append(enc_value)
+            elif feature_name in ["idxcol_correlation","idxcol_null_frac","idxcol_n_distinct"]:
+                idx_name = plan_params.get("index_name", None)
+                if idx_name is not None:
+                    assert phys_op in ['Index Scan','Index Only Scan'], f'Expected index name for {phys_op}, but got {idx_name}. Plan parameters: {plan_params}'
+                    idx_col_stats = get_col_stats_for_idx_name(idx_name)
+
+                    # lookup value
+                    key = feature_name[7:]  # remove 'idxcol_' prefix
+                    assert key in idx_col_stats, (
+                        f"Key {key} not found in index column stats {idx_col_stats} for index {idx_name}."
+                    )
+                    value = idx_col_stats[key]
+
+                    if feature_name == "idxcol_correlation" and value is None:
+                        # sometimes correlation is not available, we use a safe default value (this happens if most values are null i.e. null_frac>0.95)
+                        value = 0
+
+                    # check if value is None, inf, ...
+                    if value is None or np.isinf(value) or np.isnan(value):
+                        raise ValueError(f"Invalid value {value} for feature {feature_name} in index {idx_name}. Plan parameters: {plan_params} \n{idx_col_stats}")
+
+                else:
+                    assert phys_op == 'Seq Scan',  f"Expected index name for {phys_op}, but got None. Plan parameters: {plan_params}"
+                    # use a safe default value
+                    if feature_name == "idxcol_correlation":
+                        value = 0.5
+                    elif feature_name == "idxcol_null_frac":
+                        value = 0.0
+                    elif feature_name == "idxcol_n_distinct":
+                        value = 1.0
+                    else:
+                        raise ValueError(f"Unknown feature name {feature_name}.")
+                
+                # apply feature scaling
+                enc_value = encode(feature_name,{feature_name:value},feature_statistics)
+                node_features.append(enc_value)
+
             elif feature_name == "filter_flat_vector":
                 node_features.extend(construct_filter_flat_vector(plan_params.get("filter", {})))
             elif feature_name == "outcols_flat_vector":

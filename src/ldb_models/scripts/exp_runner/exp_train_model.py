@@ -14,7 +14,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(
 from classes.classes import ModelConfig, shorten_model_name
 from classes.model_config_helper import parameterized_config
 from scripts.exp_runner.exp_runner import ExpRunner, TrainingServers
-from training.featurizations import MambaFull
+from training.featurizations import MambaFull, MambaFullWIdx, MambaFullWIdxCor
 
 
 def generate_training_commands(datasets: List[Dataset], seeds: list[int], python_version: str, wandb_project: str,
@@ -287,10 +287,10 @@ if __name__ == '__main__':
         # TrainingServers.NODE03,
         # TrainingServers.NODE04,
         # TrainingServers.NODE05,
-        TrainingServers.NODE09,
+        # TrainingServers.NODE09,
     ]
     sockets = [0,1]
-    out_file_id_offset = 1
+    out_file_id_offset = 0
     num_parallel_screens = len(sockets)
     num_parallel_jobs_dgx = 1
     num_parallel_tasks_per_job_dgx = 1
@@ -342,12 +342,12 @@ if __name__ == '__main__':
             model_specific_args = {}
 
         model_configs.extend([
-            parameterized_config(model_type, wandb_group='residual', 
+            parameterized_config(model_type, wandb_group='fullwidx', 
                                  include_pg_opt_workloads=True,
                                  layer_norm=True, 
                                  include_hint_idx_workloads=True,
                                  include_complex_many_joins_workloads=True,
-                                 featurization=MambaFull,
+                                 featurization=MambaFullWIdxCor,
                                  residual_connection=True,
                                  optimizer_class_name='AdamWScheduleFree',
                                  **model_specific_args) if model_type=='mamba' else None,

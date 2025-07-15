@@ -22,6 +22,12 @@ class MambaFull(MambaFeaturization):
     JOIN_FEATURES = ['est_card', 'est_children_card','est_width', 'op_name', 'left_child_card','right_child_card', 'left_is_pk', 'right_is_pk']
     SCAN_FEATURES = ['est_card', 'est_width', 'op_name','base_table_card','est_loops','filter_flat_vector', 'outcols_flat_vector']
 
+class MambaFullWIdx(MambaFull):
+    SCAN_FEATURES = ['est_card', 'est_width', 'op_name','base_table_card','est_loops','filter_flat_vector', 'outcols_flat_vector', 'idxcol_null_frac', 'idxcol_n_distinct']
+
+class MambaFullWIdxCor(MambaFull):
+    SCAN_FEATURES = ['est_card', 'est_width', 'op_name','base_table_card','est_loops','filter_flat_vector', 'outcols_flat_vector', 'idxcol_null_frac', 'idxcol_n_distinct', 'idxcol_correlation']
+
 class DACEFeaturization(Featurization):
     PLAN_FEATURES = ["op_name", "pg_cost", "est_card"]
 
