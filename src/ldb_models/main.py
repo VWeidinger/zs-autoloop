@@ -16,7 +16,6 @@ from torch.optim.optimizer import Optimizer
 from torch.utils.data import DataLoader
 from wandb.apis.public import Run
 
-import wandb
 from classes.classes import ModelConfig, E2EModelConfig, ZeroShotModelConfig, MSCNModelConfig, DataLoaderOptions, \
     TlstmModelConfig, FlatModelConfig, ScaledPostgresModelConfig, TabularModelConfig, QPPNetModelConfig, \
     DACEModelConfig, QueryFormerModelConfig, T3ModelConfig, ZeroShotVAEModelConfig, NeoModelConfig, SPNModelConfig, MambaModelConfig
@@ -168,7 +167,7 @@ def init_model(statistics_file: Path,
               f"({timeout_count / overall_count * 100:.2f}%) in {string}")
 
     if not config.online_hard_example_mining:
-        assert not config.online_hard_example_mining, f'datasets will be instantiated later -> deferred_setup()'
+        assert not config.online_hard_example_mining, 'datasets will be instantiated later -> deferred_setup()'
         if train_loader:
             gather_dataloader_stats(train_loader, "train_loader")
             gather_dataloader_stats(val_loader, "val_loader")
@@ -505,7 +504,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     assert args.device == 'cpu' or args.device.startswith('cuda'), "Device must be either 'cpu' or 'cuda'"
-    assert not '[socket]' in args.device  # make the sure the socket placeholder was correctly replaced during cmd generation
+    assert '[socket]' not in args.device  # make the sure the socket placeholder was correctly replaced during cmd generation
 
     # Init model configuration by either reading out hyperparameters or using standard config
     model_args = dict(device=args.device,

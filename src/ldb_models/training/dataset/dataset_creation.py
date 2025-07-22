@@ -17,7 +17,6 @@ from tqdm import tqdm
 
 from classes.classes import ZeroShotModelConfig, DataLoaderOptions, ModelConfig, InputFormats
 from classes.workload_runs import WorkloadRuns
-from models.zeroshot.postgres_plan_batching import postgres_plan_collator
 from training.dataset.plan_dataset import PlanDataset, OHEMPlanDataset, PreBatchedDataset
 from training.dataset.pushdown_projections import apply_projection_pushdown
 from training.dataset.statification import stratify_plans
@@ -188,7 +187,7 @@ def read_workload_runs(workload_run_paths: List[Path],
 
         if augment_with_subplans:
             # augment the plans with subplans
-            print(f'Augmenting plans with subplans', flush=True)
+            print('Augmenting plans with subplans', flush=True)
             subplans = augment_subplans(per_file_plans)
             print(f'Extracted {len(subplans)} subplans for the {len(per_file_plans)} plans in {path}', flush=True)
 
@@ -246,14 +245,14 @@ def read_workload_runs(workload_run_paths: List[Path],
                 f"Multiple timeout thresholds in dataset: {timeout_thresholds_set}. Continuing stratification with max threshold.")
         max_runtime = max(timeout_thresholds_set)
 
-        assert not return_per_file, f'Not yet implemented for return_per_file=True'
+        assert not return_per_file, 'Not yet implemented for return_per_file=True'
         plans = stratify_plans(
             plans=plans, max_runtime_ms=max_runtime, output_identifier_hint="overall", print_distr_stats=True,
             shuffle_before=True
         )
 
     if limit_plans_overall is not None:
-        assert not return_per_file, f'Not yet implemented for return_per_file=True'
+        assert not return_per_file, 'Not yet implemented for return_per_file=True'
         # shuffle plans
         np.random.shuffle(plans)
         plans = plans[:limit_plans_overall]
@@ -453,8 +452,8 @@ def create_datasets(workload_run_paths,
                        assemble_graph_collate_fn=None):
 
         if apply_ohem:
-            assert not assemble_graphs, f'with ohem we cannot make the graphs up front, because in each epoch we reselect the plans used for training'
-            assert model_config.cap_training_samples is None, f'ensuring that always this number of samples is included is not yet supported - this would require replication in case the limit is too high! - not yet implemented'
+            assert not assemble_graphs, 'with ohem we cannot make the graphs up front, because in each epoch we reselect the plans used for training'
+            assert model_config.cap_training_samples is None, 'ensuring that always this number of samples is included is not yet supported - this would require replication in case the limit is too high! - not yet implemented'
 
             # gather plans using indexes
             gathered_plans = []
@@ -650,7 +649,7 @@ def create_zeroshot_dataloader(workload_runs: WorkloadRuns,
                   f"validation: {len(val_dataset)}")
         except Exception as e:
             print(e)
-            print(f'Problem retrieving size of train or val dataset')
+            print('Problem retrieving size of train or val dataset')
     else:
         train_loader, val_loader = None, None
 

@@ -761,7 +761,7 @@ def create_node_types_per_depth(plan_depths, plan_to_plan_edges):
         u_node_id, d_u = plan_dict[u]
         v_node_id, d_v = plan_dict[v]
         assert d_v < d_u
-        data_dict[(f'plan{d_u}', f'intra_plan', f'plan{d_v}')].append((u_node_id, v_node_id))
+        data_dict[(f'plan{d_u}', 'intra_plan', f'plan{d_v}')].append((u_node_id, v_node_id))
     return data_dict, nodes_per_depth, plan_dict
 
 
@@ -780,5 +780,5 @@ def pred_node_type_id(logical_preds, pred_dict, u):
         node_type = f'logical_pred_{depth}'
     else:
         u_node_id = pred_dict[u]
-        node_type = f'filter_column'
+        node_type = 'filter_column'
     return node_type, u_node_id

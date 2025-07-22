@@ -14,7 +14,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(
 from classes.classes import ModelConfig, shorten_model_name
 from classes.model_config_helper import parameterized_config
 from scripts.exp_runner.exp_runner import ExpRunner, TrainingServers
-from training.featurizations import MambaFull, MambaFullWIdx, MambaFullWIdxCor
+from training.featurizations import MambaFullWIdxCor2
 
 
 def generate_training_commands(datasets: List[Dataset], seeds: list[int], python_version: str, wandb_project: str,
@@ -290,7 +290,7 @@ if __name__ == '__main__':
         # TrainingServers.NODE09,
     ]
     sockets = [0,1]
-    out_file_id_offset = 0
+    out_file_id_offset = 3
     num_parallel_screens = len(sockets)
     num_parallel_jobs_dgx = 1
     num_parallel_tasks_per_job_dgx = 1
@@ -304,9 +304,9 @@ if __name__ == '__main__':
     test_against = 'imdb'  # if not set, will test against all in an leave one out style
     ft_with_ranking = False  # fine-tune with ranking (pretrains a model and then fine-tunes it with ranking)
     bound_predictions = False  # bound predictions to the range of the training data and output them as separate metrics - at the moment not competitive
-    eval_join_order = True and not quick_run  # evaluate join order using JOB-Light runs with exhaustive join orders
+    eval_join_order = False and not quick_run  # evaluate join order using JOB-Light runs with exhaustive join orders
     eval_access_path = True and not quick_run  # evaluate access path selection (Idx Scan vs. SeqScan)
-    eval_physical_operator = True and not quick_run  # evaluate physical operator selection
+    eval_physical_operator = False and not quick_run  # evaluate physical operator selection
     qo_eval_after_each_epoch = True  # if True, will run a full QO evaluation after each epoch
     use_romans_runs = False
     assemble_data_up_front = True  # run data / graph assemble up front i.e. during dataset creation instead of collate / training time
@@ -341,17 +341,15 @@ if __name__ == '__main__':
         else:
             model_specific_args = {}
 
-        model_configs.extend([
-            parameterized_config(model_type, wandb_group='fullwidx', 
-                                 include_pg_opt_workloads=True,
-                                 layer_norm=True, 
-                                 include_hint_idx_workloads=True,
-                                 include_complex_many_joins_workloads=True,
-                                 featurization=MambaFullWIdxCor,
-                                 residual_connection=True,
-                                 optimizer_class_name='AdamWScheduleFree',
-                                 **model_specific_args) if model_type=='mamba' else None,
-        ])
+        for featurization in [MambaFullWIdxCor2]:
+            model_configs.extend([
+                parameterized_config(model_type, wandb_group='ap_experiments', 
+                                    layer_norm=True, 
+                                    include_scan_only_hint_workloads=True,
+                                    featurization=featurization,
+                                    **model_specific_args
+                                    ) if model_type=='mamba' else None,
+            ])
 
     model_configs = [model for model in model_configs if model is not None]
 

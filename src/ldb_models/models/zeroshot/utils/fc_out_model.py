@@ -6,7 +6,6 @@ from torch.nn import init
 from torch.nn.parameter import Parameter
 
 from models.zeroshot.utils import activations
-from training.losses import create_loss
 
 
 class DynamicLayer(nn.Module):

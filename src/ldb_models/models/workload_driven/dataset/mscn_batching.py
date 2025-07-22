@@ -10,7 +10,7 @@ from training.dataset.cmp_operator import LogicalOperator
 def extract_predicate_features(n, pred_feats, column_statistics, db_statistics, dim_word_emdb, dim_word_hash,
                                feature_statistics, word_embeddings):
     # (column one hot, operator one hot, predicate)
-    if not n["operator"] in {str(LogicalOperator.AND), str(LogicalOperator.OR)}:
+    if n["operator"] not in {str(LogicalOperator.AND), str(LogicalOperator.OR)}:
         pred_feat_vec = encode_predicate(column_statistics, db_statistics, dim_word_emdb, dim_word_hash,
                                          feature_statistics, n, word_embeddings)
         pred_feats.append(pred_feat_vec)

@@ -209,7 +209,7 @@ class OHEMPlanDataset(Dataset):
             # concat all plan lists
             unified_p_list = [plan for plans in self.plan_lists for plan in plans]
 
-            assert self.dataloader_args is not None, f'dataloader_args not set!'
+            assert self.dataloader_args is not None, 'dataloader_args not set!'
 
             # create plan dataset & dataloader - this is only internal for OHEM!
             self._all_plans_dataset = PlanDataset(unified_p_list, range(self.total_num_plans))
@@ -324,5 +324,5 @@ class OHEMPlanDataset(Dataset):
         self.assembled_idx_list = idx_list
 
     def __getitem__(self, i: int):
-        assert self.assembled_plan_list is not None, f'assembled_plan_list not set! Have you called deferred_setup()?'
+        assert self.assembled_plan_list is not None, 'assembled_plan_list not set! Have you called deferred_setup()?'
         return self.assembled_idx_list[i], self.assembled_plan_list[i]

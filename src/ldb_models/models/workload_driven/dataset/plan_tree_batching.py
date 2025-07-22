@@ -285,7 +285,7 @@ def create_plan_graph(wl_graph):
             u_node_id, d_u = plan_dict[u]
             v_node_id, d_v = plan_dict[v]
             assert d_v < d_u
-            data_dict[(f'plan{d_u}', f'intra_plan', f'plan{d_v}')].append((u_node_id, v_node_id))
+            data_dict[(f'plan{d_u}', 'intra_plan', f'plan{d_v}')].append((u_node_id, v_node_id))
     num_nodes_dict = {f'plan{d}': nodes_per_depth[d] for d in range(max_depth + 1)}
     features = collections.defaultdict(list)
     for u, plan_feat in enumerate(wl_graph.plan_features):

@@ -1,7 +1,7 @@
 import unittest
 
 from ldb_schema.load_schema import load_json
-from models.neo.neo_dataloader import extract_predicate_encoding, extract_join_matrix, init_table_ids, \
+from models.neo.neo_dataloader import extract_predicate_encoding, init_table_ids, \
     extract_join_recursively, extract_plan_encoding_recursively, make_indexes, _featurize_tree
 import re
 

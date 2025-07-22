@@ -76,7 +76,7 @@ class PostgresZeroShotModelEncoder(ZeroShotModelEncoder):
 
         if not model_config.filter_inline_col_feats:
             print(
-                f'Filter inline column features is disabled - message passing between column and filter nodes will be performed',
+                'Filter inline column features is disabled - message passing between column and filter nodes will be performed',
                 flush=True)
             # in case feature inlining is deactivated: we are doing message passing between column and filter nodes as a prepassing step
             prepasses.append(dict(model_name='col_filter', e_name='col_filter'))

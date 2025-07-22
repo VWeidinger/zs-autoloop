@@ -171,7 +171,7 @@ def train_model(csv_stats: List,
 
         if config.online_hard_example_mining:
             if epoch % config.ohem_resort_after_num_epochs == 0:
-                print(f'Resorting OHEM dataset...')
+                print('Resorting OHEM dataset...')
                 train_loader.dataset.update_difficulty()
                 val_loader.dataset.update_difficulty()
 

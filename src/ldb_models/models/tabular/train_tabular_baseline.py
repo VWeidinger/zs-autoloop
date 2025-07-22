@@ -315,7 +315,7 @@ def predict_tabular_model(config: ModelConfig,
                             labels=y_test,
                             preds=pred_runtimes,
                             probs=None)
-        save_csv([test_stats], target_csv_path=str(test_path.with_suffix('')) + f"_test_stats.csv")
+        save_csv([test_stats], target_csv_path=str(test_path.with_suffix('')) + "_test_stats.csv")
 
         # Logging all queries
         rows = to_rows(

@@ -45,7 +45,7 @@ def save_csv(csv_rows, target_csv_path):
             w.writerow(row)
     try:
         os.chmod(target_csv_path, 0o777)
-    except Exception as e:
+    except Exception:
         pass
 
 

@@ -2,7 +2,7 @@ import torch
 from torch import nn
 from torch.nn import ReLU
 
-from classes.classes import E2EModelConfig, TPoolModelConfig, TlstmModelConfig, TestSumModelConfig
+from classes.classes import E2EModelConfig, TlstmModelConfig, TestSumModelConfig
 from models.workload_driven.dataset.dataset_creation import InputDims
 from models.workload_driven.model.tree_lstm import LstmConv
 from models.zeroshot.message_aggregators.pooling import PoolingType, PoolingConv

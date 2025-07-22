@@ -1,17 +1,10 @@
-from collections import defaultdict
-from pathlib import Path
 from typing import List
 
 from ldb_schema.datasets import Dataset
 from ldb_schema.paths import ClusterPaths, LocalPaths
 from octopus.step import Rsync, KillAllScreens
 
-from classes.classes import (ScaledPostgresModelConfig, E2EModelConfig, MSCNModelConfig, QPPNetModelConfig, \
-                             ZeroShotModelConfig, DACEModelConfig, FlatModelConfig, ModelConfig, DACEModelNoCostsConfig,
-                             QPPModelNoCostsConfig, \
-                             QPPModelActCardsConfig, FlatModelActCardModelConfig, ZeroShotModelActCardConfig,
-                             DACEModelActCardConfig,
-                             QueryFormerModelConfig, InputFormats)
+from classes.classes import (ModelConfig)
 from classes.model_config_helper import parameterized_config
 from scripts.exp_runner.exp_runner import ExpRunner, TrainingServers
 

@@ -152,7 +152,7 @@ class ZeroShotModelEncoder(FcOutModel):
 
         if self.run_with_assertions:
             # ensure that result is not NaN / inf
-            assert torch.isfinite(out).all(), f"out contain NaN or inf"
+            assert torch.isfinite(out).all(), "out contain NaN or inf"
 
         if return_all_nodestates:
             # return the node state of root, and of all other nodes

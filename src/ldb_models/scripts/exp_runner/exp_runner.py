@@ -29,7 +29,7 @@ class TrainingServers:
 
 
 class ExpRunner:
-    database_conn = f'user=postgres,password=bM2YGRAX*bG_QAilUid§2iD,host=localhost'
+    database_conn = 'user=postgres,password=bM2YGRAX*bG_QAilUid§2iD,host=localhost'
 
     def __init__(self,
                  replicate: bool,
@@ -110,7 +110,7 @@ class ExpRunner:
             setup_steps=set_up_steps,
             purge_steps=purge_steps,
             monitor_steps=[CheckActiveScreens()],
-            check_error_steps=[CheckOutput([f'grep -B 5 Error output_screen*'])],
+            check_error_steps=[CheckOutput(['grep -B 5 Error output_screen*'])],
             pickup_steps=pickup_steps,
             exp_folder_path=self.root_path,
             exp_script_gen=self.exp_script_gen,
@@ -146,8 +146,8 @@ class ExpRunner:
                        use_run_exp="dgx" not in ssh_hostname and "cloudlab" not in ssh_hostname,
                        python_version=self.python_version,
                        test_connection=False,
-                       available_sockets=available_sockets if not 'dgx' in ssh_hostname else [0],
-                       num_parallel_screens_or_jobs=num_parallel_screens_or_jobs if not 'dgx' in ssh_hostname else dgx_num_parallel_screens_or_jobs)
+                       available_sockets=available_sockets if 'dgx' not in ssh_hostname else [0],
+                       num_parallel_screens_or_jobs=num_parallel_screens_or_jobs if 'dgx' not in ssh_hostname else dgx_num_parallel_screens_or_jobs)
                   for ssh_hostname in names]
         return nodes
 
@@ -155,7 +155,7 @@ class ExpRunner:
     def parse_args() -> argparse.Namespace:
         # Parse arguments
         parser = argparse.ArgumentParser()
-        parser.add_argument(f'--task',
+        parser.add_argument('--task',
                             type=ExperimentTask,
                             choices=list(ExperimentTask),
                             default=[ExperimentTask.PRINT],
