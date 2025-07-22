@@ -7,27 +7,29 @@ from fast_soft_sort.pytorch_ops import soft_rank
 
 
 def create_loss(loss_name: str, loss_kwargs: Dict):
-    if loss_name == 'MSELoss':
+    if loss_name == "MSELoss":
         loss = MSELoss(**loss_kwargs)
-    elif loss_name == 'QLoss':
+    elif loss_name == "QLoss":
         loss = QLoss(**loss_kwargs)
-    elif loss_name == 'QLogSqLoss':
+    elif loss_name == "QLogSqLoss":
         loss = QLogSqLoss(**loss_kwargs)
-    elif loss_name == 'DaceLoss':
+    elif loss_name == "DaceLoss":
         loss = DaceLoss(**loss_kwargs)
-    elif loss_name == 'QPPLoss':
+    elif loss_name == "QPPLoss":
         loss = QPPLoss(**loss_kwargs)
-    elif loss_name == 'RankLoss':
+    elif loss_name == "RankLoss":
         loss = RankLoss(**loss_kwargs)
     else:
         raise ValueError(f"Loss {loss_name} not supported")
 
-    print(f'Using loss {loss_name} with kwargs {loss_kwargs}')
-    learn_from_timeout = loss_kwargs.pop('learn_from_timeout', False)  # learn from timeout
-    timeout_threshold = loss_kwargs.pop('timeout_threshold', None)
+    print(f"Using loss {loss_name} with kwargs {loss_kwargs}")
+    learn_from_timeout = loss_kwargs.pop(
+        "learn_from_timeout", False
+    )  # learn from timeout
+    timeout_threshold = loss_kwargs.pop("timeout_threshold", None)
 
     if learn_from_timeout:
-        print(f'Using timeout masking with threshold {timeout_threshold}')
+        print(f"Using timeout masking with threshold {timeout_threshold}")
         loss = LearnFromTimeoutLossWrapper(timeout_threshold, loss)
 
     return loss
@@ -38,7 +40,7 @@ class MSELoss(nn.Module):
         super().__init__()
 
     def forward(self, input, target):
-        return F.mse_loss(input.view(-1), target.view(-1), reduction='mean')
+        return F.mse_loss(input.view(-1), target.view(-1), reduction="mean")
 
 
 class QLoss(nn.Module):
@@ -51,20 +53,30 @@ class QLoss(nn.Module):
         self.penalty_negative = penalty_negative
         super().__init__()
 
-    def forward(self, input: torch.Tensor, target: torch.Tensor, return_aggregated: bool = True):
-        assert isinstance(input, torch.Tensor), f'Input is not a tensor, but {type(input)}'
-        assert isinstance(target, torch.Tensor), f'Target is not a tensor, but {type(target)}'
+    def forward(
+        self, input: torch.Tensor, target: torch.Tensor, return_aggregated: bool = True
+    ):
+        assert isinstance(input, torch.Tensor), (
+            f"Input is not a tensor, but {type(input)}"
+        )
+        assert isinstance(target, torch.Tensor), (
+            f"Target is not a tensor, but {type(target)}"
+        )
 
-        assert len(input.shape) == 2, f'Input is not a tensor, but {len(input.shape)}'
-        assert input.shape[1] == 1, f'Expected 2nd dim to be 1, but got {input.shape}'
+        assert len(input.shape) == 2, f"Input is not a tensor, but {len(input.shape)}"
+        assert input.shape[1] == 1, f"Expected 2nd dim to be 1, but got {input.shape}"
 
         input_zero_mask = input == 0
         target_zero_mask = target == 0
 
         if input_zero_mask.any():
-            input = input + input_zero_mask * torch.full(input.shape, 0.0000001, device=input.device)
+            input = input + input_zero_mask * torch.full(
+                input.shape, 0.0000001, device=input.device
+            )
         if target_zero_mask.any():
-            target = target + target_zero_mask * torch.full(target.shape, 0.0000001, device=target.device)
+            target = target + target_zero_mask * torch.full(
+                target.shape, 0.0000001, device=target.device
+            )
 
         q_error = torch.zeros((len(target), 1), device=target.device)
 
@@ -80,8 +92,13 @@ class QLoss(nn.Module):
         input_masked = torch.mul(input, inverse_penalty_mask)
         target_masked = torch.mul(target.reshape((-1, 1)), inverse_penalty_mask)
 
-        q_error = torch.add(q_error, torch.max(torch.div(input_masked, target.reshape((-1, 1))),
-                                               torch.div(target_masked, input)))
+        q_error = torch.add(
+            q_error,
+            torch.max(
+                torch.div(input_masked, target.reshape((-1, 1))),
+                torch.div(target_masked, input),
+            ),
+        )
 
         if return_aggregated:
             loss = torch.mean(q_error)
@@ -96,7 +113,10 @@ class QLogSqLoss(nn.Module):
         self.qloss = QLoss(**kwargs)
 
     def forward(self, input, target, return_aggregated: bool = True):
-        return torch.log(self.qloss(input, target, return_aggregated=return_aggregated)) ** 2
+        return (
+            torch.log(self.qloss(input, target, return_aggregated=return_aggregated))
+            ** 2
+        )
 
 
 class DaceLoss(nn.Module):
@@ -125,11 +145,15 @@ class QPPLoss(torch.nn.Module):
         self.device = device
         self.zeros = torch.zeros(1)
         self.curr_losses = {operator: 0 for operator, _ in self.operator_types.items()}
-        self.accumulated_loss = {operator: [] for operator, _ in self.operator_types.items()}
+        self.accumulated_loss = {
+            operator: [] for operator, _ in self.operator_types.items()
+        }
         self.total_loss = None
         self.total_losses = None
 
-    def update_operator_loss(self, node_type: str, predicted_operator_time: torch.Tensor, label: torch.Tensor) -> None:
+    def update_operator_loss(
+        self, node_type: str, predicted_operator_time: torch.Tensor, label: torch.Tensor
+    ) -> None:
         loss = torch.sqrt(((predicted_operator_time - label) ** 2) + 1e-6)
         # This works also with Q-error, but original paper uses MSE
         # We apply a lower bound of loss and labels to avoid nans.
@@ -140,17 +164,21 @@ class QPPLoss(torch.nn.Module):
         # ---------------------------------------------------------------------------------------------
 
         if torch.isnan(loss) or torch.isinf(loss):
-            raise ValueError(f"Loss was {loss} "
-                             f"for node type {node_type}, "
-                             f"prediction: {predicted_operator_time}, "
-                             f"label: {label}, "
-                             f"q-Error: {loss}")
+            raise ValueError(
+                f"Loss was {loss} "
+                f"for node type {node_type}, "
+                f"prediction: {predicted_operator_time}, "
+                f"label: {label}, "
+                f"q-Error: {loss}"
+            )
 
         # Gather loss in accumulated loss
         self.accumulated_loss[node_type].append(loss)
 
     def reset_accumulated_losses(self) -> None:
-        self.accumulated_loss = {operator: [] for operator, _ in self.operator_types.items()}
+        self.accumulated_loss = {
+            operator: [] for operator, _ in self.operator_types.items()
+        }
         self.total_loss = torch.zeros(1, dtype=torch.double).to(self.device)
 
     def update_total_losses(self) -> None:
@@ -172,13 +200,17 @@ class LearnFromTimeoutLossWrapper(nn.Module):
         self.loss = loss
 
     def forward(self, input, target):
-        assert len(input.shape)==1 or input.shape[1]==1, f'Input shape is {input.shape}'
+        assert len(input.shape) == 1 or input.shape[1] == 1, (
+            f"Input shape is {input.shape}"
+        )
         if len(input.shape) == 2:
-            assert input.shape[1] == 1, f'Target shape is {input.shape}'
-            input = input.squeeze(1) # reduce nx1 vector to n vector
+            assert input.shape[1] == 1, f"Target shape is {input.shape}"
+            input = input.squeeze(1)  # reduce nx1 vector to n vector
 
         # mask out elements where target is None (timeout) and input is larger than timeout_threshold
-        timeout_mask = (target.isnan() | target.isinf()) & (input >= self.timeout_threshold)
+        timeout_mask = (target.isnan() | target.isinf()) & (
+            input >= self.timeout_threshold
+        )
 
         # set target to threshold where target is None (timeout)
         target[(target.isnan() | target.isinf())] = self.timeout_threshold
@@ -189,12 +221,14 @@ class LearnFromTimeoutLossWrapper(nn.Module):
         # calculate loss on the adjusted targets
         return self.loss(input, target)
 
+
 def corrcoef(target, pred):
     pred_n = pred - pred.mean()
     target_n = target - target.mean()
     pred_n = pred_n / pred_n.norm()
     target_n = target_n / target_n.norm()
     return (pred_n * target_n).sum()
+
 
 def spearman(
     target,
@@ -204,22 +238,24 @@ def spearman(
 ):
     # fast_soft_sort uses 1-based indexing, divide by len to compute percentage of rank
     rank_pred = soft_rank(
-        torch.reshape(pred,(1,-1)), # reshape to 2d tensor - performs ranking -1 dim
+        torch.reshape(pred, (1, -1)),  # reshape to 2d tensor - performs ranking -1 dim
         regularization=regularization,
         regularization_strength=regularization_strength,
     )
     corr = corrcoef(target, rank_pred / rank_pred.shape[-1])
     return corr
 
-class RankLoss(nn.Module):
 
+class RankLoss(nn.Module):
     def __init__(self, **kwargs):
         super().__init__()
 
     def forward(self, input, target):
         input = torch.reshape(input, (-1,))
-        corr =  spearman(target, input) # invert so that the optimizer minimizes the loss
-        corr = -1 * (corr + 1) # offset with 1 to make it positive, invert to minimize
+        corr = spearman(
+            target, input
+        )  # invert so that the optimizer minimizes the loss
+        corr = -1 * (corr + 1)  # offset with 1 to make it positive, invert to minimize
         return corr
 
 
@@ -240,8 +276,8 @@ class RelativeLessThanLoss(nn.Module):
         self.qerror = QLoss(**kwargs)
 
     def forward(self, input1, input2):
-        assert len(input1.shape) == 1, f'Input shape is {input1.shape}'
-        assert len(input2.shape) == 1, f'Target shape is {input2.shape}'
+        assert len(input1.shape) == 1, f"Input shape is {input1.shape}"
+        assert len(input2.shape) == 1, f"Target shape is {input2.shape}"
 
         # reshape to -1,1
         input1 = torch.reshape(input1, (-1, 1))

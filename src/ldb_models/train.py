@@ -18,26 +18,28 @@ from training.training.train_w_rank import RankModel, train_epoch_rank, validate
 from training.training.validate import validate_model
 
 
-def train_model(csv_stats: List,
-                model_dir: Path,
-                config: ModelConfig,
-                train_loader: DataLoader,
-                test_loaders: List[DataLoader],
-                test_csv_paths: List[Path],
-                epochs_wo_improvement: int,
-                epoch_offset: int,  # this is only for reporting purposes
-                epoch: int,
-                val_loader: DataLoader,
-                model: nn.Module,
-                optimizer: Optimizer,
-                metrics: List[Metric],
-                rank_metric: Metric,
-                wandb_run: Run,
-                pt_profiler: bool = False,
-                train_w_rank_model: bool = False,
-                bound_predictions: bool = False,
-                prediction_bounder: PredictionBounder = None,
-                quick_run: bool = False, ):
+def train_model(
+    csv_stats: List,
+    model_dir: Path,
+    config: ModelConfig,
+    train_loader: DataLoader,
+    test_loaders: List[DataLoader],
+    test_csv_paths: List[Path],
+    epochs_wo_improvement: int,
+    epoch_offset: int,  # this is only for reporting purposes
+    epoch: int,
+    val_loader: DataLoader,
+    model: nn.Module,
+    optimizer: Optimizer,
+    metrics: List[Metric],
+    rank_metric: Metric,
+    wandb_run: Run,
+    pt_profiler: bool = False,
+    train_w_rank_model: bool = False,
+    bound_predictions: bool = False,
+    prediction_bounder: PredictionBounder = None,
+    quick_run: bool = False,
+):
     if train_w_rank_model:
         # wrap the model with the rank model
         ranking_wrapper = RankModel(model)
@@ -47,12 +49,11 @@ def train_model(csv_stats: List,
     prof = None
     if pt_profiler:
         prof = torch.profiler.profile(
-            schedule=torch.profiler.schedule(wait=1,
-                                             warmup=1,
-                                             active=3,
-                                             repeat=1),
+            schedule=torch.profiler.schedule(wait=1, warmup=1, active=3, repeat=1),
             # on_trace_ready=torch.profiler.tensorboard_trace_handler(profile_output_dir),
-            with_stack=True, record_shapes=True)
+            with_stack=True,
+            record_shapes=True,
+        )
         prof.start()
 
     target_epochs = config.epochs if not train_w_rank_model else 20
@@ -74,7 +75,7 @@ def train_model(csv_stats: List,
                 optimizer=optimizer,
                 max_epoch_tuples=config.max_epoch_tuples,
                 custom_batch_to=config.batch_to_func,
-                profiler=prof
+                profiler=prof,
             )
 
             # perform rank validation
@@ -83,17 +84,19 @@ def train_model(csv_stats: List,
                 model=ranking_wrapper,
                 epoch_stats=epoch_stats,
                 rank_metric=rank_metric,
-                custom_batch_to=config.batch_to_func
+                custom_batch_to=config.batch_to_func,
             )
         else:
-            train_epoch(epoch_stats=epoch_stats,
-                        train_loader=train_loader,
-                        model=model,
-                        optimizer=optimizer,
-                        max_epoch_tuples=config.max_epoch_tuples,
-                        custom_batch_to=config.batch_to_func,
-                        model_config=config,
-                        profiler=prof)
+            train_epoch(
+                epoch_stats=epoch_stats,
+                train_loader=train_loader,
+                model=model,
+                optimizer=optimizer,
+                max_epoch_tuples=config.max_epoch_tuples,
+                custom_batch_to=config.batch_to_func,
+                model_config=config,
+                profiler=prof,
+            )
 
         # validate model
         new_best_metric_seen, _ = validate_model(
@@ -108,34 +111,38 @@ def train_model(csv_stats: List,
             target_path=None,
             bound_predictions=bound_predictions,
             prediction_bounder=prediction_bounder,
-            log_prefix='epoch_val',
+            log_prefix="epoch_val",
             model_config=config,
-            wandb_plots_dict=wandb_plots_dict
+            wandb_plots_dict=wandb_plots_dict,
         )
         any_best_metric = any_best_metric or new_best_metric_seen
 
         # validate on test sets with test evaluations
-        test_model(config=config,
-                   test_csv_paths=test_csv_paths,
-                   test_loaders=test_loaders,
-                   model_dir=model_dir,
-                   epoch=epoch,
-                   model=model,
-                   metrics=metrics,
-                   wandb_run=wandb_run,
-                   file_suffix=f'_epoch{epoch}',
-                   bound_predictions=bound_predictions,
-                   prediction_bounder=prediction_bounder,
-                   load_best_checkpoint=False,
-                   log_prefix='epoch_test',
-                   is_per_epoch=True)
-
+        test_model(
+            config=config,
+            test_csv_paths=test_csv_paths,
+            test_loaders=test_loaders,
+            model_dir=model_dir,
+            epoch=epoch,
+            model=model,
+            metrics=metrics,
+            wandb_run=wandb_run,
+            file_suffix=f"_epoch{epoch}",
+            bound_predictions=bound_predictions,
+            prediction_bounder=prediction_bounder,
+            load_best_checkpoint=False,
+            log_prefix="epoch_test",
+            is_per_epoch=True,
+        )
 
         # See if we can already stop the training
         stop_early = False
         if not any_best_metric:
             epochs_wo_improvement += 1
-            if config.early_stopping_patience is not None and epochs_wo_improvement > config.early_stopping_patience:
+            if (
+                config.early_stopping_patience is not None
+                and epochs_wo_improvement > config.early_stopping_patience
+            ):
                 stop_early = True
         else:
             epochs_wo_improvement = 0
@@ -145,23 +152,27 @@ def train_model(csv_stats: List,
             stop_early = True
 
         epoch_stats.update(stop_early=stop_early)
-        print(f"--> Epochs without improvement: {epochs_wo_improvement}/{config.early_stopping_patience}")
+        print(
+            f"--> Epochs without improvement: {epochs_wo_improvement}/{config.early_stopping_patience}"
+        )
 
         # save stats to file
         csv_stats.append(epoch_stats)
 
         if not quick_run:  # in case of quick-run we do not store artifacts
             # save current state of training allowing us to resume if this is stopped
-            save_checkpoint(epochs_wo_improvement=epochs_wo_improvement,
-                        epoch=epoch,
-                        model=model,
-                        optimizer=optimizer,
-                        target_path=model_dir,
-                        config=config,
-                        metrics=metrics,
-                        csv_stats=csv_stats,
-                        finished=stop_early,
-                        rank_model=train_w_rank_model)
+            save_checkpoint(
+                epochs_wo_improvement=epochs_wo_improvement,
+                epoch=epoch,
+                model=model,
+                optimizer=optimizer,
+                target_path=model_dir,
+                config=config,
+                metrics=metrics,
+                csv_stats=csv_stats,
+                finished=stop_early,
+                rank_model=train_w_rank_model,
+            )
 
         epoch_stats.update(epoch_time=time.perf_counter() - epoch_start_time)
 
@@ -171,18 +182,19 @@ def train_model(csv_stats: List,
 
         if config.online_hard_example_mining:
             if epoch % config.ohem_resort_after_num_epochs == 0:
-                print('Resorting OHEM dataset...')
+                print("Resorting OHEM dataset...")
                 train_loader.dataset.update_difficulty()
                 val_loader.dataset.update_difficulty()
 
-
         epoch += 1
         if stop_early:
-            print(f"Early stopping kicked in due to no improvement in {config.early_stopping_patience} epochs")
+            print(
+                f"Early stopping kicked in due to no improvement in {config.early_stopping_patience} epochs"
+            )
             break
 
     if prof:
         prof.stop()
-        profile_output_dir = str(model_dir / f'{config.name.NAME}_{config.seed}')
-        print(f'Profile with pytorch profiler to logdir {profile_output_dir}')
-        prof.export_chrome_trace(profile_output_dir + '.prof')
+        profile_output_dir = str(model_dir / f"{config.name.NAME}_{config.seed}")
+        print(f"Profile with pytorch profiler to logdir {profile_output_dir}")
+        prof.export_chrome_trace(profile_output_dir + ".prof")

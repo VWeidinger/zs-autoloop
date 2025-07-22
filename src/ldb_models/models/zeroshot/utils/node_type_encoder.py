@@ -8,15 +8,26 @@ from models.zeroshot.utils.embeddings import EmbeddingInitializer
 from models.zeroshot.utils.fc_out_model import FcOutModel
 from training.preprocessing.feature_statistics import FeatureType
 
+
 class NodeTypeEncoder(FcOutModel):
     """
     Model to encode one type of nodes in the graph (with particular features)
     """
 
-    def __init__(self, features: List[str], feature_statistics: dict, max_emb_dim=32, drop_whole_embeddings=False,
-                 one_hot_embeddings=True, apply_optimized_nte=False, apply_dcn:bool=False,num_dcn_layers:int=1, **kwargs):
+    def __init__(
+        self,
+        features: List[str],
+        feature_statistics: dict,
+        max_emb_dim=32,
+        drop_whole_embeddings=False,
+        one_hot_embeddings=True,
+        apply_optimized_nte=False,
+        apply_dcn: bool = False,
+        num_dcn_layers: int = 1,
+        **kwargs,
+    ):
         self.apply_optimized_nte = apply_optimized_nte
-        self.apply_dcn = apply_dcn # apply deep cross network to the input features
+        self.apply_dcn = apply_dcn  # apply deep cross network to the input features
         self.num_dcn_layers = num_dcn_layers
 
         for f in features:
@@ -24,7 +35,9 @@ class NodeTypeEncoder(FcOutModel):
                 raise ValueError(f"Did not find {f} in feature statistics")
 
         self.features = features
-        self.feature_types = [FeatureType[feature_statistics[feat]['type']] for feat in features]
+        self.feature_types = [
+            FeatureType[feature_statistics[feat]["type"]] for feat in features
+        ]
         self.feature_idxs = []
 
         # initialize embeddings and input dimension
@@ -35,26 +48,34 @@ class NodeTypeEncoder(FcOutModel):
         for i, (feat, type) in enumerate(zip(self.features, self.feature_types)):
             if type == FeatureType.numeric:
                 # a single value is encoded here
-                self.feature_idxs.append(np.arange(self.input_feature_idx, self.input_feature_idx + 1))
+                self.feature_idxs.append(
+                    np.arange(self.input_feature_idx, self.input_feature_idx + 1)
+                )
                 self.input_feature_idx += 1
 
                 self.input_dim += 1
             elif type == FeatureType.categorical:
                 # similarly, a single value is encoded here
-                self.feature_idxs.append(np.arange(self.input_feature_idx, self.input_feature_idx + 1))
+                self.feature_idxs.append(
+                    np.arange(self.input_feature_idx, self.input_feature_idx + 1)
+                )
                 self.input_feature_idx += 1
 
-                embd = EmbeddingInitializer(num_embeddings=feature_statistics[feat]['no_vals'],
-                                            max_emb_dim=max_emb_dim,
-                                            p_dropout=kwargs['p_dropout'],
-                                            drop_whole_embeddings=drop_whole_embeddings,
-                                            one_hot=one_hot_embeddings)
+                embd = EmbeddingInitializer(
+                    num_embeddings=feature_statistics[feat]["no_vals"],
+                    max_emb_dim=max_emb_dim,
+                    p_dropout=kwargs["p_dropout"],
+                    drop_whole_embeddings=drop_whole_embeddings,
+                    one_hot=one_hot_embeddings,
+                )
                 embeddings[feat] = embd
                 self.input_dim += embd.emb_dim
             else:
                 raise NotImplementedError
-        
-        assert self.input_dim > 0, "Input dimension must be greater than 0, but got 0. Check the features and feature statistics."
+
+        assert self.input_dim > 0, (
+            "Input dimension must be greater than 0, but got 0. Check the features and feature statistics."
+        )
         super().__init__(input_dim=self.input_dim, **kwargs)
 
         if self.apply_dcn:
@@ -68,21 +89,30 @@ class NodeTypeEncoder(FcOutModel):
             return self.replacement_param.repeat(input.shape[0], 1)
 
         if len(input.shape) != 2:
-            raise ValueError(f"Expected 2D input, got {len(input.shape)}D / shape {input.shape}")
+            raise ValueError(
+                f"Expected 2D input, got {len(input.shape)}D / shape {input.shape}"
+            )
 
         if input.shape[0] == 0:
             return torch.reshape(input, (0, self.output_dim))
 
-        assert input.shape[
-                   1] == self.input_feature_idx, f'{input.shape} != {self.input_feature_idx} / features: {self.features}'
-        
+        assert input.shape[1] == self.input_feature_idx, (
+            f"{input.shape} != {self.input_feature_idx} / features: {self.features}"
+        )
+
         # Prepare masks for numeric and categorical features
-        numeric_idxs = [i for i, t in enumerate(self.feature_types) if t == FeatureType.numeric]
-        categorical_idxs = [i for i, t in enumerate(self.feature_types) if t == FeatureType.categorical]
+        numeric_idxs = [
+            i for i, t in enumerate(self.feature_types) if t == FeatureType.numeric
+        ]
+        categorical_idxs = [
+            i for i, t in enumerate(self.feature_types) if t == FeatureType.categorical
+        ]
 
         encoded_input = []
         if not self.apply_optimized_nte:
-            for feat, feat_type, feat_idxs in zip(self.features, self.feature_types, self.feature_idxs):
+            for feat, feat_type, feat_idxs in zip(
+                self.features, self.feature_types, self.feature_idxs
+            ):
                 feat_data = input[:, feat_idxs]
                 if feat_type == FeatureType.numeric:
                     encoded_input.append(feat_data)
@@ -97,7 +127,9 @@ class NodeTypeEncoder(FcOutModel):
             # all other models trained earlier do not use it. Since it changes the input order, this is not compatible with the old models.
             if numeric_idxs:
                 # Stack all numeric columns together
-                numeric_feat_idxs = np.concatenate([self.feature_idxs[i] for i in numeric_idxs])
+                numeric_feat_idxs = np.concatenate(
+                    [self.feature_idxs[i] for i in numeric_idxs]
+                )
                 numeric_data = input[:, numeric_feat_idxs]
                 encoded_input.append(numeric_data)
 
@@ -119,6 +151,7 @@ class NodeTypeEncoder(FcOutModel):
             input_enc = self.dcn(input_enc)
 
         return self.fcout(input_enc)
+
 
 class DCNLayer(nn.Module):
     def __init__(self, input_dim, num_layers=2):

@@ -102,7 +102,9 @@ class DAGDualInputConv(nn.Module):
         left_msg_raw = left_msg.index_select(0, target_indices)
         right_msg_raw = right_msg.index_select(0, target_indices)
         target_state = x.index_select(0, target_indices)
-        assert left_msg_raw.shape[0] == right_msg_raw.shape[0] == target_state.shape[0], (
+        assert (
+            left_msg_raw.shape[0] == right_msg_raw.shape[0] == target_state.shape[0]
+        ), (
             f"Left message shape {left_msg_raw.shape}, right message shape {right_msg_raw.shape}, x shape {x.shape}"
         )
         assert left_msg_raw.shape == right_msg_raw.shape, (

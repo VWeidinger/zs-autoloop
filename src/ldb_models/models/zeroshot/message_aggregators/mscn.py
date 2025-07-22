@@ -18,19 +18,28 @@ class MscnConv(MessageAggregator):
         else:
             self.layer_norm = None
 
-    def forward(self, graph=None, etypes=None, in_node_types=None, out_node_types=None, feat_dict=None):
+    def forward(
+        self,
+        graph=None,
+        etypes=None,
+        in_node_types=None,
+        out_node_types=None,
+        feat_dict=None,
+    ):
         if len(etypes) == 0:
             return feat_dict
 
         with graph.local_scope():
-            graph.ndata['h'] = feat_dict
+            graph.ndata["h"] = feat_dict
 
             # message passing
-            graph.multi_update_all({etype: (fn.copy_u('h', 'm'), fn.sum('m', 'ft')) for etype in etypes},
-                                   cross_reducer='sum')
+            graph.multi_update_all(
+                {etype: (fn.copy_u("h", "m"), fn.sum("m", "ft")) for etype in etypes},
+                cross_reducer="sum",
+            )
 
-            feat = graph.ndata['h']
-            rst = graph.ndata['ft']
+            feat = graph.ndata["h"]
+            rst = graph.ndata["ft"]
 
             out_dict = self.combine(feat, out_node_types, rst)
 

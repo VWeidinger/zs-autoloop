@@ -12,16 +12,26 @@ class ZeroShotModelEncoder(FcOutModel):
     A zero-shot cost model that predicts query runtimes on unseen databases out-of-the-box without retraining.
     """
 
-    def __init__(self, model_config: ZeroShotModelConfig, feature_statistics=None,
-                 add_tree_model_types=None, prepasses=None, plan_featurization=None, encoders=None, label_norm=None,
-                 return_all_node_states: bool = False, run_with_assertions: bool = False):
-
-        super().__init__(output_dim=model_config.output_dim,
-                         input_dim=model_config.hidden_dim,
-                         final_out_layer=True,
-                         loss_class_name=model_config.loss_class_name,
-                         loss_class_kwargs=model_config.loss_class_kwargs,
-                         **model_config.final_mlp_kwargs)
+    def __init__(
+        self,
+        model_config: ZeroShotModelConfig,
+        feature_statistics=None,
+        add_tree_model_types=None,
+        prepasses=None,
+        plan_featurization=None,
+        encoders=None,
+        label_norm=None,
+        return_all_node_states: bool = False,
+        run_with_assertions: bool = False,
+    ):
+        super().__init__(
+            output_dim=model_config.output_dim,
+            input_dim=model_config.hidden_dim,
+            final_out_layer=True,
+            loss_class_name=model_config.loss_class_name,
+            loss_class_kwargs=model_config.loss_class_kwargs,
+            **model_config.final_mlp_kwargs,
+        )
 
         self.label_norm = label_norm
         self.test = False  # ToDo?
@@ -32,12 +42,19 @@ class ZeroShotModelEncoder(FcOutModel):
         self.run_with_assertions = run_with_assertions
 
         # use different models per edge type
-        tree_model_types = add_tree_model_types + ['to_plan', 'intra_plan', 'intra_pred']
-        self.tree_models = nn.ModuleDict({
-            node_type: message_aggregators.__dict__[model_config.tree_layer_name](hidden_dim=self.hidden_dim,
-                                                                                  **model_config.tree_layer_kwargs)
-            for node_type in tree_model_types
-        })
+        tree_model_types = add_tree_model_types + [
+            "to_plan",
+            "intra_plan",
+            "intra_pred",
+        ]
+        self.tree_models = nn.ModuleDict(
+            {
+                node_type: message_aggregators.__dict__[model_config.tree_layer_name](
+                    hidden_dim=self.hidden_dim, **model_config.tree_layer_kwargs
+                )
+                for node_type in tree_model_types
+            }
+        )
 
         # these message passing steps are performed in the beginning (dependent on the concrete database system at hand)
         self.prepasses = prepasses
@@ -46,10 +63,14 @@ class ZeroShotModelEncoder(FcOutModel):
             self.plan_featurization = plan_featurization
             # different models to encode plans, tables, columns, filter_columns and output_columns
             model_config.node_type_kwargs.update(output_dim=model_config.hidden_dim)
-            self.node_type_encoders = nn.ModuleDict({
-                enc_name: NodeTypeEncoder(features, feature_statistics, **model_config.node_type_kwargs)
-                for enc_name, features in encoders
-            })
+            self.node_type_encoders = nn.ModuleDict(
+                {
+                    enc_name: NodeTypeEncoder(
+                        features, feature_statistics, **model_config.node_type_kwargs
+                    )
+                    for enc_name, features in encoders
+                }
+            )
 
     def encode_node_types(self, g, features):
         """
@@ -60,12 +81,14 @@ class ZeroShotModelEncoder(FcOutModel):
         for node_type, input_features in features.items():
             # encode all plans with same model
             if node_type not in self.node_type_encoders.keys():
-                assert node_type.startswith('plan') or node_type.startswith('logical_pred')
+                assert node_type.startswith("plan") or node_type.startswith(
+                    "logical_pred"
+                )
 
-                if node_type.startswith('logical_pred'):
-                    node_type_m = self.node_type_encoders['logical_pred']
+                if node_type.startswith("logical_pred"):
+                    node_type_m = self.node_type_encoders["logical_pred"]
                 else:
-                    node_type_m = self.node_type_encoders['plan']
+                    node_type_m = self.node_type_encoders["plan"]
             else:
                 node_type_m = self.node_type_encoders[node_type]
 
@@ -75,7 +98,9 @@ class ZeroShotModelEncoder(FcOutModel):
 
             if self.run_with_assertions:
                 # ensure that result is not NaN / inf
-                assert torch.isfinite(input_features).all(), f"input_features for {node_type} contain NaN or inf"
+                assert torch.isfinite(input_features).all(), (
+                    f"input_features for {node_type} contain NaN or inf"
+                )
 
             hidden_dict[node_type] = node_type_m(input_features)
 
@@ -92,7 +117,9 @@ class ZeroShotModelEncoder(FcOutModel):
             out = self.message_passing(graph, features)
             return out
         else:
-            out, all_out = self.message_passing(graph, features, return_all_nodestates=True)
+            out, all_out = self.message_passing(
+                graph, features, return_all_nodestates=True
+            )
             return out, all_out
 
     def message_passing(self, g, feat_dict, return_all_nodestates: bool = False):
@@ -112,21 +139,24 @@ class ZeroShotModelEncoder(FcOutModel):
             if g.max_pred_depth is not None:
                 # intra_pred from deepest node to top node
                 for d in reversed(range(g.max_pred_depth)):
-                    pd = PassDirection(model_name='intra_pred',
-                                       g=g,
-                                       e_name='intra_predicate',
-                                       n_dest=f'logical_pred_{d}')
+                    pd = PassDirection(
+                        model_name="intra_pred",
+                        g=g,
+                        e_name="intra_predicate",
+                        n_dest=f"logical_pred_{d}",
+                    )
                     pass_directions.append(pd)
 
             # filter_columns & output_columns to plan
-            pass_directions.append(PassDirection(model_name='to_plan', g=g, e_name='to_plan'))
+            pass_directions.append(
+                PassDirection(model_name="to_plan", g=g, e_name="to_plan")
+            )
 
             # intra_plan from deepest node to top node
             for d in reversed(range(g.max_depth)):
-                pd = PassDirection(model_name='intra_plan',
-                                   g=g,
-                                   e_name='intra_plan',
-                                   n_dest=f'plan{d}')
+                pd = PassDirection(
+                    model_name="intra_plan", g=g, e_name="intra_plan", n_dest=f"plan{d}"
+                )
                 pass_directions.append(pd)
 
             # make sure all edge types are considered in the message passing
@@ -137,18 +167,23 @@ class ZeroShotModelEncoder(FcOutModel):
 
             for pd in pass_directions:
                 if len(pd.etypes) > 0:
-                    out_dict = self.tree_models[pd.model_name](g, etypes=pd.etypes,
-                                                               in_node_types=pd.in_types,
-                                                               out_node_types=pd.out_types,
-                                                               feat_dict=feat_dict)
+                    out_dict = self.tree_models[pd.model_name](
+                        g,
+                        etypes=pd.etypes,
+                        in_node_types=pd.in_types,
+                        out_node_types=pd.out_types,
+                        feat_dict=feat_dict,
+                    )
                     for out_type, hidden_out in out_dict.items():
                         if self.run_with_assertions:
                             # ensure that result is not NaN / inf
-                            assert torch.isfinite(hidden_out).all(), f"hidden_out for {out_type} contain NaN or inf"
+                            assert torch.isfinite(hidden_out).all(), (
+                                f"hidden_out for {out_type} contain NaN or inf"
+                            )
                         feat_dict[out_type] = hidden_out
 
         # compute top nodes of dags
-        out = feat_dict['plan0']
+        out = feat_dict["plan0"]
 
         if self.run_with_assertions:
             # ensure that result is not NaN / inf
@@ -199,4 +234,6 @@ class PassDirection:
         self.in_types = list(self.in_types)
         self.out_types = list(self.out_types)
         if not allow_empty:
-            assert len(self.etypes) > 0, f"No nodes in the graph qualify for e_name={e_name}, n_dest={n_dest}"
+            assert len(self.etypes) > 0, (
+                f"No nodes in the graph qualify for e_name={e_name}, n_dest={n_dest}"
+            )

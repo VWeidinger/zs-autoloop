@@ -1,11 +1,14 @@
 import unittest
 
-from training.dataset.pushdown_projections import extract_cols_from_join, extract_cols_from_filter, \
-    extract_cols_from_aggr, apply_projection_pushdown
+from training.dataset.pushdown_projections import (
+    extract_cols_from_join,
+    extract_cols_from_filter,
+    extract_cols_from_aggr,
+    apply_projection_pushdown,
+)
 
 
 class ProjectionPushdownTest(unittest.TestCase):
-
     def test_extract_cols_from_join(self):
         join = {
             "table_name1": "client",
@@ -15,7 +18,7 @@ class ProjectionPushdownTest(unittest.TestCase):
             "table_name2": "probehnuto_mimo_penezenku",
             "column_name2": "client_id",
             "col_id2": 11,
-            "is_index_cond": False
+            "is_index_cond": False,
         }
 
         expected_output = [
@@ -23,29 +26,70 @@ class ProjectionPushdownTest(unittest.TestCase):
                 "table_name": "client",
                 "col_name": "client_id",
                 "col_id": 0,
-                "child_ref": None
+                "child_ref": None,
             },
             {
                 "table_name": "probehnuto_mimo_penezenku",
                 "col_name": "client_id",
                 "col_id": 11,
-                "child_ref": None
-            }
+                "child_ref": None,
+            },
         ]
 
         self.assertEqual(expected_output, extract_cols_from_join(join))
 
-        join = {'operator': 'AND', 'is_index_cond': False, 'children': [
-            {'table_name1': 'partsupp', 'column_name1': 'ps_partkey', 'col_id1': 23, 'operator': '=',
-             'table_name2': 'lineitem', 'column_name2': 'l_partkey', 'col_id2': 46, 'is_index_cond': True},
-            {'table_name1': 'partsupp', 'column_name1': 'ps_suppkey', 'col_id1': 24, 'operator': '=',
-             'table_name2': 'lineitem', 'column_name2': 'l_suppkey', 'col_id2': 47, 'is_index_cond': True}]}
+        join = {
+            "operator": "AND",
+            "is_index_cond": False,
+            "children": [
+                {
+                    "table_name1": "partsupp",
+                    "column_name1": "ps_partkey",
+                    "col_id1": 23,
+                    "operator": "=",
+                    "table_name2": "lineitem",
+                    "column_name2": "l_partkey",
+                    "col_id2": 46,
+                    "is_index_cond": True,
+                },
+                {
+                    "table_name1": "partsupp",
+                    "column_name1": "ps_suppkey",
+                    "col_id1": 24,
+                    "operator": "=",
+                    "table_name2": "lineitem",
+                    "column_name2": "l_suppkey",
+                    "col_id2": 47,
+                    "is_index_cond": True,
+                },
+            ],
+        }
 
         expected_output = [
-            {'table_name': 'partsupp', 'col_name': 'ps_partkey', 'col_id': 23, 'child_ref': None},
-            {'table_name': 'lineitem', 'col_name': 'l_partkey', 'col_id': 46, 'child_ref': None},
-            {'table_name': 'partsupp', 'col_name': 'ps_suppkey', 'col_id': 24, 'child_ref': None},
-            {'table_name': 'lineitem', 'col_name': 'l_suppkey', 'col_id': 47, 'child_ref': None}
+            {
+                "table_name": "partsupp",
+                "col_name": "ps_partkey",
+                "col_id": 23,
+                "child_ref": None,
+            },
+            {
+                "table_name": "lineitem",
+                "col_name": "l_partkey",
+                "col_id": 46,
+                "child_ref": None,
+            },
+            {
+                "table_name": "partsupp",
+                "col_name": "ps_suppkey",
+                "col_id": 24,
+                "child_ref": None,
+            },
+            {
+                "table_name": "lineitem",
+                "col_name": "l_suppkey",
+                "col_id": 47,
+                "child_ref": None,
+            },
         ]
         self.assertEqual(expected_output, extract_cols_from_join(join))
 
@@ -61,7 +105,7 @@ class ProjectionPushdownTest(unittest.TestCase):
                     "operator": "=",
                     "literal": "'St\u0159edo\u010desk\u00fd kraj'",
                     "is_index_cond": False,
-                    "filter_complexity": 0
+                    "filter_complexity": 0,
                 },
                 {
                     "table_name": "client",
@@ -70,9 +114,9 @@ class ProjectionPushdownTest(unittest.TestCase):
                     "operator": "=",
                     "literal": "'Vilma'",
                     "is_index_cond": False,
-                    "filter_complexity": 0
-                }
-            ]
+                    "filter_complexity": 0,
+                },
+            ],
         }
 
         expected_output = [
@@ -80,14 +124,14 @@ class ProjectionPushdownTest(unittest.TestCase):
                 "table_name": "client",
                 "col_name": "kraj",
                 "col_id": 1,
-                "child_ref": None
+                "child_ref": None,
             },
             {
                 "table_name": "client",
                 "col_name": "obor",
                 "col_id": 2,
-                "child_ref": None
-            }
+                "child_ref": None,
+            },
         ]
         self.assertEqual(expected_output, extract_cols_from_filter(filter))
 
@@ -100,18 +144,18 @@ class ProjectionPushdownTest(unittest.TestCase):
                         "col_id": 3,
                         "child_ref": None,
                         "table_name": "dobito",
-                        "col_name": "client_id"
+                        "col_name": "client_id",
                     },
                     {
                         "col_id": 9,
                         "child_ref": None,
                         "table_name": "probehnuto",
-                        "col_name": "kc_proklikano"
-                    }
+                        "col_name": "kc_proklikano",
+                    },
                 ],
                 "udf_name": None,
                 "udf_output": "False",
-                "child_ref": False
+                "child_ref": False,
             },
             {
                 "aggregation": "None",
@@ -120,19 +164,19 @@ class ProjectionPushdownTest(unittest.TestCase):
                         "col_id": 5,
                         "child_ref": None,
                         "table_name": "dobito",
-                        "col_name": "client_id"
+                        "col_name": "client_id",
                     },
                     {
                         "col_id": 9,
                         "child_ref": None,
                         "table_name": "probehnuto",
-                        "col_name": "kc_proklikano"
-                    }
+                        "col_name": "kc_proklikano",
+                    },
                 ],
                 "udf_name": None,
                 "udf_output": "False",
-                "child_ref": False
-            }
+                "child_ref": False,
+            },
         ]
 
         expected_output = [
@@ -140,20 +184,20 @@ class ProjectionPushdownTest(unittest.TestCase):
                 "col_id": 3,
                 "table_name": "dobito",
                 "col_name": "client_id",
-                'child_ref': None
+                "child_ref": None,
             },
             {
                 "col_id": 9,
                 "table_name": "probehnuto",
                 "col_name": "kc_proklikano",
-                'child_ref': None
-            }
+                "child_ref": None,
+            },
         ]
         self.assertEqual(expected_output, extract_cols_from_aggr(out_cols))
 
     def test_apply_projection_pushdown(self):
         dataset_stats = {
-            'column_stats': [
+            "column_stats": [
                 {
                     "tablename": "title",
                     "attname": "col1",
@@ -183,24 +227,24 @@ class ProjectionPushdownTest(unittest.TestCase):
                                 "col_id": 3,
                                 "child_ref": None,
                                 "table_name": "dobito",
-                                "col_name": "client_id"
+                                "col_name": "client_id",
                             },
                             {
                                 "col_id": 9,
                                 "child_ref": None,
                                 "table_name": "probehnuto",
-                                "col_name": "kc_proklikano"
-                            }
+                                "col_name": "kc_proklikano",
+                            },
                         ],
                         "udf_name": None,
                         "udf_output": "False",
-                        "child_ref": False
+                        "child_ref": False,
                     }
                 ],
                 "act_children_card": 3,
                 "est_children_card": 2,
                 "above_udf_filter": False,
-                "is_udf_filter": False
+                "is_udf_filter": False,
             },
             "children": [
                 {
@@ -221,24 +265,24 @@ class ProjectionPushdownTest(unittest.TestCase):
                                         "col_id": 3,
                                         "child_ref": None,
                                         "table_name": "dobito",
-                                        "col_name": "client_id"
+                                        "col_name": "client_id",
                                     },
                                     {
                                         "col_id": 9,
                                         "child_ref": None,
                                         "table_name": "probehnuto",
-                                        "col_name": "kc_proklikano"
-                                    }
+                                        "col_name": "kc_proklikano",
+                                    },
                                 ],
                                 "udf_name": None,
                                 "udf_output": "False",
-                                "child_ref": False
+                                "child_ref": False,
                             }
                         ],
                         "act_children_card": 3,
                         "est_children_card": 1,
                         "above_udf_filter": False,
-                        "is_udf_filter": False
+                        "is_udf_filter": False,
                     },
                     "children": [
                         {
@@ -259,24 +303,24 @@ class ProjectionPushdownTest(unittest.TestCase):
                                                 "col_id": 3,
                                                 "child_ref": None,
                                                 "table_name": "dobito",
-                                                "col_name": "client_id"
+                                                "col_name": "client_id",
                                             },
                                             {
                                                 "col_id": 9,
                                                 "child_ref": None,
                                                 "table_name": "probehnuto",
-                                                "col_name": "kc_proklikano"
-                                            }
+                                                "col_name": "kc_proklikano",
+                                            },
                                         ],
                                         "udf_name": None,
                                         "udf_output": "False",
-                                        "child_ref": False
+                                        "child_ref": False,
                                     }
                                 ],
                                 "act_children_card": 47880,
                                 "est_children_card": 8629,
                                 "above_udf_filter": False,
-                                "is_udf_filter": False
+                                "is_udf_filter": False,
                             },
                             "children": [
                                 {
@@ -296,7 +340,7 @@ class ProjectionPushdownTest(unittest.TestCase):
                                             "table_name2": "probehnuto_mimo_penezenku",
                                             "column_name2": "client_id",
                                             "col_id2": 11,
-                                            "is_index_cond": False
+                                            "is_index_cond": False,
                                         },
                                         "op_name": "Nested Loop",
                                         "output_columns": [
@@ -307,12 +351,12 @@ class ProjectionPushdownTest(unittest.TestCase):
                                                         "col_id": 3,
                                                         "child_ref": None,
                                                         "table_name": "dobito",
-                                                        "col_name": "client_id"
+                                                        "col_name": "client_id",
                                                     }
                                                 ],
                                                 "udf_name": None,
                                                 "udf_output": "False",
-                                                "child_ref": False
+                                                "child_ref": False,
                                             },
                                             {
                                                 "aggregation": "None",
@@ -321,18 +365,18 @@ class ProjectionPushdownTest(unittest.TestCase):
                                                         "col_id": 9,
                                                         "child_ref": None,
                                                         "table_name": "probehnuto",
-                                                        "col_name": "kc_proklikano"
+                                                        "col_name": "kc_proklikano",
                                                     }
                                                 ],
                                                 "udf_name": None,
                                                 "udf_output": "False",
-                                                "child_ref": False
-                                            }
+                                                "child_ref": False,
+                                            },
                                         ],
                                         "act_children_card": 258952464,
                                         "est_children_card": 9436752,
                                         "above_udf_filter": False,
-                                        "is_udf_filter": False
+                                        "is_udf_filter": False,
                                     },
                                     "children": [
                                         {
@@ -352,7 +396,7 @@ class ProjectionPushdownTest(unittest.TestCase):
                                                     "table_name2": "client",
                                                     "column_name2": "client_id",
                                                     "col_id2": 0,
-                                                    "is_index_cond": False
+                                                    "is_index_cond": False,
                                                 },
                                                 "op_name": "Hash Join",
                                                 "output_columns": [
@@ -363,12 +407,12 @@ class ProjectionPushdownTest(unittest.TestCase):
                                                                 "col_id": 0,
                                                                 "child_ref": None,
                                                                 "table_name": "client",
-                                                                "col_name": "client_id"
+                                                                "col_name": "client_id",
                                                             }
                                                         ],
                                                         "udf_name": None,
                                                         "udf_output": "False",
-                                                        "child_ref": False
+                                                        "child_ref": False,
                                                     },
                                                     {
                                                         "aggregation": "None",
@@ -377,12 +421,12 @@ class ProjectionPushdownTest(unittest.TestCase):
                                                                 "col_id": 9,
                                                                 "child_ref": None,
                                                                 "table_name": "probehnuto",
-                                                                "col_name": "kc_proklikano"
+                                                                "col_name": "kc_proklikano",
                                                             }
                                                         ],
                                                         "udf_name": None,
                                                         "udf_output": "False",
-                                                        "child_ref": False
+                                                        "child_ref": False,
                                                     },
                                                     {
                                                         "aggregation": "None",
@@ -391,12 +435,12 @@ class ProjectionPushdownTest(unittest.TestCase):
                                                                 "col_id": 7,
                                                                 "child_ref": None,
                                                                 "table_name": "probehnuto",
-                                                                "col_name": "client_id"
+                                                                "col_name": "client_id",
                                                             }
                                                         ],
                                                         "udf_name": None,
                                                         "udf_output": "False",
-                                                        "child_ref": False
+                                                        "child_ref": False,
                                                     },
                                                     {
                                                         "aggregation": "None",
@@ -405,18 +449,18 @@ class ProjectionPushdownTest(unittest.TestCase):
                                                                 "col_id": 3,
                                                                 "child_ref": None,
                                                                 "table_name": "dobito",
-                                                                "col_name": "client_id"
+                                                                "col_name": "client_id",
                                                             }
                                                         ],
                                                         "udf_name": None,
                                                         "udf_output": "False",
-                                                        "child_ref": False
-                                                    }
+                                                        "child_ref": False,
+                                                    },
                                                 ],
                                                 "act_children_card": 1103129496,
                                                 "est_children_card": 125285012,
                                                 "above_udf_filter": False,
-                                                "is_udf_filter": False
+                                                "is_udf_filter": False,
                                             },
                                             "children": [
                                                 {
@@ -437,7 +481,7 @@ class ProjectionPushdownTest(unittest.TestCase):
                                                             "operator": "=",
                                                             "literal": "'2015-02-01'",
                                                             "is_index_cond": False,
-                                                            "filter_complexity": 0
+                                                            "filter_complexity": 0,
                                                         },
                                                         "op_name": "Seq Scan",
                                                         "output_columns": [
@@ -448,12 +492,12 @@ class ProjectionPushdownTest(unittest.TestCase):
                                                                         "col_id": 7,
                                                                         "child_ref": None,
                                                                         "table_name": "probehnuto",
-                                                                        "col_name": "client_id"
+                                                                        "col_name": "client_id",
                                                                     }
                                                                 ],
                                                                 "udf_name": None,
                                                                 "udf_output": "False",
-                                                                "child_ref": False
+                                                                "child_ref": False,
                                                             },
                                                             {
                                                                 "aggregation": "None",
@@ -462,12 +506,12 @@ class ProjectionPushdownTest(unittest.TestCase):
                                                                         "col_id": 8,
                                                                         "child_ref": None,
                                                                         "table_name": "probehnuto",
-                                                                        "col_name": "month_year_datum_transakce"
+                                                                        "col_name": "month_year_datum_transakce",
                                                                     }
                                                                 ],
                                                                 "udf_name": None,
                                                                 "udf_output": "False",
-                                                                "child_ref": False
+                                                                "child_ref": False,
                                                             },
                                                             {
                                                                 "aggregation": "None",
@@ -476,12 +520,12 @@ class ProjectionPushdownTest(unittest.TestCase):
                                                                         "col_id": 10,
                                                                         "child_ref": None,
                                                                         "table_name": "probehnuto",
-                                                                        "col_name": "sluzba"
+                                                                        "col_name": "sluzba",
                                                                     }
                                                                 ],
                                                                 "udf_name": None,
                                                                 "udf_output": "False",
-                                                                "child_ref": False
+                                                                "child_ref": False,
                                                             },
                                                             {
                                                                 "aggregation": "None",
@@ -490,20 +534,20 @@ class ProjectionPushdownTest(unittest.TestCase):
                                                                         "col_id": 9,
                                                                         "child_ref": None,
                                                                         "table_name": "probehnuto",
-                                                                        "col_name": "kc_proklikano"
+                                                                        "col_name": "kc_proklikano",
                                                                     }
                                                                 ],
                                                                 "udf_name": None,
                                                                 "udf_output": "False",
-                                                                "child_ref": False
-                                                            }
+                                                                "child_ref": False,
+                                                            },
                                                         ],
                                                         "act_children_card": 1,
                                                         "est_children_card": 1,
                                                         "above_udf_filter": False,
-                                                        "is_udf_filter": False
+                                                        "is_udf_filter": False,
                                                     },
-                                                    "children": []
+                                                    "children": [],
                                                 },
                                                 {
                                                     "plan_parameters": {
@@ -523,12 +567,12 @@ class ProjectionPushdownTest(unittest.TestCase):
                                                                         "col_id": 0,
                                                                         "child_ref": None,
                                                                         "table_name": "client",
-                                                                        "col_name": "client_id"
+                                                                        "col_name": "client_id",
                                                                     }
                                                                 ],
                                                                 "udf_name": None,
                                                                 "udf_output": "False",
-                                                                "child_ref": False
+                                                                "child_ref": False,
                                                             },
                                                             {
                                                                 "aggregation": "None",
@@ -537,18 +581,18 @@ class ProjectionPushdownTest(unittest.TestCase):
                                                                         "col_id": 3,
                                                                         "child_ref": None,
                                                                         "table_name": "dobito",
-                                                                        "col_name": "client_id"
+                                                                        "col_name": "client_id",
                                                                     }
                                                                 ],
                                                                 "udf_name": None,
                                                                 "udf_output": "False",
-                                                                "child_ref": False
-                                                            }
+                                                                "child_ref": False,
+                                                            },
                                                         ],
                                                         "act_children_card": 11592,
                                                         "est_children_card": 3116,
                                                         "above_udf_filter": False,
-                                                        "is_udf_filter": False
+                                                        "is_udf_filter": False,
                                                     },
                                                     "children": [
                                                         {
@@ -568,7 +612,7 @@ class ProjectionPushdownTest(unittest.TestCase):
                                                                     "table_name2": "client",
                                                                     "column_name2": "client_id",
                                                                     "col_id2": 0,
-                                                                    "is_index_cond": False
+                                                                    "is_index_cond": False,
                                                                 },
                                                                 "op_name": "Hash Join",
                                                                 "output_columns": [
@@ -579,12 +623,12 @@ class ProjectionPushdownTest(unittest.TestCase):
                                                                                 "col_id": 0,
                                                                                 "child_ref": None,
                                                                                 "table_name": "client",
-                                                                                "col_name": "client_id"
+                                                                                "col_name": "client_id",
                                                                             }
                                                                         ],
                                                                         "udf_name": None,
                                                                         "udf_output": "False",
-                                                                        "child_ref": False
+                                                                        "child_ref": False,
                                                                     },
                                                                     {
                                                                         "aggregation": "None",
@@ -593,18 +637,18 @@ class ProjectionPushdownTest(unittest.TestCase):
                                                                                 "col_id": 3,
                                                                                 "child_ref": None,
                                                                                 "table_name": "dobito",
-                                                                                "col_name": "client_id"
+                                                                                "col_name": "client_id",
                                                                             }
                                                                         ],
                                                                         "udf_name": None,
                                                                         "udf_output": "False",
-                                                                        "child_ref": False
-                                                                    }
+                                                                        "child_ref": False,
+                                                                    },
                                                                 ],
                                                                 "act_children_card": 4250725128,
                                                                 "est_children_card": 457889796,
                                                                 "above_udf_filter": False,
-                                                                "is_udf_filter": False
+                                                                "is_udf_filter": False,
                                                             },
                                                             "children": [
                                                                 {
@@ -627,12 +671,12 @@ class ProjectionPushdownTest(unittest.TestCase):
                                                                                         "col_id": 3,
                                                                                         "child_ref": None,
                                                                                         "table_name": "dobito",
-                                                                                        "col_name": "client_id"
+                                                                                        "col_name": "client_id",
                                                                                     }
                                                                                 ],
                                                                                 "udf_name": None,
                                                                                 "udf_output": "False",
-                                                                                "child_ref": False
+                                                                                "child_ref": False,
                                                                             },
                                                                             {
                                                                                 "aggregation": "None",
@@ -641,12 +685,12 @@ class ProjectionPushdownTest(unittest.TestCase):
                                                                                         "col_id": 4,
                                                                                         "child_ref": None,
                                                                                         "table_name": "dobito",
-                                                                                        "col_name": "month_year_datum_transakce"
+                                                                                        "col_name": "month_year_datum_transakce",
                                                                                     }
                                                                                 ],
                                                                                 "udf_name": None,
                                                                                 "udf_output": "False",
-                                                                                "child_ref": False
+                                                                                "child_ref": False,
                                                                             },
                                                                             {
                                                                                 "aggregation": "None",
@@ -655,12 +699,12 @@ class ProjectionPushdownTest(unittest.TestCase):
                                                                                         "col_id": 5,
                                                                                         "child_ref": None,
                                                                                         "table_name": "dobito",
-                                                                                        "col_name": "sluzba"
+                                                                                        "col_name": "sluzba",
                                                                                     }
                                                                                 ],
                                                                                 "udf_name": None,
                                                                                 "udf_output": "False",
-                                                                                "child_ref": False
+                                                                                "child_ref": False,
                                                                             },
                                                                             {
                                                                                 "aggregation": "None",
@@ -669,20 +713,20 @@ class ProjectionPushdownTest(unittest.TestCase):
                                                                                         "col_id": 6,
                                                                                         "child_ref": None,
                                                                                         "table_name": "dobito",
-                                                                                        "col_name": "kc_dobito"
+                                                                                        "col_name": "kc_dobito",
                                                                                     }
                                                                                 ],
                                                                                 "udf_name": None,
                                                                                 "udf_output": "False",
-                                                                                "child_ref": False
-                                                                            }
+                                                                                "child_ref": False,
+                                                                            },
                                                                         ],
                                                                         "act_children_card": 1,
                                                                         "est_children_card": 1,
                                                                         "above_udf_filter": False,
-                                                                        "is_udf_filter": False
+                                                                        "is_udf_filter": False,
                                                                     },
-                                                                    "children": []
+                                                                    "children": [],
                                                                 },
                                                                 {
                                                                     "plan_parameters": {
@@ -702,18 +746,18 @@ class ProjectionPushdownTest(unittest.TestCase):
                                                                                         "col_id": 0,
                                                                                         "child_ref": None,
                                                                                         "table_name": "client",
-                                                                                        "col_name": "client_id"
+                                                                                        "col_name": "client_id",
                                                                                     }
                                                                                 ],
                                                                                 "udf_name": None,
                                                                                 "udf_output": "False",
-                                                                                "child_ref": False
+                                                                                "child_ref": False,
                                                                             }
                                                                         ],
                                                                         "act_children_card": 1278,
                                                                         "est_children_card": 413,
                                                                         "above_udf_filter": False,
-                                                                        "is_udf_filter": False
+                                                                        "is_udf_filter": False,
                                                                     },
                                                                     "children": [
                                                                         {
@@ -738,7 +782,7 @@ class ProjectionPushdownTest(unittest.TestCase):
                                                                                             "operator": "=",
                                                                                             "literal": "'St\u0159edo\u010desk\u00fd kraj'",
                                                                                             "is_index_cond": False,
-                                                                                            "filter_complexity": 0
+                                                                                            "filter_complexity": 0,
                                                                                         },
                                                                                         {
                                                                                             "table_name": "client",
@@ -747,9 +791,9 @@ class ProjectionPushdownTest(unittest.TestCase):
                                                                                             "operator": "=",
                                                                                             "literal": "'Vilma'",
                                                                                             "is_index_cond": False,
-                                                                                            "filter_complexity": 0
-                                                                                        }
-                                                                                    ]
+                                                                                            "filter_complexity": 0,
+                                                                                        },
+                                                                                    ],
                                                                                 },
                                                                                 "op_name": "Seq Scan",
                                                                                 "output_columns": [
@@ -760,28 +804,28 @@ class ProjectionPushdownTest(unittest.TestCase):
                                                                                                 "col_id": 0,
                                                                                                 "child_ref": None,
                                                                                                 "table_name": "client",
-                                                                                                "col_name": "client_id"
+                                                                                                "col_name": "client_id",
                                                                                             }
                                                                                         ],
                                                                                         "udf_name": None,
                                                                                         "udf_output": "False",
-                                                                                        "child_ref": False
+                                                                                        "child_ref": False,
                                                                                     }
                                                                                 ],
                                                                                 "act_children_card": 1,
                                                                                 "est_children_card": 1,
                                                                                 "above_udf_filter": False,
-                                                                                "is_udf_filter": False
+                                                                                "is_udf_filter": False,
                                                                             },
-                                                                            "children": []
+                                                                            "children": [],
                                                                         }
-                                                                    ]
-                                                                }
-                                                            ]
+                                                                    ],
+                                                                },
+                                                            ],
                                                         }
-                                                    ]
-                                                }
-                                            ]
+                                                    ],
+                                                },
+                                            ],
                                         },
                                         {
                                             "plan_parameters": {
@@ -805,7 +849,7 @@ class ProjectionPushdownTest(unittest.TestCase):
                                                             "operator": "!=",
                                                             "literal": "'2013-10-01_0'",
                                                             "is_index_cond": False,
-                                                            "filter_complexity": 0
+                                                            "filter_complexity": 0,
                                                         },
                                                         {
                                                             "table_name": "probehnuto_mimo_penezenku",
@@ -814,27 +858,27 @@ class ProjectionPushdownTest(unittest.TestCase):
                                                             "operator": ">=",
                                                             "literal": "97288",
                                                             "is_index_cond": True,
-                                                            "filter_complexity": 0
-                                                        }
-                                                    ]
+                                                            "filter_complexity": 0,
+                                                        },
+                                                    ],
                                                 },
                                                 "op_name": "Index Only Scan",
-                                                "output_columns": [
-
-                                                ],
+                                                "output_columns": [],
                                                 "act_children_card": 1,
                                                 "est_children_card": 1,
                                                 "above_udf_filter": False,
-                                                "is_udf_filter": False
+                                                "is_udf_filter": False,
                                             },
-                                            "children": []
-                                        }
-                                    ]
+                                            "children": [],
+                                        },
+                                    ],
                                 }
-                            ]
+                            ],
                         }
-                    ]
-                }]}
+                    ],
+                }
+            ],
+        }
 
         expected_plan = {
             "plan_parameters": {
@@ -854,24 +898,24 @@ class ProjectionPushdownTest(unittest.TestCase):
                                 "col_id": 3,
                                 "child_ref": None,
                                 "table_name": "dobito",
-                                "col_name": "client_id"
+                                "col_name": "client_id",
                             },
                             {
                                 "col_id": 9,
                                 "child_ref": None,
                                 "table_name": "probehnuto",
-                                "col_name": "kc_proklikano"
-                            }
+                                "col_name": "kc_proklikano",
+                            },
                         ],
                         "udf_name": None,
                         "udf_output": "False",
-                        "child_ref": False
+                        "child_ref": False,
                     }
                 ],
                 "act_children_card": 3,
                 "est_children_card": 2,
                 "above_udf_filter": False,
-                "is_udf_filter": False
+                "is_udf_filter": False,
             },
             "children": [
                 {
@@ -892,24 +936,24 @@ class ProjectionPushdownTest(unittest.TestCase):
                                         "col_id": 3,
                                         "child_ref": None,
                                         "table_name": "dobito",
-                                        "col_name": "client_id"
+                                        "col_name": "client_id",
                                     },
                                     {
                                         "col_id": 9,
                                         "child_ref": None,
                                         "table_name": "probehnuto",
-                                        "col_name": "kc_proklikano"
-                                    }
+                                        "col_name": "kc_proklikano",
+                                    },
                                 ],
                                 "udf_name": None,
                                 "udf_output": "False",
-                                "child_ref": False
+                                "child_ref": False,
                             }
                         ],
                         "act_children_card": 3,
                         "est_children_card": 1,
                         "above_udf_filter": False,
-                        "is_udf_filter": False
+                        "is_udf_filter": False,
                     },
                     "children": [
                         {
@@ -930,24 +974,24 @@ class ProjectionPushdownTest(unittest.TestCase):
                                                 "col_id": 3,
                                                 "child_ref": None,
                                                 "table_name": "dobito",
-                                                "col_name": "client_id"
+                                                "col_name": "client_id",
                                             },
                                             {
                                                 "col_id": 9,
                                                 "child_ref": None,
                                                 "table_name": "probehnuto",
-                                                "col_name": "kc_proklikano"
-                                            }
+                                                "col_name": "kc_proklikano",
+                                            },
                                         ],
                                         "udf_name": None,
                                         "udf_output": "False",
-                                        "child_ref": False
+                                        "child_ref": False,
                                     }
                                 ],
                                 "act_children_card": 47880,
                                 "est_children_card": 8629,
                                 "above_udf_filter": False,
-                                "is_udf_filter": False
+                                "is_udf_filter": False,
                             },
                             "children": [
                                 {
@@ -967,7 +1011,7 @@ class ProjectionPushdownTest(unittest.TestCase):
                                             "table_name2": "probehnuto_mimo_penezenku",
                                             "column_name2": "client_id",
                                             "col_id2": 11,
-                                            "is_index_cond": False
+                                            "is_index_cond": False,
                                         },
                                         "op_name": "Nested Loop",
                                         "output_columns": [
@@ -978,12 +1022,12 @@ class ProjectionPushdownTest(unittest.TestCase):
                                                         "col_id": 3,
                                                         "child_ref": None,
                                                         "table_name": "dobito",
-                                                        "col_name": "client_id"
+                                                        "col_name": "client_id",
                                                     }
                                                 ],
                                                 "udf_name": None,
                                                 "udf_output": "False",
-                                                "child_ref": False
+                                                "child_ref": False,
                                             },
                                             {
                                                 "aggregation": "None",
@@ -992,18 +1036,18 @@ class ProjectionPushdownTest(unittest.TestCase):
                                                         "col_id": 9,
                                                         "child_ref": None,
                                                         "table_name": "probehnuto",
-                                                        "col_name": "kc_proklikano"
+                                                        "col_name": "kc_proklikano",
                                                     }
                                                 ],
                                                 "udf_name": None,
                                                 "udf_output": "False",
-                                                "child_ref": False
-                                            }
+                                                "child_ref": False,
+                                            },
                                         ],
                                         "act_children_card": 258952464,
                                         "est_children_card": 9436752,
                                         "above_udf_filter": False,
-                                        "is_udf_filter": False
+                                        "is_udf_filter": False,
                                     },
                                     "children": [
                                         {
@@ -1023,7 +1067,7 @@ class ProjectionPushdownTest(unittest.TestCase):
                                                     "table_name2": "client",
                                                     "column_name2": "client_id",
                                                     "col_id2": 0,
-                                                    "is_index_cond": False
+                                                    "is_index_cond": False,
                                                 },
                                                 "op_name": "Hash Join",
                                                 "output_columns": [
@@ -1034,12 +1078,12 @@ class ProjectionPushdownTest(unittest.TestCase):
                                                                 "col_id": 0,
                                                                 "child_ref": None,
                                                                 "table_name": "client",
-                                                                "col_name": "client_id"
+                                                                "col_name": "client_id",
                                                             }
                                                         ],
                                                         "udf_name": None,
                                                         "udf_output": "False",
-                                                        "child_ref": False
+                                                        "child_ref": False,
                                                     },
                                                     {
                                                         "aggregation": "None",
@@ -1048,12 +1092,12 @@ class ProjectionPushdownTest(unittest.TestCase):
                                                                 "col_id": 3,
                                                                 "child_ref": None,
                                                                 "table_name": "dobito",
-                                                                "col_name": "client_id"
+                                                                "col_name": "client_id",
                                                             }
                                                         ],
                                                         "udf_name": None,
                                                         "udf_output": "False",
-                                                        "child_ref": False
+                                                        "child_ref": False,
                                                     },
                                                     {
                                                         "aggregation": "None",
@@ -1062,18 +1106,18 @@ class ProjectionPushdownTest(unittest.TestCase):
                                                                 "col_id": 9,
                                                                 "child_ref": None,
                                                                 "table_name": "probehnuto",
-                                                                "col_name": "kc_proklikano"
+                                                                "col_name": "kc_proklikano",
                                                             }
                                                         ],
                                                         "udf_name": None,
                                                         "udf_output": "False",
-                                                        "child_ref": False
-                                                    }
+                                                        "child_ref": False,
+                                                    },
                                                 ],
                                                 "act_children_card": 1103129496,
                                                 "est_children_card": 125285012,
                                                 "above_udf_filter": False,
-                                                "is_udf_filter": False
+                                                "is_udf_filter": False,
                                             },
                                             "children": [
                                                 {
@@ -1094,7 +1138,7 @@ class ProjectionPushdownTest(unittest.TestCase):
                                                             "operator": "=",
                                                             "literal": "'2015-02-01'",
                                                             "is_index_cond": False,
-                                                            "filter_complexity": 0
+                                                            "filter_complexity": 0,
                                                         },
                                                         "op_name": "Seq Scan",
                                                         "output_columns": [
@@ -1105,12 +1149,12 @@ class ProjectionPushdownTest(unittest.TestCase):
                                                                         "col_id": 7,
                                                                         "child_ref": None,
                                                                         "table_name": "probehnuto",
-                                                                        "col_name": "client_id"
+                                                                        "col_name": "client_id",
                                                                     }
                                                                 ],
                                                                 "udf_name": None,
                                                                 "udf_output": "False",
-                                                                "child_ref": False
+                                                                "child_ref": False,
                                                             },
                                                             {
                                                                 "aggregation": "None",
@@ -1119,20 +1163,20 @@ class ProjectionPushdownTest(unittest.TestCase):
                                                                         "col_id": 9,
                                                                         "child_ref": None,
                                                                         "table_name": "probehnuto",
-                                                                        "col_name": "kc_proklikano"
+                                                                        "col_name": "kc_proklikano",
                                                                     }
                                                                 ],
                                                                 "udf_name": None,
                                                                 "udf_output": "False",
-                                                                "child_ref": False
-                                                            }
+                                                                "child_ref": False,
+                                                            },
                                                         ],
                                                         "act_children_card": 1,
                                                         "est_children_card": 1,
                                                         "above_udf_filter": False,
-                                                        "is_udf_filter": False
+                                                        "is_udf_filter": False,
                                                     },
-                                                    "children": []
+                                                    "children": [],
                                                 },
                                                 {
                                                     "plan_parameters": {
@@ -1152,12 +1196,12 @@ class ProjectionPushdownTest(unittest.TestCase):
                                                                         "col_id": 0,
                                                                         "child_ref": None,
                                                                         "table_name": "client",
-                                                                        "col_name": "client_id"
+                                                                        "col_name": "client_id",
                                                                     }
                                                                 ],
                                                                 "udf_name": None,
                                                                 "udf_output": "False",
-                                                                "child_ref": False
+                                                                "child_ref": False,
                                                             },
                                                             {
                                                                 "aggregation": "None",
@@ -1166,18 +1210,18 @@ class ProjectionPushdownTest(unittest.TestCase):
                                                                         "col_id": 3,
                                                                         "child_ref": None,
                                                                         "table_name": "dobito",
-                                                                        "col_name": "client_id"
+                                                                        "col_name": "client_id",
                                                                     }
                                                                 ],
                                                                 "udf_name": None,
                                                                 "udf_output": "False",
-                                                                "child_ref": False
-                                                            }
+                                                                "child_ref": False,
+                                                            },
                                                         ],
                                                         "act_children_card": 11592,
                                                         "est_children_card": 3116,
                                                         "above_udf_filter": False,
-                                                        "is_udf_filter": False
+                                                        "is_udf_filter": False,
                                                     },
                                                     "children": [
                                                         {
@@ -1197,7 +1241,7 @@ class ProjectionPushdownTest(unittest.TestCase):
                                                                     "table_name2": "client",
                                                                     "column_name2": "client_id",
                                                                     "col_id2": 0,
-                                                                    "is_index_cond": False
+                                                                    "is_index_cond": False,
                                                                 },
                                                                 "op_name": "Hash Join",
                                                                 "output_columns": [
@@ -1208,12 +1252,12 @@ class ProjectionPushdownTest(unittest.TestCase):
                                                                                 "col_id": 0,
                                                                                 "child_ref": None,
                                                                                 "table_name": "client",
-                                                                                "col_name": "client_id"
+                                                                                "col_name": "client_id",
                                                                             }
                                                                         ],
                                                                         "udf_name": None,
                                                                         "udf_output": "False",
-                                                                        "child_ref": False
+                                                                        "child_ref": False,
                                                                     },
                                                                     {
                                                                         "aggregation": "None",
@@ -1222,18 +1266,18 @@ class ProjectionPushdownTest(unittest.TestCase):
                                                                                 "col_id": 3,
                                                                                 "child_ref": None,
                                                                                 "table_name": "dobito",
-                                                                                "col_name": "client_id"
+                                                                                "col_name": "client_id",
                                                                             }
                                                                         ],
                                                                         "udf_name": None,
                                                                         "udf_output": "False",
-                                                                        "child_ref": False
-                                                                    }
+                                                                        "child_ref": False,
+                                                                    },
                                                                 ],
                                                                 "act_children_card": 4250725128,
                                                                 "est_children_card": 457889796,
                                                                 "above_udf_filter": False,
-                                                                "is_udf_filter": False
+                                                                "is_udf_filter": False,
                                                             },
                                                             "children": [
                                                                 {
@@ -1256,20 +1300,20 @@ class ProjectionPushdownTest(unittest.TestCase):
                                                                                         "col_id": 3,
                                                                                         "child_ref": None,
                                                                                         "table_name": "dobito",
-                                                                                        "col_name": "client_id"
+                                                                                        "col_name": "client_id",
                                                                                     }
                                                                                 ],
                                                                                 "udf_name": None,
                                                                                 "udf_output": "False",
-                                                                                "child_ref": False
+                                                                                "child_ref": False,
                                                                             },
                                                                         ],
                                                                         "act_children_card": 1,
                                                                         "est_children_card": 1,
                                                                         "above_udf_filter": False,
-                                                                        "is_udf_filter": False
+                                                                        "is_udf_filter": False,
                                                                     },
-                                                                    "children": []
+                                                                    "children": [],
                                                                 },
                                                                 {
                                                                     "plan_parameters": {
@@ -1289,18 +1333,18 @@ class ProjectionPushdownTest(unittest.TestCase):
                                                                                         "col_id": 0,
                                                                                         "child_ref": None,
                                                                                         "table_name": "client",
-                                                                                        "col_name": "client_id"
+                                                                                        "col_name": "client_id",
                                                                                     }
                                                                                 ],
                                                                                 "udf_name": None,
                                                                                 "udf_output": "False",
-                                                                                "child_ref": False
+                                                                                "child_ref": False,
                                                                             }
                                                                         ],
                                                                         "act_children_card": 1278,
                                                                         "est_children_card": 413,
                                                                         "above_udf_filter": False,
-                                                                        "is_udf_filter": False
+                                                                        "is_udf_filter": False,
                                                                     },
                                                                     "children": [
                                                                         {
@@ -1325,7 +1369,7 @@ class ProjectionPushdownTest(unittest.TestCase):
                                                                                             "operator": "=",
                                                                                             "literal": "'St\u0159edo\u010desk\u00fd kraj'",
                                                                                             "is_index_cond": False,
-                                                                                            "filter_complexity": 0
+                                                                                            "filter_complexity": 0,
                                                                                         },
                                                                                         {
                                                                                             "table_name": "client",
@@ -1334,9 +1378,9 @@ class ProjectionPushdownTest(unittest.TestCase):
                                                                                             "operator": "=",
                                                                                             "literal": "'Vilma'",
                                                                                             "is_index_cond": False,
-                                                                                            "filter_complexity": 0
-                                                                                        }
-                                                                                    ]
+                                                                                            "filter_complexity": 0,
+                                                                                        },
+                                                                                    ],
                                                                                 },
                                                                                 "op_name": "Seq Scan",
                                                                                 "output_columns": [
@@ -1347,28 +1391,28 @@ class ProjectionPushdownTest(unittest.TestCase):
                                                                                                 "col_id": 0,
                                                                                                 "child_ref": None,
                                                                                                 "table_name": "client",
-                                                                                                "col_name": "client_id"
+                                                                                                "col_name": "client_id",
                                                                                             }
                                                                                         ],
                                                                                         "udf_name": None,
                                                                                         "udf_output": "False",
-                                                                                        "child_ref": False
+                                                                                        "child_ref": False,
                                                                                     }
                                                                                 ],
                                                                                 "act_children_card": 1,
                                                                                 "est_children_card": 1,
                                                                                 "above_udf_filter": False,
-                                                                                "is_udf_filter": False
+                                                                                "is_udf_filter": False,
                                                                             },
-                                                                            "children": []
+                                                                            "children": [],
                                                                         }
-                                                                    ]
-                                                                }
-                                                            ]
+                                                                    ],
+                                                                },
+                                                            ],
                                                         }
-                                                    ]
-                                                }
-                                            ]
+                                                    ],
+                                                },
+                                            ],
                                         },
                                         {
                                             "plan_parameters": {
@@ -1392,7 +1436,7 @@ class ProjectionPushdownTest(unittest.TestCase):
                                                             "operator": "!=",
                                                             "literal": "'2013-10-01_0'",
                                                             "is_index_cond": False,
-                                                            "filter_complexity": 0
+                                                            "filter_complexity": 0,
                                                         },
                                                         {
                                                             "table_name": "probehnuto_mimo_penezenku",
@@ -1401,9 +1445,9 @@ class ProjectionPushdownTest(unittest.TestCase):
                                                             "operator": ">=",
                                                             "literal": "97288",
                                                             "is_index_cond": True,
-                                                            "filter_complexity": 0
-                                                        }
-                                                    ]
+                                                            "filter_complexity": 0,
+                                                        },
+                                                    ],
                                                 },
                                                 "op_name": "Index Only Scan",
                                                 "output_columns": [
@@ -1414,27 +1458,29 @@ class ProjectionPushdownTest(unittest.TestCase):
                                                                 "col_id": 11,
                                                                 "child_ref": None,
                                                                 "table_name": "probehnuto_mimo_penezenku",
-                                                                "col_name": "client_id"
+                                                                "col_name": "client_id",
                                                             }
                                                         ],
                                                         "udf_name": None,
                                                         "udf_output": "False",
-                                                        "child_ref": False
+                                                        "child_ref": False,
                                                     },
                                                 ],
                                                 "act_children_card": 1,
                                                 "est_children_card": 1,
                                                 "above_udf_filter": False,
-                                                "is_udf_filter": False
+                                                "is_udf_filter": False,
                                             },
-                                            "children": []
-                                        }
-                                    ]
+                                            "children": [],
+                                        },
+                                    ],
                                 }
-                            ]
+                            ],
                         }
-                    ]
-                }]}
+                    ],
+                }
+            ],
+        }
 
         # set maxdiff to none
         self.maxDiff = None
@@ -1442,24 +1488,27 @@ class ProjectionPushdownTest(unittest.TestCase):
         output = apply_projection_pushdown(plan, database_statistics=dataset_stats)[0]
         self.assertEqual(expected_plan, output)
 
-        plan2 = {"plan_parameters": {
-            "act_card": 1,
-            "act_time": 617.294,
-            "act_loops": 1,
-            "est_card": 1,
-            "est_width": 32,
-            "pg_cost": 61534.5,
-            "est_loops": 1,
-            "op_name": "Finalize Aggregate",
-            "output_columns": [
-                {
-                    "aggregation": "COUNT",
-                    "columns": [], }],
-            "act_children_card": 3,
-            "est_children_card": 2,
-            "above_udf_filter": False,
-            "is_udf_filter": False
-        },
+        plan2 = {
+            "plan_parameters": {
+                "act_card": 1,
+                "act_time": 617.294,
+                "act_loops": 1,
+                "est_card": 1,
+                "est_width": 32,
+                "pg_cost": 61534.5,
+                "est_loops": 1,
+                "op_name": "Finalize Aggregate",
+                "output_columns": [
+                    {
+                        "aggregation": "COUNT",
+                        "columns": [],
+                    }
+                ],
+                "act_children_card": 3,
+                "est_children_card": 2,
+                "above_udf_filter": False,
+                "is_udf_filter": False,
+            },
             "children": [
                 {
                     "plan_parameters": {
@@ -1479,7 +1528,7 @@ class ProjectionPushdownTest(unittest.TestCase):
                             "operator": "=",
                             "literal": "'2015-02-01'",
                             "is_index_cond": False,
-                            "filter_complexity": 0
+                            "filter_complexity": 0,
                         },
                         "op_name": "Seq Scan",
                         "output_columns": [
@@ -1490,12 +1539,12 @@ class ProjectionPushdownTest(unittest.TestCase):
                                         "col_id": 7,
                                         "child_ref": None,
                                         "table_name": "probehnuto",
-                                        "col_name": "client_id"
+                                        "col_name": "client_id",
                                     }
                                 ],
                                 "udf_name": None,
                                 "udf_output": "False",
-                                "child_ref": False
+                                "child_ref": False,
                             },
                             {
                                 "aggregation": "None",
@@ -1504,41 +1553,45 @@ class ProjectionPushdownTest(unittest.TestCase):
                                         "col_id": 9,
                                         "child_ref": None,
                                         "table_name": "probehnuto",
-                                        "col_name": "kc_proklikano"
+                                        "col_name": "kc_proklikano",
                                     }
                                 ],
                                 "udf_name": None,
                                 "udf_output": "False",
-                                "child_ref": False
-                            }
+                                "child_ref": False,
+                            },
                         ],
                         "act_children_card": 1,
                         "est_children_card": 1,
                         "above_udf_filter": False,
-                        "is_udf_filter": False
+                        "is_udf_filter": False,
                     },
-                    "children": []
+                    "children": [],
                 }
-            ]}
+            ],
+        }
 
-        expected_plan2 = {"plan_parameters": {
-            "act_card": 1,
-            "act_time": 617.294,
-            "act_loops": 1,
-            "est_card": 1,
-            "est_width": 32,
-            "pg_cost": 61534.5,
-            "est_loops": 1,
-            "op_name": "Finalize Aggregate",
-            "output_columns": [
-                {
-                    "aggregation": "COUNT",
-                    "columns": [], }],
-            "act_children_card": 3,
-            "est_children_card": 2,
-            "above_udf_filter": False,
-            "is_udf_filter": False
-        },
+        expected_plan2 = {
+            "plan_parameters": {
+                "act_card": 1,
+                "act_time": 617.294,
+                "act_loops": 1,
+                "est_card": 1,
+                "est_width": 32,
+                "pg_cost": 61534.5,
+                "est_loops": 1,
+                "op_name": "Finalize Aggregate",
+                "output_columns": [
+                    {
+                        "aggregation": "COUNT",
+                        "columns": [],
+                    }
+                ],
+                "act_children_card": 3,
+                "est_children_card": 2,
+                "above_udf_filter": False,
+                "is_udf_filter": False,
+            },
             "children": [
                 {
                     "plan_parameters": {
@@ -1558,7 +1611,7 @@ class ProjectionPushdownTest(unittest.TestCase):
                             "operator": "=",
                             "literal": "'2015-02-01'",
                             "is_index_cond": False,
-                            "filter_complexity": 0
+                            "filter_complexity": 0,
                         },
                         "op_name": "Seq Scan",
                         "output_columns": [
@@ -1569,24 +1622,28 @@ class ProjectionPushdownTest(unittest.TestCase):
                                         "col_id": 7,
                                         "child_ref": None,
                                         "table_name": "probehnuto",
-                                        "col_name": "client_id"
+                                        "col_name": "client_id",
                                     }
                                 ],
                                 "udf_name": None,
                                 "udf_output": "False",
-                                "child_ref": False
+                                "child_ref": False,
                             }
                         ],
                         "act_children_card": 1,
                         "est_children_card": 1,
                         "above_udf_filter": False,
-                        "is_udf_filter": False
+                        "is_udf_filter": False,
                     },
-                    "children": []
+                    "children": [],
                 }
-            ]}
+            ],
+        }
 
-        self.assertEqual(expected_plan2, apply_projection_pushdown(plan2, database_statistics=dataset_stats)[0])
+        self.assertEqual(
+            expected_plan2,
+            apply_projection_pushdown(plan2, database_statistics=dataset_stats)[0],
+        )
 
         plan3 = {
             "plan_parameters": {
@@ -1727,7 +1784,10 @@ class ProjectionPushdownTest(unittest.TestCase):
             "timeout_threshold": 180000,
             "database_id": 0,
         }
-        self.assertEqual(plan3, apply_projection_pushdown(plan3, database_statistics=dataset_stats)[0])
+        self.assertEqual(
+            plan3,
+            apply_projection_pushdown(plan3, database_statistics=dataset_stats)[0],
+        )
 
         plan4 = {
             "plan_parameters": {
@@ -1799,7 +1859,7 @@ class ProjectionPushdownTest(unittest.TestCase):
                                 "col_id": 1,
                                 "child_ref": None,
                                 "table_name": "title",
-                                'table_alias': None,
+                                "table_alias": None,
                                 "col_name": "id",
                             }
                         ],
@@ -1826,8 +1886,11 @@ class ProjectionPushdownTest(unittest.TestCase):
             "timeout_threshold": 180000,
             "database_id": 0,
         }
-        self.assertEqual(expected_plan4, apply_projection_pushdown(plan4, database_statistics=dataset_stats)[0])
+        self.assertEqual(
+            expected_plan4,
+            apply_projection_pushdown(plan4, database_statistics=dataset_stats)[0],
+        )
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

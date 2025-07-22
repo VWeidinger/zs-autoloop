@@ -10,7 +10,6 @@ from training.training.utils import recursive_to
 
 
 class WorkloadDrivenGraph:
-
     def __init__(self):
         self.labels = []
         # plan representation
@@ -26,8 +25,19 @@ class WorkloadDrivenGraph:
         self.predicate_features = []
 
 
-def plan_to_graphs(column_statistics, word_embeddings, db_statistics, feature_statistics, node, wl_graph, depth=0,
-                   parent_node_id=None, dim_word_hash=None, dim_word_emdb=None, dim_bitmaps=None):
+def plan_to_graphs(
+    column_statistics,
+    word_embeddings,
+    db_statistics,
+    feature_statistics,
+    node,
+    wl_graph,
+    depth=0,
+    parent_node_id=None,
+    dim_word_hash=None,
+    dim_word_emdb=None,
+    dim_bitmaps=None,
+):
     plan_node_id = len(wl_graph.plan_depths)
     wl_graph.plan_depths.append(depth)
 
@@ -35,14 +45,16 @@ def plan_to_graphs(column_statistics, word_embeddings, db_statistics, feature_st
 
     # add Operation, Metadata (=used tables + columns) and Sample Bitmap
     # operation
-    operation_vec = encode_one_hot('op_name', feature_statistics, plan_params['op_name'])
+    operation_vec = encode_one_hot(
+        "op_name", feature_statistics, plan_params["op_name"]
+    )
 
     # metadata (used tables)
     dim_cols, _, dim_tables, _ = extract_dimensions(feature_statistics)
 
     col_vec = np.zeros(dim_cols)
     if "output_columns" in plan_params.keys():
-        output_columns = plan_params['output_columns']
+        output_columns = plan_params["output_columns"]
         for output_column in output_columns:
             for c_idx in output_column["columns"]:
                 col_vec[c_idx["col_id"]] = 1
@@ -51,23 +63,30 @@ def plan_to_graphs(column_statistics, word_embeddings, db_statistics, feature_st
     tab_vec = np.zeros(dim_tables)
 
     if "table_id" in plan_params.keys():
-        table_id= plan_params["table_id"]
+        table_id = plan_params["table_id"]
         tab_vec[int(table_id)] = 1
 
     # parse predicates into predicate graph and fill sample vector
     predicate_idx = -1
     sample_bitmap = np.zeros(dim_bitmaps)
     if "filter" in plan_params.keys():
-        filter_column = plan_params['filter']
-        plan_sample_vec = plan_params['sample_vec']
+        filter_column = plan_params["filter"]
+        plan_sample_vec = plan_params["sample_vec"]
         assert plan_sample_vec is not None
 
-        sample_bitmap[:len(plan_sample_vec)] = plan_sample_vec
+        sample_bitmap[: len(plan_sample_vec)] = plan_sample_vec
         # check if node already exists in the graph
         # filter_node_id = fitler_node_idx.get((filter_column.operator, filter_column.column, database_id))
-        predicate_idx = parse_baseline_predicates(column_statistics, word_embeddings, db_statistics,
-                                                  feature_statistics, filter_column, wl_graph,
-                                                  dim_word_hash=dim_word_hash, dim_word_emdb=dim_word_emdb)
+        predicate_idx = parse_baseline_predicates(
+            column_statistics,
+            word_embeddings,
+            db_statistics,
+            feature_statistics,
+            filter_column,
+            wl_graph,
+            dim_word_hash=dim_word_hash,
+            dim_word_emdb=dim_word_emdb,
+        )
 
     plan_feat_vec = np.concatenate([operation_vec, col_vec, tab_vec, sample_bitmap])
     wl_graph.plan_features.append(plan_feat_vec)
@@ -82,34 +101,60 @@ def plan_to_graphs(column_statistics, word_embeddings, db_statistics, feature_st
     # continue recursively
     if "children" in node.keys():
         for c in node["children"]:
-            plan_to_graphs(column_statistics, word_embeddings, db_statistics, feature_statistics, c, wl_graph,
-                           depth=depth + 1, parent_node_id=plan_node_id, dim_word_hash=dim_word_hash,
-                           dim_word_emdb=dim_word_emdb, dim_bitmaps=dim_bitmaps)
+            plan_to_graphs(
+                column_statistics,
+                word_embeddings,
+                db_statistics,
+                feature_statistics,
+                c,
+                wl_graph,
+                depth=depth + 1,
+                parent_node_id=plan_node_id,
+                dim_word_hash=dim_word_hash,
+                dim_word_emdb=dim_word_emdb,
+                dim_bitmaps=dim_bitmaps,
+            )
 
 
 def extract_dimensions(feature_statistics, extended=False):
-    dim_pred_op = feature_statistics['operator']['no_vals']
-    dim_ops = feature_statistics['op_name']['no_vals']
-    dim_cols = max(int(feature_statistics['col_id']['max']), int(feature_statistics['col_id']['max'])) + 1
-    dim_tables = int(feature_statistics['table_id']['max']) + 1
+    dim_pred_op = feature_statistics["operator"]["no_vals"]
+    dim_ops = feature_statistics["op_name"]["no_vals"]
+    dim_cols = (
+        max(
+            int(feature_statistics["col_id"]["max"]),
+            int(feature_statistics["col_id"]["max"]),
+        )
+        + 1
+    )
+    dim_tables = int(feature_statistics["table_id"]["max"]) + 1
     if extended:
-        dim_joins = feature_statistics['join']['no_vals']
-        dim_aggs = feature_statistics['aggregation']['no_vals']
+        dim_joins = feature_statistics["join"]["no_vals"]
+        dim_aggs = feature_statistics["aggregation"]["no_vals"]
         return dim_cols, dim_ops, dim_tables, dim_pred_op, dim_joins, dim_aggs
 
     return dim_cols, dim_ops, dim_tables, dim_pred_op
 
 
 def encode_one_hot(feature_name, feature_statistics, v):
-    hot_idx = feature_statistics[feature_name]['value_dict'][v]
-    no_feats = feature_statistics[feature_name]['no_vals']
+    hot_idx = feature_statistics[feature_name]["value_dict"][v]
+    no_feats = feature_statistics[feature_name]["no_vals"]
     one_hot_vec = np.zeros(no_feats)
     one_hot_vec[hot_idx] = 1
     return one_hot_vec
 
 
-def parse_baseline_predicates(column_statistics, word_embeddings, db_statistics, feature_statistics, filter_column,
-                              wl_graph, depth=0, parent_predicate=None, dim_word_hash=None, dim_word_emdb=None):
+def parse_baseline_predicates(
+    column_statistics,
+    word_embeddings,
+    db_statistics,
+    feature_statistics,
+    filter_column,
+    wl_graph,
+    depth=0,
+    parent_predicate=None,
+    dim_word_hash=None,
+    dim_word_emdb=None,
+):
     filter_node_id = len(wl_graph.predicate_depths)
     wl_graph.predicate_depths.append(depth)
 
@@ -123,8 +168,15 @@ def parse_baseline_predicates(column_statistics, word_embeddings, db_statistics,
     if filter_column["operator"] in {str(LogicalOperator.AND), str(LogicalOperator.OR)}:
         wl_graph.predicate_features.append([0 for _ in range(10)])
     else:
-        pred_feat_vec = encode_predicate(column_statistics, db_statistics, dim_word_emdb, dim_word_hash,
-                                         feature_statistics, filter_column, word_embeddings)
+        pred_feat_vec = encode_predicate(
+            column_statistics,
+            db_statistics,
+            dim_word_emdb,
+            dim_word_hash,
+            feature_statistics,
+            filter_column,
+            word_embeddings,
+        )
         wl_graph.predicate_features.append(pred_feat_vec)
 
     if parent_predicate is not None:
@@ -135,45 +187,67 @@ def parse_baseline_predicates(column_statistics, word_embeddings, db_statistics,
 
     if "children" in filter_column.keys():
         for c in filter_column["children"]:
-            parse_baseline_predicates(column_statistics, word_embeddings, db_statistics, feature_statistics, c,
-                                      wl_graph, depth=depth + 1, parent_predicate=filter_node_id,
-                                      dim_word_hash=dim_word_hash, dim_word_emdb=dim_word_emdb)
+            parse_baseline_predicates(
+                column_statistics,
+                word_embeddings,
+                db_statistics,
+                feature_statistics,
+                c,
+                wl_graph,
+                depth=depth + 1,
+                parent_predicate=filter_node_id,
+                dim_word_hash=dim_word_hash,
+                dim_word_emdb=dim_word_emdb,
+            )
 
     return filter_node_id
 
 
-def encode_predicate(column_statistics, db_statistics, dim_word_emdb, dim_word_hash, feature_statistics, filter_column,
-                     word_embeddings):
+def encode_predicate(
+    column_statistics,
+    db_statistics,
+    dim_word_emdb,
+    dim_word_hash,
+    feature_statistics,
+    filter_column,
+    word_embeddings,
+):
     dim_cols, _, _, dim_pred_op = extract_dimensions(feature_statistics)
     col_vec = np.zeros(dim_cols)
     col_vec[filter_column["col_id"]] = 1
-    operation_vec = encode_one_hot('operator', feature_statistics, filter_column["operator"])
+    operation_vec = encode_one_hot(
+        "operator", feature_statistics, filter_column["operator"]
+    )
     # find out how to encode the column
     col_name = db_statistics["column_stats"][filter_column["col_id"]]["attname"]
     table_name = db_statistics["column_stats"][filter_column["col_id"]]["tablename"]
     col_stats = column_statistics[table_name][col_name]
     literal_vec = np.zeros(dim_word_emdb + dim_word_hash)
-    if filter_column["operator"] not in {'IS NULL', 'IS NOT NULL'}:
-        if col_stats['data_type'] in {'float', 'int'}:
+    if filter_column["operator"] not in {"IS NULL", "IS NOT NULL"}:
+        if col_stats["data_type"] in {"float", "int"}:
             assert filter_column["literal"] is not None
             # cast literal
-            if  col_stats['data_type'] == 'float':
+            if col_stats["data_type"] == "float":
                 filter_column["literal"] = float(filter_column["literal"])
-            elif col_stats['data_type'] == 'int':
+            elif col_stats["data_type"] == "int":
                 filter_column["literal"] = int(float(filter_column["literal"]))
             else:
                 raise ValueError(f"Unknown column type {col_stats['data_type']}")
-            val_enc = (filter_column["literal"] - col_stats['min'])
-            if col_stats['max'] - col_stats['min'] > 0:
-                val_enc /= (col_stats['max'] - col_stats['min'])
+            val_enc = filter_column["literal"] - col_stats["min"]
+            if col_stats["max"] - col_stats["min"] > 0:
+                val_enc /= col_stats["max"] - col_stats["min"]
             literal_vec[0] = val_enc
-        elif col_stats['data_type'] in {'categorical', 'misc'}:
+        elif col_stats["data_type"] in {"categorical", "misc"}:
             str_words = [filter_column["literal"]]
-            if filter_column["operator"] in {'LIKE', 'NOT LIKE'}:
-                str_words = [w.strip() for w in filter_column["literal"].split('%') if len(w.strip()) > 0]
-            elif filter_column["operator"] in {'IN'}:
+            if filter_column["operator"] in {"LIKE", "NOT LIKE"}:
+                str_words = [
+                    w.strip()
+                    for w in filter_column["literal"].split("%")
+                    if len(w.strip()) > 0
+                ]
+            elif filter_column["operator"] in {"IN"}:
                 str_words = filter_column["literal"].split(",")
-            str_words = [f'{col_name}_{w}' for w in str_words]
+            str_words = [f"{col_name}_{w}" for w in str_words]
 
             # average of word embeddings and hashed value representation
             no_words = 0
@@ -190,9 +264,16 @@ def encode_predicate(column_statistics, db_statistics, dim_word_emdb, dim_word_h
     return np.concatenate([col_vec, operation_vec, literal_vec])
 
 
-def baseline_plan_collator(plans, feature_statistics=None, db_statistics=None, column_statistics=None,
-                           word_embeddings=None, dim_word_hash=None, dim_word_emdb=None,
-                           dim_bitmaps=None):
+def baseline_plan_collator(
+    plans,
+    feature_statistics=None,
+    db_statistics=None,
+    column_statistics=None,
+    word_embeddings=None,
+    dim_word_hash=None,
+    dim_word_emdb=None,
+    dim_bitmaps=None,
+):
     """
     Combines physical plans into a large graph that can be fed into ML models.
     :return:
@@ -222,10 +303,19 @@ def baseline_plan_collator(plans, feature_statistics=None, db_statistics=None, c
         selectivity_list += p["selectivity"]
         scan_op_list += p["scan_op"]
         join_op_list += p["join_op"]
-        graph_depth_list += [0] # TODO: compute real graph depths
+        graph_depth_list += [0]  # TODO: compute real graph depths
 
-        plan_to_graphs(column_statistics, word_embeddings, db_statistics[0], feature_statistics, p, wl_graph,
-                       dim_word_hash=dim_word_hash, dim_word_emdb=dim_word_emdb, dim_bitmaps=dim_bitmaps)
+        plan_to_graphs(
+            column_statistics,
+            word_embeddings,
+            db_statistics[0],
+            feature_statistics,
+            p,
+            wl_graph,
+            dim_word_hash=dim_word_hash,
+            dim_word_emdb=dim_word_emdb,
+            dim_bitmaps=dim_bitmaps,
+        )
 
     pred_graph, plan_pred_ids, plan_pred_ops, pred_feats = predicate_graph(wl_graph)
     features, plan_graph, plan_dict = create_plan_graph(wl_graph)
@@ -239,7 +329,7 @@ def baseline_plan_collator(plans, feature_statistics=None, db_statistics=None, c
         u_node_id, d_u = plan_dict[plan_id]
         plan_pred_mapping.append([d_u, u_node_id, pred_id, pred_op])
 
-    features['pred'] = pred_feats
+    features["pred"] = pred_feats
 
     features = tensorize_feats(features)
 
@@ -250,7 +340,21 @@ def baseline_plan_collator(plans, feature_statistics=None, db_statistics=None, c
 
     plan_pred_mapping = torch.from_numpy(np.array(plan_pred_mapping, dtype=np.int64))
 
-    return labels, plan_graph, features, pred_graph, plan_pred_mapping, sample_idxs, sql_statements, hints, selectivity_list, scan_op_list, join_op_list, num_tables_list, graph_depth_list
+    return (
+        labels,
+        plan_graph,
+        features,
+        pred_graph,
+        plan_pred_mapping,
+        sample_idxs,
+        sql_statements,
+        hints,
+        selectivity_list,
+        scan_op_list,
+        join_op_list,
+        num_tables_list,
+        graph_depth_list,
+    )
 
 
 def tensorize_feats(features):
@@ -279,18 +383,20 @@ def create_plan_graph(wl_graph):
     # If only single plan nodes exist, create dummy graph with a self-pointing node and an empty edge type
     if len(wl_graph.plan_edges) == 0:
         for node_key, (node_id, d) in plan_dict.items():
-            data_dict[(f'plan{d}', '', f'plan{d}')].append((node_id, node_id))
+            data_dict[(f"plan{d}", "", f"plan{d}")].append((node_id, node_id))
     else:
         for u, v in wl_graph.plan_edges:
             u_node_id, d_u = plan_dict[u]
             v_node_id, d_v = plan_dict[v]
             assert d_v < d_u
-            data_dict[(f'plan{d_u}', 'intra_plan', f'plan{d_v}')].append((u_node_id, v_node_id))
-    num_nodes_dict = {f'plan{d}': nodes_per_depth[d] for d in range(max_depth + 1)}
+            data_dict[(f"plan{d_u}", "intra_plan", f"plan{d_v}")].append(
+                (u_node_id, v_node_id)
+            )
+    num_nodes_dict = {f"plan{d}": nodes_per_depth[d] for d in range(max_depth + 1)}
     features = collections.defaultdict(list)
     for u, plan_feat in enumerate(wl_graph.plan_features):
         u_node_id, d_u = plan_dict[u]
-        features[f'plan{d_u}'].append(plan_feat)
+        features[f"plan{d_u}"].append(plan_feat)
     assert data_dict, "data_dict for plan graph is empty"
     graph = dgl.heterograph(data_dict, num_nodes_dict=num_nodes_dict)
     graph.max_depth = max_depth
@@ -303,7 +409,12 @@ def predicate_graph(wl_graph):
     pred_feats = list()
     # to maintain mapping of predicates to plan_nodes
     for pred_id, (pred_op, d, f) in enumerate(
-            zip(wl_graph.predicate_operators, wl_graph.predicate_depths, wl_graph.predicate_features)):
+        zip(
+            wl_graph.predicate_operators,
+            wl_graph.predicate_depths,
+            wl_graph.predicate_features,
+        )
+    ):
         pred_dict[pred_id] = (preds_no[pred_op], pred_op, d)
         preds_no[pred_op] += 1
         if pred_op == 0:
@@ -341,12 +452,14 @@ def predicate_graph(wl_graph):
             u_node_t = pred_node_type(u_pred_op)
             v_node_t = pred_node_type(v_pred_op)
 
-            data_dict[(u_node_t, f'{v_node_t}_d{v_depth}', v_node_t)].append((u_node_id, v_node_id))
+            data_dict[(u_node_t, f"{v_node_t}_d{v_depth}", v_node_t)].append(
+                (u_node_id, v_node_id)
+            )
 
     num_nodes_dict = {
-        'pred': preds_no[0],
-        'and': preds_no[1],
-        'or': preds_no[-1],
+        "pred": preds_no[0],
+        "and": preds_no[1],
+        "or": preds_no[-1],
     }
     assert data_dict, "predicate_graph dictionary is empty"
     graph = dgl.heterograph(data_dict, num_nodes_dict=num_nodes_dict)
@@ -355,8 +468,22 @@ def predicate_graph(wl_graph):
 
 
 def plan_batch_to(batch, device, label_norm):
-    #label, plan_graph, features, pred_graph, plan_pred_mapping, sample_plan_idxs = batch
-    labels, plan_graph, features, pred_graph, plan_pred_mapping, sample_idxs, sql_statements, hints, selectivity_list, scan_op_list, join_op_list, num_tables_list, graph_depth_list = batch
+    # label, plan_graph, features, pred_graph, plan_pred_mapping, sample_plan_idxs = batch
+    (
+        labels,
+        plan_graph,
+        features,
+        pred_graph,
+        plan_pred_mapping,
+        sample_idxs,
+        sql_statements,
+        hints,
+        selectivity_list,
+        scan_op_list,
+        join_op_list,
+        num_tables_list,
+        graph_depth_list,
+    ) = batch
     # graph, features, label = batch
     recursive_to(features, device)
     recursive_to(labels, device)
@@ -366,15 +493,26 @@ def plan_batch_to(batch, device, label_norm):
     plan_graph = plan_graph.to(device)
     pred_graph = pred_graph.to(device)
 
-    return (plan_graph, features, pred_graph, plan_pred_mapping), labels, sample_idxs, sql_statements, hints, selectivity_list, scan_op_list, join_op_list, num_tables_list, graph_depth_list
+    return (
+        (plan_graph, features, pred_graph, plan_pred_mapping),
+        labels,
+        sample_idxs,
+        sql_statements,
+        hints,
+        selectivity_list,
+        scan_op_list,
+        join_op_list,
+        num_tables_list,
+        graph_depth_list,
+    )
 
 
 def pred_node_type(pred_op):
     if pred_op == 1:
-        return 'and'
+        return "and"
     elif pred_op == -1:
-        return 'or'
+        return "or"
     elif pred_op == 0:
-        return 'pred'
+        return "pred"
     else:
         raise NotImplementedError

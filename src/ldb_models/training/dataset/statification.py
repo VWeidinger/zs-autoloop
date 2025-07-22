@@ -5,8 +5,13 @@ import numpy as np
 from tabulate import tabulate
 
 
-def stratify_plans(plans: List[Dict], max_runtime_ms: int, output_identifier_hint: str, print_distr_stats: bool = False,
-                   shuffle_before: bool = True):
+def stratify_plans(
+    plans: List[Dict],
+    max_runtime_ms: int,
+    output_identifier_hint: str,
+    print_distr_stats: bool = False,
+    shuffle_before: bool = True,
+):
     """
     Stratify the plans by runtime
     :param plans: list of plans
@@ -29,7 +34,7 @@ def stratify_plans(plans: List[Dict], max_runtime_ms: int, output_identifier_hin
         random.Random(0).shuffle(plans)
 
     # get the runtimes
-    runtimes_s = np.array([p['plan_runtime_ms'] / 1000 for p in plans])
+    runtimes_s = np.array([p["plan_runtime_ms"] / 1000 for p in plans])
 
     # get the number of bins
     no_bins = 30
@@ -58,15 +63,17 @@ def stratify_plans(plans: List[Dict], max_runtime_ms: int, output_identifier_hin
         # keep at least 10 plans
         # keep at least 10% of the plans of the largest bin
         # keep at least min_no_plans_per_bin
-        num_plans_to_keep = min(max([min_no_plans_per_bin, int(0.1 * max_no_plans_per_bin), 10]),
-                                len(plans_per_bin[i]))
+        num_plans_to_keep = min(
+            max([min_no_plans_per_bin, int(0.1 * max_no_plans_per_bin), 10]),
+            len(plans_per_bin[i]),
+        )
 
         plans = plans_per_bin[i]
 
         # extract num loops and num branches
         num_joins = []
         for p in plans:
-            num_joins.append(p['num_tables'] - 1)
+            num_joins.append(p["num_tables"] - 1)
 
         plans_per_bin[i] = plans[:num_plans_to_keep]
         no_plans_per_bin_balanced.append(num_plans_to_keep)
@@ -80,15 +87,25 @@ def stratify_plans(plans: List[Dict], max_runtime_ms: int, output_identifier_hin
     for i in range(no_bins):
         plans.extend(plans_per_bin[i])
 
-    assert len(bin_edges) == len(no_plans_per_bin) == len(
-        no_plans_per_bin_balanced), f"Lengths do not match: {len(bin_edges)}, {len(no_plans_per_bin)}, {len(no_plans_per_bin_balanced)}"
+    assert len(bin_edges) == len(no_plans_per_bin) == len(no_plans_per_bin_balanced), (
+        f"Lengths do not match: {len(bin_edges)}, {len(no_plans_per_bin)}, {len(no_plans_per_bin_balanced)}"
+    )
 
     random.Random(0).shuffle(plans)
 
-    print(f'Balancing of dataset by runtimes: {orig_num_plans} -> {len(plans)} ({output_identifier_hint})')
+    print(
+        f"Balancing of dataset by runtimes: {orig_num_plans} -> {len(plans)} ({output_identifier_hint})"
+    )
     if print_distr_stats:
-        tabulate_data = zip(bin_edges, no_plans_per_bin, no_plans_per_bin_balanced, joins_perc)
-        head = ['Bin edges', 'No plans per bin', 'No plans per bin (balanced)', 'Avg. Num Joins']
+        tabulate_data = zip(
+            bin_edges, no_plans_per_bin, no_plans_per_bin_balanced, joins_perc
+        )
+        head = [
+            "Bin edges",
+            "No plans per bin",
+            "No plans per bin (balanced)",
+            "Avg. Num Joins",
+        ]
         print(tabulate(tabulate_data, headers=head))
         print(f"Overall joins: {np.mean(joins_overall):.3f}")
 

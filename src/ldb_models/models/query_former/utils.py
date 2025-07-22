@@ -9,7 +9,7 @@ def floyd_warshall_transform(adjacency_matrix: np.ndarray) -> np.ndarray:
     """This transforms the adjacency matrix into a distance matrix using the Floyd-Warshall algorithm."""
     num_rows, num_cols = adjacency_matrix.shape
     assert num_rows == num_cols
-    transformed_matrix = adjacency_matrix.copy().astype('long')
+    transformed_matrix = adjacency_matrix.copy().astype("long")
     for i in range(num_rows):
         for j in range(num_cols):
             if i == j:
@@ -20,8 +20,10 @@ def floyd_warshall_transform(adjacency_matrix: np.ndarray) -> np.ndarray:
     for k in range(num_rows):
         for i in range(num_rows):
             for j in range(num_rows):
-                transformed_matrix[i][j] = min(transformed_matrix[i][j],
-                                               transformed_matrix[i][k] + transformed_matrix[k][j])
+                transformed_matrix[i][j] = min(
+                    transformed_matrix[i][j],
+                    transformed_matrix[i][k] + transformed_matrix[k][j],
+                )
     return transformed_matrix
 
 
@@ -31,12 +33,14 @@ class QueryFormerBatch:
     node_features: Tensor
     node_heights: Tensor
 
-    def __init__(self,
-                 attention_bias: Tensor,
-                 node_distances: Tensor,
-                 node_heights: Tensor,
-                 node_features: Tensor,
-                 labels: object = None) -> None:
+    def __init__(
+        self,
+        attention_bias: Tensor,
+        node_distances: Tensor,
+        node_heights: Tensor,
+        node_features: Tensor,
+        labels: object = None,
+    ) -> None:
         super(QueryFormerBatch, self).__init__()
         self.node_heights = node_heights
         self.node_features = node_features
@@ -80,7 +84,7 @@ def pad_rel_pos_unsqueeze(x, padlen):
 def pad_attn_bias_unsqueeze(x, padlen):
     xlen = x.size(0)
     if xlen < padlen:
-        new_x = x.new_zeros([padlen, padlen], dtype=x.dtype).fill_(float('-inf'))
+        new_x = x.new_zeros([padlen, padlen], dtype=x.dtype).fill_(float("-inf"))
         new_x[:xlen, :xlen] = x
         new_x[xlen:, :xlen] = 0
         x = new_x
@@ -92,20 +96,25 @@ def collator(batch: List[Tuple[dict]]) -> Tuple[QueryFormerBatch, Tuple]:
     labels = batch[1]
 
     # Get features / model inputs
-    node_features = torch.cat([s['features'] for s in batch[0]])
-    attention_bias = torch.cat([s['attention_bias'] for s in batch[0]])
-    relative_positions = torch.cat([s['rel_pos'] for s in batch[0]])
-    node_heights = torch.cat([s['node_heights'] for s in batch[0]])
-    return QueryFormerBatch(attention_bias, relative_positions, node_heights, node_features), labels
+    node_features = torch.cat([s["features"] for s in batch[0]])
+    attention_bias = torch.cat([s["attention_bias"] for s in batch[0]])
+    relative_positions = torch.cat([s["rel_pos"] for s in batch[0]])
+    node_heights = torch.cat([s["node_heights"] for s in batch[0]])
+    return QueryFormerBatch(
+        attention_bias, relative_positions, node_heights, node_features
+    ), labels
 
 
 class TreeNode:
-    def __init__(self, operator_type_id: int,
-                 filter_info: np.ndarray,
-                 filter_mask: np.ndarray,
-                 sample_bitmap_vec: np.ndarray,
-                 histogram_info: np.ndarray,
-                 table_name: int):
+    def __init__(
+        self,
+        operator_type_id: int,
+        filter_info: np.ndarray,
+        filter_mask: np.ndarray,
+        sample_bitmap_vec: np.ndarray,
+        histogram_info: np.ndarray,
+        table_name: int,
+    ):
         self.operator_type_id = operator_type_id
         self.encoded_filter_info = filter_info
         self.filter_mask = filter_mask
@@ -121,25 +130,33 @@ class TreeNode:
         self.children.append(tree_node)
 
     def __str__(self):
-        return '{} with {}, {}, children'.format(self.operator_type_id,
-                                                 self.encoded_filter_info,
-                                                 len(self.children))
+        return "{} with {}, {}, children".format(
+            self.operator_type_id, self.encoded_filter_info, len(self.children)
+        )
 
     def __repr__(self):
         return self.__str__()
 
     def featurize(self) -> np.ndarray:
-        output = np.concatenate([np.array(self.operator_type_id).reshape(1),
-                                 self.encoded_filter_info.flatten(),
-                                 self.filter_mask,
-                                 self.histogram_info.flatten(),
-                                 np.array(self.table_name).reshape(1),
-                                 self.sample_bitmap_vec])
+        output = np.concatenate(
+            [
+                np.array(self.operator_type_id).reshape(1),
+                self.encoded_filter_info.flatten(),
+                self.filter_mask,
+                self.histogram_info.flatten(),
+                np.array(self.table_name).reshape(1),
+                self.sample_bitmap_vec,
+            ]
+        )
         return output
 
     @staticmethod
     def print_nested(node, indent=0):
-        print('--' * indent + '{} with {} and {}, {} childs'.format(node.nodeType, node.filter, node.join_str,
-                                                                    len(node.children)))
+        print(
+            "--" * indent
+            + "{} with {} and {}, {} childs".format(
+                node.nodeType, node.filter, node.join_str, len(node.children)
+            )
+        )
         for k in node.children:
             TreeNode.print_nested(k, indent + 1)

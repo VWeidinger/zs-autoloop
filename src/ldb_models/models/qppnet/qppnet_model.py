@@ -11,15 +11,17 @@ from training.training.operator_tree import OperatorTree
 
 
 class NeuralUnit(nn.Module):
-    """ Neural Unit that covers all operators """
-    def __init__(self,
-                 node_type: str,
-                 features: list,
-                 num_layers: int = 5,
-                 hidden_size: int = 128,
-                 output_dim: int = 32,
-                 feature_statistics: dict= None):
+    """Neural Unit that covers all operators"""
 
+    def __init__(
+        self,
+        node_type: str,
+        features: list,
+        num_layers: int = 5,
+        hidden_size: int = 128,
+        output_dim: int = 32,
+        feature_statistics: dict = None,
+    ):
         super().__init__()
 
         # Compute input sizes. As One-Hot-encoding is applied, this depends on the feature_statistics.
@@ -44,19 +46,25 @@ class NeuralUnit(nn.Module):
         if node_type == "Bitmap Heap Scan":
             input_dim = input_dim + output_dim
 
-        #print(node_type, len(features))
-        print(f"Initializing neural unit for {node_type} "
-              f"with input_dim {input_dim} "
-              f"and output_dim: {output_dim}")
+        # print(node_type, len(features))
+        print(
+            f"Initializing neural unit for {node_type} "
+            f"with input_dim {input_dim} "
+            f"and output_dim: {output_dim}"
+        )
 
         self.node_type = node_type
-        self.dense_block = self.build_block(num_layers=num_layers,
-                                            hidden_size=hidden_size,
-                                            output_size=output_dim,
-                                            input_dim=input_dim)
+        self.dense_block = self.build_block(
+            num_layers=num_layers,
+            hidden_size=hidden_size,
+            output_size=output_dim,
+            input_dim=input_dim,
+        )
 
     @staticmethod
-    def build_block(num_layers: int, hidden_size: int, output_size: int, input_dim: int) -> nn.Sequential:
+    def build_block(
+        num_layers: int, hidden_size: int, output_size: int, input_dim: int
+    ) -> nn.Sequential:
         """Construct a block consisting of linear Dense layers.
         Parameters:
             num_layers  (int)
@@ -81,15 +89,21 @@ class NeuralUnit(nn.Module):
         return nn.Sequential(*dense_block)
 
     def forward(self, x):
-        """ Forward function """
+        """Forward function"""
         out = self.dense_block(x)
         return out
 
 
 class QPPNet(nn.Module):
-    """ QPPNet Architecture"""
+    """QPPNet Architecture"""
 
-    def __init__(self, model_config: QPPNetModelConfig, workload_runs: WorkloadRuns, feature_statistics: dict, label_norm=None):
+    def __init__(
+        self,
+        model_config: QPPNetModelConfig,
+        workload_runs: WorkloadRuns,
+        feature_statistics: dict,
+        label_norm=None,
+    ):
         super().__init__()
         self.device = model_config.device
         self.hidden_dim = model_config.hidden_dim_plan
@@ -101,21 +115,30 @@ class QPPNet(nn.Module):
         loss_kwargs["operator_types"] = self.operator_types
         loss_kwargs["device"] = self.device
 
-        self.loss_fxn = create_loss(model_config.loss_class_name, loss_kwargs=loss_kwargs)
+        self.loss_fxn = create_loss(
+            model_config.loss_class_name, loss_kwargs=loss_kwargs
+        )
 
         # Initialize neural units
-        self.neural_units = nn.ModuleDict({
-            operator_type: NeuralUnit(node_type=operator_type,
-                                      features=features,
-                                      feature_statistics=feature_statistics,
-                                      hidden_size=self.hidden_dim)
-            for operator_type, features in self.operator_types.items()})
+        self.neural_units = nn.ModuleDict(
+            {
+                operator_type: NeuralUnit(
+                    node_type=operator_type,
+                    features=features,
+                    feature_statistics=feature_statistics,
+                    hidden_size=self.hidden_dim,
+                )
+                for operator_type, features in self.operator_types.items()
+            }
+        )
 
         # Initialize optimizers
         self.optimizers = {}
         for operator_type, _ in self.operator_types.items():
-            self.optimizers[operator_type] = torch.optim.Adam(self.neural_units[operator_type].parameters(),
-                                                              **model_config.optimizer_kwargs)
+            self.optimizers[operator_type] = torch.optim.Adam(
+                self.neural_units[operator_type].parameters(),
+                **model_config.optimizer_kwargs,
+            )
 
         # ToDo: Initialize label normalizer
         # ToDO: Might improve the results but need to be implemented on operator level
@@ -127,10 +150,12 @@ class QPPNet(nn.Module):
     def check_for_nan(self):
         for name, param in self.named_parameters():
             if torch.isnan(param).any():
-                print(f'Parameter {name} has NaN value!')
+                print(f"Parameter {name} has NaN value!")
 
-    def forward_single_query(self, query_plan: OperatorTree) -> Tuple[torch.Tensor, torch.Tensor]:
-        """ Iteratively do a forward pass on a single query in form of an OperatorTree.
+    def forward_single_query(
+        self, query_plan: OperatorTree
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Iteratively do a forward pass on a single query in form of an OperatorTree.
         Returns the full predicted vector and the predicted runtime, which is the first element of the vector"""
         # self.check_for_nan()
 
@@ -138,7 +163,9 @@ class QPPNet(nn.Module):
         node_properties = query_plan.plan
         node_type = query_plan.node_type
         label = torch.tensor(node_properties.pop("Actual Total Time")).to(self.device)
-        assert node_type in self.operator_types.keys(), f"Unseen operator of type {node_type} faced in query"
+        assert node_type in self.operator_types.keys(), (
+            f"Unseen operator of type {node_type} faced in query"
+        )
         features = query_plan.encoded_features
 
         # Iterative forward pass
@@ -152,16 +179,24 @@ class QPPNet(nn.Module):
         pred_vector = self.neural_units[node_type](features)
 
         if torch.isnan(pred_vector).any():
-            raise ValueError(f"Prediction {pred_vector} for {features} and {node_type} has Nan values.")
+            raise ValueError(
+                f"Prediction {pred_vector} for {features} and {node_type} has Nan values."
+            )
 
         # Predicted time is assumed to be the first column
         predicted_operator_time = pred_vector[0].clone().reshape(1)
 
         # We apply a lower bound of predictions to avoid nans, as otherwise runtime can be 0 and q-error infinite.
-        predicted_operator_time = torch.max(predicted_operator_time, torch.tensor(0.1).to(self.device))
+        predicted_operator_time = torch.max(
+            predicted_operator_time, torch.tensor(0.1).to(self.device)
+        )
 
         # Compute and collect loss for current node type
-        self.loss_fxn.update_operator_loss(node_type=node_type, predicted_operator_time=predicted_operator_time, label=label)
+        self.loss_fxn.update_operator_loss(
+            node_type=node_type,
+            predicted_operator_time=predicted_operator_time,
+            label=label,
+        )
 
         return pred_vector, predicted_operator_time / 1000
 

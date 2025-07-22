@@ -8,12 +8,15 @@ from training.losses import create_loss
 
 class DACELora(nn.Module):
     """# create DACE model with lora"""
+
     def __init__(self, config: DACEModelConfig):
         super(DACELora, self).__init__()
         self.label_norm = None
         self.device = config.device
         self.config = config
-        self.loss_fxn = create_loss(config.loss_class_name, loss_kwargs = config.loss_class_kwargs)
+        self.loss_fxn = create_loss(
+            config.loss_class_name, loss_kwargs=config.loss_class_kwargs
+        )
 
         self.transformer_encoder = nn.TransformerEncoder(
             nn.TransformerEncoderLayer(
@@ -22,8 +25,10 @@ class DACELora(nn.Module):
                 nhead=1,
                 batch_first=True,
                 activation=config.transformer_activation,
-                dropout=config.transformer_dropout),
-            num_layers=1)
+                dropout=config.transformer_dropout,
+            ),
+            num_layers=1,
+        )
 
         self.node_length = config.node_length
         if config.mlp_activation == "ReLU":
@@ -35,13 +40,16 @@ class DACELora(nn.Module):
         self.mlp_hidden_dims = [128, 64, 1]
 
         self.mlp = nn.Sequential(
-            *[lora.Linear(self.node_length, self.mlp_hidden_dims[0], r=16),
-              nn.Dropout(config.mlp_dropout),
-              self.mlp_activation,
-              lora.Linear(self.mlp_hidden_dims[0], self.mlp_hidden_dims[1], r=8),
-              nn.Dropout(config.mlp_dropout),
-              self.mlp_activation,
-              lora.Linear(self.mlp_hidden_dims[1], config.output_dim, r=4)])
+            *[
+                lora.Linear(self.node_length, self.mlp_hidden_dims[0], r=16),
+                nn.Dropout(config.mlp_dropout),
+                self.mlp_activation,
+                lora.Linear(self.mlp_hidden_dims[0], self.mlp_hidden_dims[1], r=8),
+                nn.Dropout(config.mlp_dropout),
+                self.mlp_activation,
+                lora.Linear(self.mlp_hidden_dims[1], config.output_dim, r=4),
+            ]
+        )
 
         self.sigmoid = nn.Sigmoid()
 
@@ -59,7 +67,9 @@ class DACELora(nn.Module):
         self.loss_fxn.loss_masks = loss_masks
         self.loss_fxn.real_run_times = real_run_times
         preds = self.forward_batch(seq_encodings, attention_masks)
-        self.loss_fxn.preds = preds # we append the full prediction to the loss function
+        self.loss_fxn.preds = (
+            preds  # we append the full prediction to the loss function
+        )
         predicted_runtimes = preds[:, 0]
         predicted_runtimes = predicted_runtimes * self.config.max_runtime / 1000
         return predicted_runtimes

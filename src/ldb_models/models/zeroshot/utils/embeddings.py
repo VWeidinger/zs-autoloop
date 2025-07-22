@@ -8,8 +8,15 @@ class EmbeddingInitializer(nn.Module):
     models.
     """
 
-    def __init__(self, num_embeddings, max_emb_dim, p_dropout, minimize_emb_dim=True, drop_whole_embeddings=False,
-                 one_hot=False):
+    def __init__(
+        self,
+        num_embeddings,
+        max_emb_dim,
+        p_dropout,
+        minimize_emb_dim=True,
+        drop_whole_embeddings=False,
+        one_hot=False,
+    ):
         """
         :param minimize_emb_dim:
             Whether to set embedding_dim = max_emb_dim or to make embedding_dim smaller is num_embeddings is small
@@ -22,12 +29,16 @@ class EmbeddingInitializer(nn.Module):
         self.p_dropout = p_dropout
         self.drop_whole_embeddings = drop_whole_embeddings
         if minimize_emb_dim:
-            self.emb_dim = min(max_emb_dim, num_embeddings)  # Don't use a crazy huge embedding if not needed
+            self.emb_dim = min(
+                max_emb_dim, num_embeddings
+            )  # Don't use a crazy huge embedding if not needed
         else:
             self.emb_dim = max_emb_dim
         # Note: if you change the name of self.embed, or initialize an embedding elsewhere in a model,
         # the function get_optim_no_wd_on_embeddings will not work properly
-        self.embed = nn.Embedding(num_embeddings=num_embeddings, embedding_dim=self.emb_dim)
+        self.embed = nn.Embedding(
+            num_embeddings=num_embeddings, embedding_dim=self.emb_dim
+        )
         self.embed.weight.data.clamp_(-2, 2)  # fastai uses truncated normal init
         # self.embed.weight.requires_grad = True  # This is required for feature importance - ToDo: check if it has any other consequences
         if one_hot:

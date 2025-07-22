@@ -4,16 +4,21 @@ from typing import Tuple
 import numpy as np
 import torch
 
-from models.zeroshot.postgres_plan_batching import assign_additional_plan_info, postprocess_labels
+from models.zeroshot.postgres_plan_batching import (
+    assign_additional_plan_info,
+    postprocess_labels,
+)
 
 
 def is_join(plan_node: dict) -> bool:
     op_name = plan_node["plan_parameters"]["op_name"]
     return op_name in {"Hash Join", "Merge Join", "Nested Loop", "Index Nested Loop"}
 
+
 def is_scan(plan_node: dict) -> bool:
     op_name = plan_node["plan_parameters"]["op_name"]
     return op_name in {"Seq Scan", "Index Scan", "Bitmap Heap Scan", "Index Only Scan"}
+
 
 def get_table_id(table_name: str, table_statistics: list) -> int:
     """
@@ -26,7 +31,9 @@ def get_table_id(table_name: str, table_statistics: list) -> int:
     raise ValueError(f"Table {table_name} not found in table statistics")
 
 
-def extract_join_recursively(sql: str, hint: str, plan: dict, table_statistics: list, join_tables: list) -> list:
+def extract_join_recursively(
+    sql: str, hint: str, plan: dict, table_statistics: list, join_tables: list
+) -> list:
     if is_join(plan):
         join_info = plan["plan_parameters"]["join"]
 
@@ -42,22 +49,29 @@ def extract_join_recursively(sql: str, hint: str, plan: dict, table_statistics: 
         # Right side
         table_name2 = join_info["table_name2"]
         col_id2 = join_info["col_id2"]
-        col_name2 =join_info["column_name2"].replace("id_", "")
+        col_name2 = join_info["column_name2"].replace("id_", "")
 
         # Collect join information
-        join_tables.append({"left_table": table_name1,
-                            "left_col": col_id1,
-                            "right_table": table_name2,
-                            "right_col": col_id2})
+        join_tables.append(
+            {
+                "left_table": table_name1,
+                "left_col": col_id1,
+                "right_table": table_name2,
+                "right_col": col_id2,
+            }
+        )
 
     if "children" in plan.keys():
         for child in plan["children"]:
-            join_tables = extract_join_recursively(sql=sql,
-                                                   plan=child,
-                                                   hint=hint,
-                                                   table_statistics=table_statistics,
-                                                   join_tables=join_tables)
+            join_tables = extract_join_recursively(
+                sql=sql,
+                plan=child,
+                hint=hint,
+                table_statistics=table_statistics,
+                join_tables=join_tables,
+            )
     return join_tables
+
 
 def extract_join_matrix(plan: dict, table_statistics: list) -> np.ndarray:
     """
@@ -72,11 +86,13 @@ def extract_join_matrix(plan: dict, table_statistics: list) -> np.ndarray:
     table_ids = init_table_ids(table_statistics)
 
     joins = []
-    joins_infos = extract_join_recursively(sql=plan["sql"],
-                                           hint=plan["hint"],
-                                           plan=plan,
-                                           table_statistics=table_statistics,
-                                           join_tables=[])
+    joins_infos = extract_join_recursively(
+        sql=plan["sql"],
+        hint=plan["hint"],
+        plan=plan,
+        table_statistics=table_statistics,
+        join_tables=[],
+    )
     for join_info in joins_infos:
         joins.append(sorted([join_info["left_table"], join_info["right_table"]]))
 
@@ -93,36 +109,54 @@ def extract_join_matrix(plan: dict, table_statistics: list) -> np.ndarray:
     rows, cols = np.triu_indices(join_matrix.shape[0], k=1)
     result = join_matrix[rows, cols]
 
-    #assert result.sum() == plan["num_tables"] - 1, f"Expected {plan['num_tables'] - 1} joins, but got {result.sum()} for {plan}"
+    # assert result.sum() == plan["num_tables"] - 1, f"Expected {plan['num_tables'] - 1} joins, but got {result.sum()} for {plan}"
     return result
 
-def extract_filter_columns_recursively(filter_params: dict, table_name: str, predicates: list):
+
+def extract_filter_columns_recursively(
+    filter_params: dict, table_name: str, predicates: list
+):
     if "col_id" in filter_params:
-        predicates.append({"col_id": filter_params["col_id"],
-                           "col_name": filter_params["col_name"],
-                           "table_name": table_name})
+        predicates.append(
+            {
+                "col_id": filter_params["col_id"],
+                "col_name": filter_params["col_name"],
+                "table_name": table_name,
+            }
+        )
 
     if "children" in filter_params:
         for child_filter in filter_params["children"]:
             extract_filter_columns_recursively(child_filter, table_name, predicates)
 
-def extract_predicates_recursively(plan: dict, column_statistics: dict,
-                                   feature_statistics: dict, predicates: list) -> list[dict]:
+
+def extract_predicates_recursively(
+    plan: dict, column_statistics: dict, feature_statistics: dict, predicates: list
+) -> list[dict]:
     plan_params = plan.get("plan_parameters", {})
     table_name = plan_params.get("table_name")
 
-    if is_scan(plan): # When there is a scan, but no filter, we do not add any predicates
+    if is_scan(
+        plan
+    ):  # When there is a scan, but no filter, we do not add any predicates
         if "filter" in plan_params.keys():
             filter_params = plan_params["filter"]
             extract_filter_columns_recursively(filter_params, table_name, predicates)
 
     for child in plan.get("children", []):
-        extract_predicates_recursively(child, column_statistics, feature_statistics, predicates)
+        extract_predicates_recursively(
+            child, column_statistics, feature_statistics, predicates
+        )
     return predicates
 
-def extract_predicate_encoding(plan: dict, column_statistics: dict, feature_statistics: dict) -> np.ndarray:
+
+def extract_predicate_encoding(
+    plan: dict, column_statistics: dict, feature_statistics: dict
+) -> np.ndarray:
     # Extracts the predicate encoding from a plan
-    predicates = extract_predicates_recursively(plan, column_statistics, feature_statistics, predicates=[])
+    predicates = extract_predicates_recursively(
+        plan, column_statistics, feature_statistics, predicates=[]
+    )
 
     # Use only column ids and sort them - we might later implement more sophisticated encoding as written in the paper
     predicate_ids = []
@@ -136,9 +170,15 @@ def extract_predicate_encoding(plan: dict, column_statistics: dict, feature_stat
         predicate_encodings[p] = 1
     return predicate_encodings
 
-def extract_plan_encoding_recursively(plan: dict, table_statistics: list, table_ids: list,
-                                      plan_encodings: list, depth: int, max_depth: int) -> list:
 
+def extract_plan_encoding_recursively(
+    plan: dict,
+    table_statistics: list,
+    table_ids: list,
+    plan_encodings: list,
+    depth: int,
+    max_depth: int,
+) -> list:
     assert depth < max_depth, f"Plan depth exceeds maximum limit of {max_depth}"
     # Initialize plan encoding feature vectors for operator type, table access, and index encoding
     operator_vector = np.zeros(2)
@@ -149,7 +189,7 @@ def extract_plan_encoding_recursively(plan: dict, table_statistics: list, table_
 
     if is_join(plan) or is_scan(plan):
         if is_scan(plan):
-            #table_id = plan["plan_parameters"].get("table_id")
+            # table_id = plan["plan_parameters"].get("table_id")
             table_id = table_ids[plan["plan_parameters"]["table_name"]]
             table_vector[table_id] = 1
             operator_vector[:] = [0, 0]
@@ -163,7 +203,7 @@ def extract_plan_encoding_recursively(plan: dict, table_statistics: list, table_
                 join_params = join_params["children"][0]
 
             left_table_id = table_ids[join_params["table_name1"]]
-            right_table_id =  table_ids[join_params["table_name2"]]
+            right_table_id = table_ids[join_params["table_name2"]]
             table_vector[left_table_id] = 1
             table_vector[right_table_id] = 1
             operator_vector[:] = [1, 0] if op_name == "Hash Join" else [0, 1]
@@ -180,8 +220,10 @@ def extract_plan_encoding_recursively(plan: dict, table_statistics: list, table_
             plan_encodings=plan_encodings,
             table_ids=table_ids,
             max_depth=max_depth,
-            depth=depth if is_join(plan) else depth + 1)
+            depth=depth if is_join(plan) else depth + 1,
+        )
     return plan_encodings
+
 
 def _walk(curr: tuple[int], vecs: list[tuple]) -> None:
     if curr[1] == 0:
@@ -193,8 +235,12 @@ def _walk(curr: tuple[int], vecs: list[tuple]) -> None:
         _walk(curr[2], vecs)
 
 
-def _make_preorder_ids_tree(curr: dict, root_index: int = 1) -> tuple[tuple[int, int, int], int] | tuple[
-    tuple[int, tuple[int, int, int], tuple[int, int, int]], int]:
+def _make_preorder_ids_tree(
+    curr: dict, root_index: int = 1
+) -> (
+    tuple[tuple[int, int, int], int]
+    | tuple[tuple[int, tuple[int, int, int], tuple[int, int, int]], int]
+):
     """Returns a tuple containing a tree of preorder positional IDs.
 
     Returns (tree structure, largest id under me).  The tree structure itself
@@ -219,8 +265,12 @@ def _make_preorder_ids_tree(curr: dict, root_index: int = 1) -> tuple[tuple[int,
 
     # If we are here, it has to be a join
     assert is_join(curr), f"Expected join, but got {curr['plan_parameters']['op_name']}"
-    lhs, lhs_max_id = _make_preorder_ids_tree(curr=curr["children"][0], root_index=root_index + 1)
-    rhs, rhs_max_id = _make_preorder_ids_tree(curr=curr["children"][1], root_index=lhs_max_id + 1)
+    lhs, lhs_max_id = _make_preorder_ids_tree(
+        curr=curr["children"][0], root_index=root_index + 1
+    )
+    rhs, rhs_max_id = _make_preorder_ids_tree(
+        curr=curr["children"][1], root_index=lhs_max_id + 1
+    )
     return (root_index, lhs, rhs), rhs_max_id
 
 
@@ -228,19 +278,26 @@ def make_indexes(plan: dict) -> np.ndarray:
     # Join(A, B)            --> preorder_ids = (1, (2, 0, 0), (3, 0, 0))
     # Join(Join(A, B), C)   --> preorder_ids = (1, (2, 3, 4), (5, 0, 0))
     preorder_ids: tuple[int, int, int]
-    preorder_ids, _ = _make_preorder_ids_tree(plan)  # method returns (tree structure, largest id under me), tuple[tuple[int, int, int], int]
+    preorder_ids, _ = _make_preorder_ids_tree(
+        plan
+    )  # method returns (tree structure, largest id under me), tuple[tuple[int, int, int], int]
     vecs = []
     _walk(preorder_ids, vecs)
     vecs = np.asarray(vecs).reshape(-1, 1)
     return vecs
 
-def merge_features(node: dict, left_vec: np.ndarray, right_vec:np.ndarray) -> np.ndarray:
+
+def merge_features(
+    node: dict, left_vec: np.ndarray, right_vec: np.ndarray
+) -> np.ndarray:
     assert is_join(node)
     len_join_enc = 2
     # The relations under 'node' and their scan types.  Merging <=> summing.
     vec = left_vec + right_vec
     # Make sure the first part is correct.
-    vec[:len_join_enc] = [1, 0] if node["plan_parameters"]["op_name"] == "Hash Join" else [0, 1]
+    vec[:len_join_enc] = (
+        [1, 0] if node["plan_parameters"]["op_name"] == "Hash Join" else [0, 1]
+    )
     return vec
 
 
@@ -251,6 +308,7 @@ def collect_feature_vectors(node: dict, vecs: list):
 
     for c in node["children"]:
         collect_feature_vectors(c, vecs)
+
 
 def _featurize_tree(plan: dict, maximum_depth: int) -> np.ndarray:
     def _bottom_up(curr: dict) -> np.ndarray:
@@ -268,18 +326,25 @@ def _featurize_tree(plan: dict, maximum_depth: int) -> np.ndarray:
             merged_feature_vector = merge_features(curr, left_vec, right_vec)
             curr["final_feature_vector"] = merged_feature_vector
         return curr["final_feature_vector"]
+
     _bottom_up(plan)
     vecs = []
     collect_feature_vectors(node=plan, vecs=vecs)
 
     # Add a zero-vector at index 0. --- RH: No Idea why this is done. Disabling it
-    #result = np.zeros((len(vecs) + 1, vecs[0].shape[0]), dtype=np.float32)
-    #result[1:] = vecs
+    # result = np.zeros((len(vecs) + 1, vecs[0].shape[0]), dtype=np.float32)
+    # result[1:] = vecs
 
     # pad the result to the maximum depth
     result = np.array(vecs)
-    result = np.pad(result, ((0, maximum_depth - len(result)), (0, 0)), mode='constant', constant_values=0)
+    result = np.pad(
+        result,
+        ((0, maximum_depth - len(result)), (0, 0)),
+        mode="constant",
+        constant_values=0,
+    )
     return result
+
 
 def pad_indexes(data):
     lens = [vec.shape[0] for vec in data]
@@ -288,8 +353,9 @@ def pad_indexes(data):
         return np.asarray(data)
     xs = np.zeros((len(data), np.max(lens), data[0].shape[1]), dtype=np.float32)
     for i, vec in enumerate(data):
-        xs[i, :vec.shape[0], :] = vec
+        xs[i, : vec.shape[0], :] = vec
     return xs
+
 
 def init_table_ids(table_stats):
     # We can't use the table IDs from the database statistics, because they contain pg_ and sql_ tables
@@ -301,14 +367,13 @@ def init_table_ids(table_stats):
     return table_ids
 
 
-
-
-def neo_collator(batch: Tuple,
-                 db_statistics: dict,
-                 column_statistics: dict,
-                 feature_statistics: dict,
-                 max_depth = 35):
-
+def neo_collator(
+    batch: Tuple,
+    db_statistics: dict,
+    column_statistics: dict,
+    feature_statistics: dict,
+    max_depth=35,
+):
     # Get plan encodings
     sample_idxs = []
     labels = []
@@ -342,19 +407,23 @@ def neo_collator(batch: Tuple,
         # Do first query level encoding, consisting out of join graph and predicate encodings
         join_encoding = extract_join_matrix(plan=p, table_statistics=table_stats)
 
-        predicate_encoding = extract_predicate_encoding(plan=p,
-                                                        column_statistics=column_statistics,
-                                                        feature_statistics=feature_statistics)
+        predicate_encoding = extract_predicate_encoding(
+            plan=p,
+            column_statistics=column_statistics,
+            feature_statistics=feature_statistics,
+        )
         query_encoding = np.concatenate([join_encoding, predicate_encoding])
         all_query_encodings.append(query_encoding)
 
         # Next is plan level encoding. We add first native feature vectors to each node and later combine them
-        extract_plan_encoding_recursively(plan=p,
-                                          table_statistics=table_stats,
-                                          plan_encodings=[],
-                                          table_ids=init_table_ids(table_stats),
-                                          depth=0,
-                                          max_depth=max_depth)
+        extract_plan_encoding_recursively(
+            plan=p,
+            table_statistics=table_stats,
+            plan_encodings=[],
+            table_ids=init_table_ids(table_stats),
+            depth=0,
+            max_depth=max_depth,
+        )
 
         # Create 'indexes', that reflect the trees along with their ids
         indexes = make_indexes(plan=p)
@@ -370,6 +439,18 @@ def neo_collator(batch: Tuple,
     labels = postprocess_labels(labels)
     labels = torch.from_numpy(np.array(labels))
 
-    graph_depth = [0] * len(batch) # ToDo: Implement later
-    return  (all_query_encodings, all_trees, all_indexes, labels, sample_idxs, sql_statements, hints,
-             selectivity_list, scan_op_list, join_op_list, num_tables_list, graph_depth)
+    graph_depth = [0] * len(batch)  # ToDo: Implement later
+    return (
+        all_query_encodings,
+        all_trees,
+        all_indexes,
+        labels,
+        sample_idxs,
+        sql_statements,
+        hints,
+        selectivity_list,
+        scan_op_list,
+        join_op_list,
+        num_tables_list,
+        graph_depth,
+    )

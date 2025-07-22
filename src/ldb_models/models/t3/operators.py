@@ -33,8 +33,13 @@ class OperatorType(AutoNumber):
     Aggregate = ()
 
     def is_join_type(self):
-        return self in {OperatorType.HashJoin, OperatorType.IndexNLJoin, OperatorType.GroupJoin, OperatorType.MergeJoin,
-                        OperatorType.NLJoin}
+        return self in {
+            OperatorType.HashJoin,
+            OperatorType.IndexNLJoin,
+            OperatorType.GroupJoin,
+            OperatorType.MergeJoin,
+            OperatorType.NLJoin,
+        }
 
 
 @dataclass
@@ -89,25 +94,25 @@ class Operator:
         return 1
 
 
-def parse_operator_type(op: dict, dbms:str= 'pg') -> OperatorType:
-    name = op['plan_parameters']["op_name"]
+def parse_operator_type(op: dict, dbms: str = "pg") -> OperatorType:
+    name = op["plan_parameters"]["op_name"]
 
-    if dbms == 'umbra':
+    if dbms == "umbra":
         if name in ("hashjoin", "singletonjoin", "bnljoin"):
             return OperatorType.HashJoin
         elif name == "indexnljoin":
             return OperatorType.IndexNLJoin
 
     pg_name_map = {
-        'Seq Scan': OperatorType.TableScan,
-        'Index Scan': OperatorType.IdxScan,
-        'Index Only Scan': OperatorType.IdxScan,
-        'Hash Join': OperatorType.HashJoin,
-        'Index Nested Loop': OperatorType.IndexNLJoin,
-        'Nested Loop': OperatorType.NLJoin,
-        'Merge Join': OperatorType.MergeJoin,
-        'Sort': OperatorType.Sort,
-        'Aggregate': OperatorType.Aggregate,
+        "Seq Scan": OperatorType.TableScan,
+        "Index Scan": OperatorType.IdxScan,
+        "Index Only Scan": OperatorType.IdxScan,
+        "Hash Join": OperatorType.HashJoin,
+        "Index Nested Loop": OperatorType.IndexNLJoin,
+        "Nested Loop": OperatorType.NLJoin,
+        "Merge Join": OperatorType.MergeJoin,
+        "Sort": OperatorType.Sort,
+        "Aggregate": OperatorType.Aggregate,
     }
 
     # umbra operatores
@@ -132,9 +137,9 @@ def parse_operator_type(op: dict, dbms:str= 'pg') -> OperatorType:
         "analyzeplan": OperatorType.AnalyzePlan,
     }
 
-    if dbms == 'pg':
+    if dbms == "pg":
         name_map = pg_name_map
-    elif dbms == 'umbra':
+    elif dbms == "umbra":
         name_map = umbra_name_map
     else:
         raise ValueError(f"Unknown dbms {dbms}")

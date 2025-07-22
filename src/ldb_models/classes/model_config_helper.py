@@ -11,35 +11,39 @@ from training.featurizations import Featurization
 
 
 def parameterized_config(base_config_name: str, **args):
-    assert '-' not in base_config_name, "Model type should not contain underscores. This is not supported on the receiver side!"
+    assert "-" not in base_config_name, (
+        "Model type should not contain underscores. This is not supported on the receiver side!"
+    )
 
     # encode all input arguments as list
     arg_string_list = []
     for key, value in args.items():
-        if key == 'wandb_group':
+        if key == "wandb_group":
             continue
 
-        assert '-' not in key, "Arguments should not contain underscores. This is not supported on the receiver side!"
+        assert "-" not in key, (
+            "Arguments should not contain underscores. This is not supported on the receiver side!"
+        )
         if value is True:
             arg_string_list.append(key)
-        elif key == 'featurization':
+        elif key == "featurization":
             arg_string_list.append(value.__name__)
-        elif key == 'optimizer_class_name':
+        elif key == "optimizer_class_name":
             arg_string_list.append(value)
-        elif key in ['pretrained_model_dir', 'pretrained_model_name']:
+        elif key in ["pretrained_model_dir", "pretrained_model_name"]:
             # skip these
             # make sure they are passed via call argument - otherwise it will not be used on the cluster!
             continue
         else:
             arg_string_list.append(f"{key}{value}")
-    model_name = f'pm-{base_config_name}-{"-".join(arg_string_list)}'
-    if model_name.endswith('-'):
+    model_name = f"pm-{base_config_name}-{'-'.join(arg_string_list)}"
+    if model_name.endswith("-"):
         model_name = model_name[:-1]
 
     name = Name(model_name, model_name)
 
     # add a custom name in the args
-    args['name'] = name
+    args["name"] = name
 
     # get the basic model configuration
     base_configuration = get_model_config(base_config_name, args)
@@ -48,25 +52,31 @@ def parameterized_config(base_config_name: str, **args):
 
 
 def get_model_config(model_type: str, m_args: dict) -> ModelConfig:
-    if model_type.startswith('pm-'):
+    if model_type.startswith("pm-"):
         # this is a model string which is parameterized (i.e. in the string the arguments are encoded)
         return get_parameterized_model_config(model_type, m_args)
 
     classes_dict = dict()
     for name, obj in cls.__dict__.items():
-        if inspect.isclass(obj) and issubclass(obj, ModelConfig) and 'name' in obj.__annotations__:
+        if (
+            inspect.isclass(obj)
+            and issubclass(obj, ModelConfig)
+            and "name" in obj.__annotations__
+        ):
             instantiated_obj = obj()
             if instantiated_obj.name is None:
                 continue
             classes_dict[instantiated_obj.name.NAME] = obj
 
     if model_type not in classes_dict.keys():
-        raise Exception(f"Model type {model_type} not found in classes.py \n{classes_dict.keys()}")
+        raise Exception(
+            f"Model type {model_type} not found in classes.py \n{classes_dict.keys()}"
+        )
 
-    print(f'Got the following args: {m_args} for model type {model_type}')
+    print(f"Got the following args: {m_args} for model type {model_type}")
 
     # filter out empty strings
-    m_args = {k: v for k, v in m_args.items() if v != '' and k != ''}
+    m_args = {k: v for k, v in m_args.items() if v != "" and k != ""}
 
     if len(m_args) == 0:
         return classes_dict[model_type]()
@@ -81,13 +91,16 @@ def split_if_ends_with_digits(input_string):
         non_digit_part = match.group(1)
         digit_part = match.group(2)
         return non_digit_part, digit_part
-    return input_string, None  # Return the original string and None if no digits at the end
+    return (
+        input_string,
+        None,
+    )  # Return the original string and None if no digits at the end
 
 
 def get_parameterized_model_config(model_name: str, m_args: Dict) -> ModelConfig:
-    assert model_name.startswith('pm-')
+    assert model_name.startswith("pm-")
 
-    args = model_name[3:].split('-')
+    args = model_name[3:].split("-")
     model_type = args[0]
 
     args = args[1:]
@@ -100,18 +113,22 @@ def get_parameterized_model_config(model_name: str, m_args: Dict) -> ModelConfig
     for arg in args:
         # check if arg is a featurization
         if arg in featurization_dict.keys():
-            args_dict['featurization'] = featurization_dict[arg]
+            args_dict["featurization"] = featurization_dict[arg]
             continue
-        if arg in opt.__dict__.keys() or arg in ['AdamWScheduleFree']:
-            args_dict['optimizer_class_name'] = arg
+        if arg in opt.__dict__.keys() or arg in ["AdamWScheduleFree"]:
+            args_dict["optimizer_class_name"] = arg
             continue
 
         # detect str key/value arguments
-        str_keywords = ['ohem_slice_by', 'subplan_monotonicity_loss_fn','loss_class_name']
+        str_keywords = [
+            "ohem_slice_by",
+            "subplan_monotonicity_loss_fn",
+            "loss_class_name",
+        ]
         found = False
         for str_keyword in str_keywords:
             if arg.startswith(str_keyword):
-                args_dict[str_keyword] = arg[len(str_keyword):]
+                args_dict[str_keyword] = arg[len(str_keyword) :]
                 found = True
                 break
 
@@ -124,13 +141,13 @@ def get_parameterized_model_config(model_name: str, m_args: Dict) -> ModelConfig
 
         if number is not None:
             args_dict[param_name] = int(number)
-        elif param_name.endswith('False'):
-            args_dict[param_name.replace('False', '')] = False
+        elif param_name.endswith("False"):
+            args_dict[param_name.replace("False", "")] = False
         else:
             # it is a flag - make it a boolean
             args_dict[param_name] = True
 
-    args_dict['name'] = Name(model_name, model_name)
+    args_dict["name"] = Name(model_name, model_name)
 
     return get_model_config(model_type, args_dict)
 

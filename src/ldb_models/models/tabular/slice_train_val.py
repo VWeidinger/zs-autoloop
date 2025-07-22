@@ -1,7 +1,9 @@
 import numpy as np
 
 
-def slice_train_val(cap_training_samples, feature_vecs, labels, plans, val_ratio, shuffle=True):
+def slice_train_val(
+    cap_training_samples, feature_vecs, labels, plans, val_ratio, shuffle=True
+):
     feature_vecs = np.array(feature_vecs)
     labels = np.array(labels)
     no_plans = len(plans)

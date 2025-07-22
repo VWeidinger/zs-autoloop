@@ -11,17 +11,21 @@ class TreeConvolution(nn.Module):
     Value is either cost or latency.
     """
 
-    def __init__(self, model_config: NeoModelConfig,
-                 input_dims: NeoInputDims,
-                 feature_statistics: dict,
-                 max_plan_depth = 25,
-                 label_size = 1):
-
+    def __init__(
+        self,
+        model_config: NeoModelConfig,
+        input_dims: NeoInputDims,
+        feature_statistics: dict,
+        max_plan_depth=25,
+        label_size=1,
+    ):
         super(TreeConvolution, self).__init__()
 
         self.label_norm = None
         self.device = model_config.device
-        self.loss_fxn = create_loss(model_config.loss_class_name, loss_kwargs=model_config.loss_class_kwargs)
+        self.loss_fxn = create_loss(
+            model_config.loss_class_name, loss_kwargs=model_config.loss_class_kwargs
+        )
         self.max_plan_depth = max_plan_depth
 
         self.num_cols = input_dims.num_cols
@@ -30,34 +34,40 @@ class TreeConvolution(nn.Module):
         feature_size = 4024
 
         # Network to embed query features
-        self.query_mlp = nn.Sequential(nn.Linear(feature_size, 128),
-                                       nn.LayerNorm(128),
-                                       nn.LeakyReLU(),
-                                       nn.Linear(128, 64),
-                                       nn.LayerNorm(64),
-                                       nn.LeakyReLU(),
-                                       nn.Linear(64, 32))
+        self.query_mlp = nn.Sequential(
+            nn.Linear(feature_size, 128),
+            nn.LayerNorm(128),
+            nn.LeakyReLU(),
+            nn.Linear(128, 64),
+            nn.LayerNorm(64),
+            nn.LeakyReLU(),
+            nn.Linear(64, 32),
+        )
 
         # Tree Convolution
-        self.conv = nn.Sequential(TreeConv1d(32 + max_plan_depth, 512),
-                                  TreeStandardize(),
-                                  TreeAct(nn.LeakyReLU()),
-                                  TreeConv1d(512, 256),
-                                  TreeStandardize(),
-                                  TreeAct(nn.LeakyReLU()),
-                                  TreeConv1d(256, 128),
-                                  TreeStandardize(),
-                                  TreeAct(nn.LeakyReLU()),
-                                  TreeMaxPool())
+        self.conv = nn.Sequential(
+            TreeConv1d(32 + max_plan_depth, 512),
+            TreeStandardize(),
+            TreeAct(nn.LeakyReLU()),
+            TreeConv1d(512, 256),
+            TreeStandardize(),
+            TreeAct(nn.LeakyReLU()),
+            TreeConv1d(256, 128),
+            TreeStandardize(),
+            TreeAct(nn.LeakyReLU()),
+            TreeMaxPool(),
+        )
 
         # Fully connected network to predict cost
-        self.out_mlp = nn.Sequential(nn.Linear(128, 64),
-                                     nn.LayerNorm(64),
-                                     nn.LeakyReLU(),
-                                     nn.Linear(64, 32),
-                                     nn.LayerNorm(32),
-                                     nn.LeakyReLU(),
-                                     nn.Linear(32, label_size))
+        self.out_mlp = nn.Sequential(
+            nn.Linear(128, 64),
+            nn.LayerNorm(64),
+            nn.LeakyReLU(),
+            nn.Linear(64, 32),
+            nn.LayerNorm(32),
+            nn.LeakyReLU(),
+            nn.Linear(32, label_size),
+        )
         self.initialize_weights()
 
     def initialize_weights(self):
@@ -65,7 +75,7 @@ class TreeConvolution(nn.Module):
             if p.dim() > 1:
                 # Weights/embeddings.
                 nn.init.normal_(p, std=0.02)
-            elif 'bias' in name:
+            elif "bias" in name:
                 # Layer norm bias; linear bias, etc.
                 nn.init.zeros_(p)
             else:
@@ -74,10 +84,19 @@ class TreeConvolution(nn.Module):
                 nn.init.ones_(p)
 
     def forward(self, model_input: tuple):
-        out = self._forward(query_features=model_input[0], plan_encodings=model_input[1], indexes=model_input[2])
+        out = self._forward(
+            query_features=model_input[0],
+            plan_encodings=model_input[1],
+            indexes=model_input[2],
+        )
         return out
 
-    def _forward(self, query_features: torch.Tensor, plan_encodings: torch.Tensor, indexes: torch.Tensor):
+    def _forward(
+        self,
+        query_features: torch.Tensor,
+        plan_encodings: torch.Tensor,
+        indexes: torch.Tensor,
+    ):
         """Forward pass.
 
         Args:
@@ -94,13 +113,16 @@ class TreeConvolution(nn.Module):
         max_subtrees = plan_encodings.shape[-1]
 
         # Concat query and plan features
-        query_embs = query_embs.expand(query_embs.shape[0], query_embs.shape[1], max_subtrees)
+        query_embs = query_embs.expand(
+            query_embs.shape[0], query_embs.shape[1], max_subtrees
+        )
         concat = torch.cat((query_embs, plan_encodings), axis=1)
 
         # Convolution and pooling
         out = self.conv((concat, indexes))
         out = self.out_mlp(out)
         return out
+
 
 class TreeConv1d(nn.Module):
     """Conv1d adapted to tree data."""
@@ -116,10 +138,14 @@ class TreeConv1d(nn.Module):
         # trees: Tuple of (data, indexes)
         data, indexes = trees
         feats = self.weights(
-            torch.gather(data, 2, indexes.expand(-1, -1, self._in_dims).transpose(1, 2)))
-        zeros = torch.zeros((data.shape[0], self._out_dims), device=self.device).unsqueeze(2)
+            torch.gather(data, 2, indexes.expand(-1, -1, self._in_dims).transpose(1, 2))
+        )
+        zeros = torch.zeros(
+            (data.shape[0], self._out_dims), device=self.device
+        ).unsqueeze(2)
         feats = torch.cat((zeros, feats), dim=2)
         return feats, indexes
+
 
 class TreeMaxPool(nn.Module):
     def forward(self, trees):

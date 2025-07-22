@@ -16,15 +16,15 @@ def test_model_message_passing():
     # col0
     # col1 -> out_col0 -> plan0_0
     # col2 -> out_col1 -> plan1_1
-    data_dict[('column', 'col_output_col', 'output_column')] = [(0, 0), (1, 0), (2, 1)]
-    data_dict[('output_column', 'to_plan', 'plan0')] = [(0, 0)]
-    data_dict[('output_column', 'to_plan', 'plan1')] = [(1, 0)]
+    data_dict[("column", "col_output_col", "output_column")] = [(0, 0), (1, 0), (2, 1)]
+    data_dict[("output_column", "to_plan", "plan0")] = [(0, 0)]
+    data_dict[("output_column", "to_plan", "plan1")] = [(1, 0)]
     # filter_column -> plan1_0
-    data_dict[('filter_column', 'to_plan', 'plan1')] = [(0, 0)]
+    data_dict[("filter_column", "to_plan", "plan1")] = [(0, 0)]
     # table -> plan0_0
-    data_dict[('table', 'to_plan', 'plan0')] = [(0, 0)]
-    data_dict[('plan1', 'intra_plan', 'plan0')] = [(0, 0)]
-    data_dict[('plan2', 'intra_plan', 'plan1')] = [(0, 0), (1, 0)]
+    data_dict[("table", "to_plan", "plan0")] = [(0, 0)]
+    data_dict[("plan1", "intra_plan", "plan0")] = [(0, 0)]
+    data_dict[("plan2", "intra_plan", "plan1")] = [(0, 0), (1, 0)]
 
     # derive a heterograph
     g = dgl.heterograph(data_dict)
@@ -46,23 +46,23 @@ def test_model_message_passing_with_nested_predicates():
     # col0
     # col1 -> out_col0 -> plan0_0
     # col2 -> out_col1 -> plan1_1
-    data_dict[('column', 'col_output_col', 'output_column')] = [(0, 0), (1, 0), (2, 1)]
-    data_dict[('output_column', 'to_plan', 'plan0')] = [(0, 0)]
-    data_dict[('output_column', 'to_plan', 'plan1')] = [(1, 0)]
+    data_dict[("column", "col_output_col", "output_column")] = [(0, 0), (1, 0), (2, 1)]
+    data_dict[("output_column", "to_plan", "plan0")] = [(0, 0)]
+    data_dict[("output_column", "to_plan", "plan1")] = [(1, 0)]
 
     # filter_column_0, filter_column_1 -> pred_depth_1 -> pred_depth_0
-    data_dict[('filter_column', 'intra_predicate', 'logical_pred_1')] = [(0, 0), (1, 0)]
-    data_dict[('logical_pred_1', 'intra_predicate', 'logical_pred_0')] = [(0, 0)]
+    data_dict[("filter_column", "intra_predicate", "logical_pred_1")] = [(0, 0), (1, 0)]
+    data_dict[("logical_pred_1", "intra_predicate", "logical_pred_0")] = [(0, 0)]
     # filter_column_2 -> pred_depth_0
-    data_dict[('filter_column', 'intra_predicate', 'logical_pred_0')] = [(2, 0)]
-    data_dict[('logical_pred_0', 'to_plan', 'plan1')] = [(0, 0)]
+    data_dict[("filter_column", "intra_predicate", "logical_pred_0")] = [(2, 0)]
+    data_dict[("logical_pred_0", "to_plan", "plan1")] = [(0, 0)]
     # filter_column_3 -> plan0
-    data_dict[('filter_column', 'to_plan', 'plan0')] = [(3, 0)]
+    data_dict[("filter_column", "to_plan", "plan0")] = [(3, 0)]
 
     # table -> plan0_0
-    data_dict[('table', 'to_plan', 'plan0')] = [(0, 0)]
-    data_dict[('plan1', 'intra_plan', 'plan0')] = [(0, 0)]
-    data_dict[('plan2', 'intra_plan', 'plan1')] = [(0, 0), (1, 0)]
+    data_dict[("table", "to_plan", "plan0")] = [(0, 0)]
+    data_dict[("plan1", "intra_plan", "plan0")] = [(0, 0)]
+    data_dict[("plan2", "intra_plan", "plan1")] = [(0, 0), (1, 0)]
 
     # derive a heterograph
     g = dgl.heterograph(data_dict)
@@ -84,13 +84,13 @@ def test_model_message_passing_no_filters():
     # col0
     # col1 -> out_col0 -> plan0_0
     # col2 -> out_col1 -> plan1_1
-    data_dict[('column', 'col_output_col', 'output_column')] = [(0, 0), (1, 0), (2, 1)]
-    data_dict[('output_column', 'to_plan', 'plan0')] = [(0, 0)]
-    data_dict[('output_column', 'to_plan', 'plan1')] = [(1, 0)]
+    data_dict[("column", "col_output_col", "output_column")] = [(0, 0), (1, 0), (2, 1)]
+    data_dict[("output_column", "to_plan", "plan0")] = [(0, 0)]
+    data_dict[("output_column", "to_plan", "plan1")] = [(1, 0)]
     # table -> plan0_0
-    data_dict[('table', 'to_plan', 'plan0')] = [(0, 0)]
-    data_dict[('plan1', 'intra_plan', 'plan0')] = [(0, 0)]
-    data_dict[('plan2', 'intra_plan', 'plan1')] = [(0, 0), (1, 0)]
+    data_dict[("table", "to_plan", "plan0")] = [(0, 0)]
+    data_dict[("plan1", "intra_plan", "plan0")] = [(0, 0)]
+    data_dict[("plan2", "intra_plan", "plan1")] = [(0, 0), (1, 0)]
 
     # derive a heterograph
     g = dgl.heterograph(data_dict)

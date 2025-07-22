@@ -62,16 +62,31 @@ class FeatureDim(AutoNumber):
 
 
 class QualifiedFeature:
-    pipeline_time_features: dict[OperatorType : dict[OperatorStage : list[FeatureDim]]] = {
+    pipeline_time_features: dict[
+        OperatorType : dict[OperatorStage : list[FeatureDim]]
+    ] = {
         OperatorType.TableScan: {
-            OperatorStage.Scan: [FeatureDim.scan, FeatureDim.out, FeatureDim.expressions, FeatureDim.empty_output]
+            OperatorStage.Scan: [
+                FeatureDim.scan,
+                FeatureDim.out,
+                FeatureDim.expressions,
+                FeatureDim.empty_output,
+            ]
         },
-        OperatorType.InlineTable: {OperatorStage.Scan: [FeatureDim.scan, FeatureDim.out]},
-        OperatorType.PipelineBreakerScan: {OperatorStage.Scan: [FeatureDim.scan, FeatureDim.out]},
+        OperatorType.InlineTable: {
+            OperatorStage.Scan: [FeatureDim.scan, FeatureDim.out]
+        },
+        OperatorType.PipelineBreakerScan: {
+            OperatorStage.Scan: [FeatureDim.scan, FeatureDim.out]
+        },
         OperatorType.Temp: {OperatorStage.Build: [FeatureDim.sink, FeatureDim.input]},
         OperatorType.EarlyExecution: {OperatorStage.Scan: [FeatureDim.out]},
-        OperatorType.Select: {OperatorStage.PassThrough: [FeatureDim.input, FeatureDim.out]},
-        OperatorType.Map: {OperatorStage.PassThrough: [FeatureDim.input, FeatureDim.out]},
+        OperatorType.Select: {
+            OperatorStage.PassThrough: [FeatureDim.input, FeatureDim.out]
+        },
+        OperatorType.Map: {
+            OperatorStage.PassThrough: [FeatureDim.input, FeatureDim.out]
+        },
         OperatorType.MultiWayJoin: {
             OperatorStage.Build: [FeatureDim.sink, FeatureDim.input],
             OperatorStage.Scan: [FeatureDim.scan, FeatureDim.out],
@@ -79,9 +94,19 @@ class QualifiedFeature:
         OperatorType.HashJoin: {
             OperatorStage.Build: [FeatureDim.sink, FeatureDim.input],
             # during probing the size of the hash table might matter (but this is also not possible to add up :C)
-            OperatorStage.Probe: [FeatureDim.input_card, FeatureDim.right, FeatureDim.out],
+            OperatorStage.Probe: [
+                FeatureDim.input_card,
+                FeatureDim.right,
+                FeatureDim.out,
+            ],
         },
-        OperatorType.IndexNLJoin: {OperatorStage.Probe: [FeatureDim.input, FeatureDim.right_card, FeatureDim.out]},
+        OperatorType.IndexNLJoin: {
+            OperatorStage.Probe: [
+                FeatureDim.input,
+                FeatureDim.right_card,
+                FeatureDim.out,
+            ]
+        },
         OperatorType.GroupJoin: {
             OperatorStage.Build: [FeatureDim.sink, FeatureDim.input],
             OperatorStage.Probe: [
@@ -93,7 +118,10 @@ class QualifiedFeature:
         },
         OperatorType.GroupBy: {
             OperatorStage.Build: [FeatureDim.sink, FeatureDim.input],
-            OperatorStage.Scan: [FeatureDim.sink, FeatureDim.out],  # sink features seem to work better here
+            OperatorStage.Scan: [
+                FeatureDim.sink,
+                FeatureDim.out,
+            ],  # sink features seem to work better here
         },
         OperatorType.Sort: {
             OperatorStage.Build: [FeatureDim.sink, FeatureDim.input, FeatureDim.out],
@@ -108,19 +136,36 @@ class QualifiedFeature:
             OperatorStage.Build: [FeatureDim.sink, FeatureDim.input],
             OperatorStage.Scan: [FeatureDim.scan, FeatureDim.out],
         },
-        OperatorType.FileOutput: {OperatorStage.Build: [FeatureDim.sink, FeatureDim.input]},
-        OperatorType.CsvWriter: {OperatorStage.Build: [FeatureDim.sink, FeatureDim.input]},
+        OperatorType.FileOutput: {
+            OperatorStage.Build: [FeatureDim.sink, FeatureDim.input]
+        },
+        OperatorType.CsvWriter: {
+            OperatorStage.Build: [FeatureDim.sink, FeatureDim.input]
+        },
         OperatorType.AssertSingle: {OperatorStage.PassThrough: [FeatureDim.input]},
         OperatorType.EarlyProbe: {OperatorStage.PassThrough: [FeatureDim.out]},
-
         # PG Specific Operators
-        OperatorType.IdxScan: {OperatorStage.Probe: [FeatureDim.out, FeatureDim.expressions, FeatureDim.empty_output]},
+        OperatorType.IdxScan: {
+            OperatorStage.Probe: [
+                FeatureDim.out,
+                FeatureDim.expressions,
+                FeatureDim.empty_output,
+            ]
+        },
         OperatorType.NLJoin: {
             OperatorStage.Build: [FeatureDim.sink, FeatureDim.input],
-            OperatorStage.Probe: [FeatureDim.input, FeatureDim.right_card, FeatureDim.out]
+            OperatorStage.Probe: [
+                FeatureDim.input,
+                FeatureDim.right_card,
+                FeatureDim.out,
+            ],
         },
         OperatorType.MergeJoin: {
-            OperatorStage.Probe: [FeatureDim.input, FeatureDim.right_card, FeatureDim.out],
+            OperatorStage.Probe: [
+                FeatureDim.input,
+                FeatureDim.right_card,
+                FeatureDim.out,
+            ],
             OperatorStage.Build: [FeatureDim.sink, FeatureDim.input],
         },
         OperatorType.Aggregate: {
@@ -130,7 +175,10 @@ class QualifiedFeature:
     }
 
     def __init__(
-        self, operator_type: Optional[OperatorType], operator_stage: Optional[OperatorStage], feature: Feature
+        self,
+        operator_type: Optional[OperatorType],
+        operator_stage: Optional[OperatorStage],
+        feature: Feature,
     ):
         self.operator_type: Optional[OperatorType] = operator_type
         self.operator_stage: Optional[OperatorStage] = operator_stage
@@ -198,7 +246,9 @@ class QualifiedFeature:
         return result
 
     @staticmethod
-    def get_feature_lookup() -> dict[OperatorType, dict[OperatorStage, list["QualifiedFeature"]]]:
+    def get_feature_lookup() -> dict[
+        OperatorType, dict[OperatorStage, list["QualifiedFeature"]]
+    ]:
         """ """
         result = {}
         for feature in QualifiedFeature.enumerate_features():
@@ -210,7 +260,9 @@ class QualifiedFeature:
         return result
 
     def get_name(self):
-        return f"{self.operator_type.name}_{self.operator_stage.name}_{self.feature.name}"
+        return (
+            f"{self.operator_type.name}_{self.operator_stage.name}_{self.feature.name}"
+        )
 
     def __eq__(self, other: "QualifiedFeature"):
         return (
@@ -247,7 +299,11 @@ class FeatureMapper:
         input_cardinality = phase.get_input_cardinality()
         right_input_cardinality = phase.get_right_input_cardinality()
         output_size = phase.operator.output_tuple_size
-        input_size = phase.operator.input_op.output_tuple_size if phase.operator.input_op is not None else 0
+        input_size = (
+            phase.operator.input_op.output_tuple_size
+            if phase.operator.input_op is not None
+            else 0
+        )
         input_percentage = phase.get_input_percentage()
         output_percentage = phase.get_output_percentage()
         right_percentage = phase.get_right_percentage()
@@ -292,9 +348,9 @@ class FeatureMapper:
         assert len(Feature) == len(features) + len(Feature.get_global_features())
 
         result = self.get_empty_feature_vector()
-        assert (
-            len(self.get_features(phase.operator.type, phase.stage)) > 0
-        ), f"no features for {phase.operator.type.name} - {phase.stage.name}"
+        assert len(self.get_features(phase.operator.type, phase.stage)) > 0, (
+            f"no features for {phase.operator.type.name} - {phase.stage.name}"
+        )
         for f in self.get_features(phase.operator.type, phase.stage):
             value = features[f.feature]
             index = self._index_lookup[f]
@@ -325,7 +381,9 @@ class FeatureMapper:
             result.append(pipeline_vector)
         return np.vstack(result)
 
-    def get_pipeline_estimation_matrices(self, query_plan: QueryPlan) -> list[np.ndarray]:
+    def get_pipeline_estimation_matrices(
+        self, query_plan: QueryPlan
+    ) -> list[np.ndarray]:
         """
         get a feature vector for each operator in each pipeline
         build matrices by pipelines
@@ -339,10 +397,19 @@ class FeatureMapper:
             result.append(pipeline_matrix)
         return result
 
-    def explain_features(self, query_plan: QueryPlan, pipeline: Optional[int] = None, verbose: bool = False):
-        for i, pipeline_vector in enumerate(self.get_pipeline_estimation_matrix(query_plan)):
+    def explain_features(
+        self,
+        query_plan: QueryPlan,
+        pipeline: Optional[int] = None,
+        verbose: bool = False,
+    ):
+        for i, pipeline_vector in enumerate(
+            self.get_pipeline_estimation_matrix(query_plan)
+        ):
             if pipeline is None or i == pipeline:
-                print(f" Pipeline{i} (scan: {query_plan.pipelines[i].get_pipeline_scan_cardinality()} tuples)")
+                print(
+                    f" Pipeline{i} (scan: {query_plan.pipelines[i].get_pipeline_scan_cardinality()} tuples)"
+                )
                 for n, v in zip(self.get_names(), pipeline_vector):
                     if verbose or v > 0.0:
                         print(f"  {n}: {v}")
@@ -357,7 +424,9 @@ class FeatureMapper:
             if f.operator_type is None:
                 res.append(f"Global_{f.feature.name}")
             else:
-                res.append(f"{f.operator_type.name}_{f.operator_stage.name}_{f.feature.name}")
+                res.append(
+                    f"{f.operator_type.name}_{f.operator_stage.name}_{f.feature.name}"
+                )
         return res
 
     @staticmethod
@@ -375,7 +444,7 @@ class FeatureMapper:
                 result[f.operator_type.name][f.operator_stage.name] = {}
             result[f.operator_type.name][f.operator_stage.name][f.feature.name] = i
         result = json.dumps(result)
-        result= result.lower()
+        result = result.lower()
         print(result)
 
 

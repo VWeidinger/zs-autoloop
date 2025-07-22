@@ -11,6 +11,7 @@ import torch
 from collections import defaultdict
 from functools import lru_cache
 
+
 def augment_feature_stats_for_mamba(feature_statistics: Dict):
     feature_statistics["left_child_card"] = feature_statistics["est_card"]
     feature_statistics["right_child_card"] = feature_statistics["est_card"]
@@ -44,7 +45,7 @@ def augment_feature_stats_for_mamba(feature_statistics: Dict):
     }
 
     # idxcol entries
-    feature_statistics["idxcol_correlation"] = feature_statistics['correlation']
+    feature_statistics["idxcol_correlation"] = feature_statistics["correlation"]
     feature_statistics["idxcol_correlation_squared"] = {
         "type": str(FeatureType.numeric),
         "min": 0,
@@ -53,8 +54,9 @@ def augment_feature_stats_for_mamba(feature_statistics: Dict):
         "scale": 0.5,
         "center": 0.5,
     }
-    feature_statistics["idxcol_null_frac"] = feature_statistics['null_frac']
-    feature_statistics["idxcol_n_distinct"] = feature_statistics['n_distinct']
+    feature_statistics["idxcol_null_frac"] = feature_statistics["null_frac"]
+    feature_statistics["idxcol_n_distinct"] = feature_statistics["n_distinct"]
+
 
 def mamba_plan_collator(
     plans: List[Tuple],
@@ -187,7 +189,9 @@ def mamba_plan_collator(
                 feature_names=plan_featurization.JOIN_FEATURES,
             )
         except Exception as e:
-            print(f"Error applying feature scalers to join features: {e} / {join_features}")
+            print(
+                f"Error applying feature scalers to join features: {e} / {join_features}"
+            )
     else:
         join_features = np.zeros(
             (0, len(plan_featurization.JOIN_FEATURES)), dtype=np.float32
@@ -285,6 +289,7 @@ cmp_operators = [
     "BETWEEN",
 ]
 
+
 def construct_filter_flat_vector(filter: Dict):
     op_counts = defaultdict(int)
     op_on_index_count = defaultdict(int)
@@ -319,6 +324,7 @@ def get_filter_flat_vector_length():
 
 
 col_types = ["integer", "float", "character varying"]
+
 
 def construct_outcols_flat_vector(outcols: List[str], col_stats: Dict):
     total_width = 0
@@ -371,7 +377,14 @@ phys_op_scan_list = ["Seq Scan", "Index Scan", "Index Only Scan"]
 phys_op_join_list = ["Hash Join", "Merge Join", "Index Nested Loop", "Nested Loop"]
 
 
-def process_node_features(node, feature_statistics, plan_featurization, db_statistics, db_schema_info, database_id):
+def process_node_features(
+    node,
+    feature_statistics,
+    plan_featurization,
+    db_statistics,
+    db_schema_info,
+    database_id,
+):
     plan_params = node["plan_parameters"]
     phys_op = plan_params["op_name"]
 
@@ -379,11 +392,11 @@ def process_node_features(node, feature_statistics, plan_featurization, db_stati
     def get_col_stats_for_idx_name(idx_name):
         if idx_name is None:
             return None
-        
+
         if idx_name.endswith("_pkey"):
             # special case for primary key index
             col_name = find_pk_for_table(plan_params["table_name"])
-            idx_col = f'{plan_params["table_name"]}_{col_name}'
+            idx_col = f"{plan_params['table_name']}_{col_name}"
         else:
             assert idx_name.startswith("idx_"), (
                 f"Index name {idx_name} does not start with 'idx_'."
@@ -391,33 +404,48 @@ def process_node_features(node, feature_statistics, plan_featurization, db_stati
             idx_col = idx_name[4:]  # remove 'idx_' prefix
 
         for stats in db_statistics[database_id]["column_stats"]:
-            if idx_col.lower() == f'{stats["tablename"].lower()}_{stats["attname"].lower()}':
+            if (
+                idx_col.lower()
+                == f"{stats['tablename'].lower()}_{stats['attname'].lower()}"
+            ):
                 return stats
-        
-        raise ValueError(f"Column stats for index {idx_name} not found in database {database_id}.")
-    
+
+        raise ValueError(
+            f"Column stats for index {idx_name} not found in database {database_id}."
+        )
+
     @lru_cache(maxsize=1000)
-    def find_pk_for_table(table_name:str):
+    def find_pk_for_table(table_name: str):
         pk_candidates = []
-        for col_name,stats in db_schema_info[database_id]["table_col_info"][table_name].items():
-            if stats['pk']:
+        for col_name, stats in db_schema_info[database_id]["table_col_info"][
+            table_name
+        ].items():
+            if stats["pk"]:
                 pk_candidates.append(col_name)
-    
+
         # there might be composite primary keys, so we return the first one - this is a simplification
-        assert len(pk_candidates)>=1, f'Expected at least one primary key for table {table_name}, but found {len(pk_candidates)}: {pk_candidates}'
+        assert len(pk_candidates) >= 1, (
+            f"Expected at least one primary key for table {table_name}, but found {len(pk_candidates)}: {pk_candidates}"
+        )
         return pk_candidates[0]
 
     if phys_op in phys_op_scan_list:
         node_features = []
         for feature_name in plan_featurization.SCAN_FEATURES:
             if feature_name == "base_table_card":
-                base_table_card = db_statistics[database_id]["table_stats"][plan_params["table_id"]]["reltuples"]
-                enc_value = encode('est_card',{'est_card':base_table_card},feature_statistics)
+                base_table_card = db_statistics[database_id]["table_stats"][
+                    plan_params["table_id"]
+                ]["reltuples"]
+                enc_value = encode(
+                    "est_card", {"est_card": base_table_card}, feature_statistics
+                )
                 node_features.append(enc_value)
-            elif feature_name.startswith('idxcol_'):
+            elif feature_name.startswith("idxcol_"):
                 idx_name = plan_params.get("index_name", None)
                 if idx_name is not None:
-                    assert phys_op in ['Index Scan','Index Only Scan'], f'Expected index name for {phys_op}, but got {idx_name}. Plan parameters: {plan_params}'
+                    assert phys_op in ["Index Scan", "Index Only Scan"], (
+                        f"Expected index name for {phys_op}, but got {idx_name}. Plan parameters: {plan_params}"
+                    )
                     idx_col_stats = get_col_stats_for_idx_name(idx_name)
 
                     # lookup value
@@ -428,7 +456,7 @@ def process_node_features(node, feature_statistics, plan_featurization, db_stati
                         )
                         value = idx_col_stats["correlation"]
                         if value is not None:
-                            value = value ** 2
+                            value = value**2
                     else:
                         # get the value from the index column stats
                         key = feature_name[7:]  # remove 'idxcol_' prefix
@@ -437,16 +465,24 @@ def process_node_features(node, feature_statistics, plan_featurization, db_stati
                         )
                         value = idx_col_stats[key]
 
-                    if feature_name in ["idxcol_correlation",'idxcol_correlation_squared'] and value is None:
+                    if (
+                        feature_name
+                        in ["idxcol_correlation", "idxcol_correlation_squared"]
+                        and value is None
+                    ):
                         # sometimes correlation is not available, we use a safe default value (this happens if most values are null i.e. null_frac>0.95)
                         value = 0
 
                     # check if value is None, inf, ...
                     if value is None or np.isinf(value) or np.isnan(value):
-                        raise ValueError(f"Invalid value {value} for feature {feature_name} in index {idx_name}. Plan parameters: {plan_params} \n{idx_col_stats}")
+                        raise ValueError(
+                            f"Invalid value {value} for feature {feature_name} in index {idx_name}. Plan parameters: {plan_params} \n{idx_col_stats}"
+                        )
 
                 else:
-                    assert phys_op == 'Seq Scan',  f"Expected index name for {phys_op}, but got None. Plan parameters: {plan_params}"
+                    assert phys_op == "Seq Scan", (
+                        f"Expected index name for {phys_op}, but got None. Plan parameters: {plan_params}"
+                    )
                     # use a safe default value
                     if feature_name == "idxcol_correlation":
                         value = 0.5
@@ -458,17 +494,28 @@ def process_node_features(node, feature_statistics, plan_featurization, db_stati
                         value = 1.0
                     else:
                         raise ValueError(f"Unknown feature name {feature_name}.")
-                
+
                 # apply feature scaling
-                enc_value = encode(feature_name,{feature_name:value},feature_statistics)
+                enc_value = encode(
+                    feature_name, {feature_name: value}, feature_statistics
+                )
                 node_features.append(enc_value)
 
             elif feature_name == "filter_flat_vector":
-                node_features.extend(construct_filter_flat_vector(plan_params.get("filter", {})))
+                node_features.extend(
+                    construct_filter_flat_vector(plan_params.get("filter", {}))
+                )
             elif feature_name == "outcols_flat_vector":
-                node_features.extend(construct_outcols_flat_vector(plan_params.get("outcols", []), db_statistics[database_id]["column_stats"]))
+                node_features.extend(
+                    construct_outcols_flat_vector(
+                        plan_params.get("outcols", []),
+                        db_statistics[database_id]["column_stats"],
+                    )
+                )
             else:
-                node_features.append(encode(feature_name, plan_params, feature_statistics))
+                node_features.append(
+                    encode(feature_name, plan_params, feature_statistics)
+                )
         return node_features, 0  # 0 for scan nodes
 
     elif phys_op in phys_op_join_list:
@@ -476,28 +523,49 @@ def process_node_features(node, feature_statistics, plan_featurization, db_stati
         for feature_name in plan_featurization.JOIN_FEATURES:
             if feature_name == "left_child_card":
                 left_child_card = node["children"][0]["plan_parameters"]["est_card"]
-                enc_value = encode("est_card", {"est_card": left_child_card}, feature_statistics)
+                enc_value = encode(
+                    "est_card", {"est_card": left_child_card}, feature_statistics
+                )
                 node_features.append(enc_value)
             elif feature_name == "right_child_card":
                 right_child_card = node["children"][1]["plan_parameters"]["est_card"]
-                enc_value = encode("est_card", {"est_card": right_child_card}, feature_statistics)
+                enc_value = encode(
+                    "est_card", {"est_card": right_child_card}, feature_statistics
+                )
                 node_features.append(enc_value)
             elif feature_name in ["left_is_pk", "right_is_pk"]:
-                is_pk = process_primary_key(feature_name, plan_params, db_schema_info, database_id)
+                is_pk = process_primary_key(
+                    feature_name, plan_params, db_schema_info, database_id
+                )
                 node_features.append(1 if is_pk else 0)
             else:
-                node_features.append(encode(feature_name, plan_params, feature_statistics))
+                node_features.append(
+                    encode(feature_name, plan_params, feature_statistics)
+                )
         return node_features, 1  # 1 for join nodes
 
     raise NotImplementedError(f"Physical operator {phys_op} not implemented.")
 
 
 def process_primary_key(feature_name, plan_params, db_schema_info, database_id):
-    if "table_name1" not in plan_params["join"] or "table_name2" not in plan_params["join"]:
+    if (
+        "table_name1" not in plan_params["join"]
+        or "table_name2" not in plan_params["join"]
+    ):
         return False
-    join_table = plan_params["join"]["table_name1"] if feature_name == "left_is_pk" else plan_params["join"]["table_name2"]
-    join_col = plan_params["join"]["column_name1"] if feature_name == "left_is_pk" else plan_params["join"]["column_name2"]
-    return db_schema_info[database_id]["table_col_info"][join_table][join_col].get("pk", False)
+    join_table = (
+        plan_params["join"]["table_name1"]
+        if feature_name == "left_is_pk"
+        else plan_params["join"]["table_name2"]
+    )
+    join_col = (
+        plan_params["join"]["column_name1"]
+        if feature_name == "left_is_pk"
+        else plan_params["join"]["column_name2"]
+    )
+    return db_schema_info[database_id]["table_col_info"][join_table][join_col].get(
+        "pk", False
+    )
 
 
 def plan_to_graph(
@@ -523,22 +591,20 @@ def plan_to_graph(
     children = node.get("children", None)
 
     # skip all these intermediate operations
-    if (
-        "Aggregate" in phys_op or phys_op in [
-            "Sort",
-            "Hash",
-            "Limit",
-            "Materialize",
-            "Gather",
-            "Gather Merge",
-        ]
-    ):
+    if "Aggregate" in phys_op or phys_op in [
+        "Sort",
+        "Hash",
+        "Limit",
+        "Materialize",
+        "Gather",
+        "Gather Merge",
+    ]:
         # Only one child is expected
         assert children is not None and len(children) == 1, (
             f"Expected one child for {phys_op}, but got {len(children)} children."
         )
         child = children[0]
-        
+
         return plan_to_graph(
             child,
             database_id,
@@ -559,7 +625,12 @@ def plan_to_graph(
         )
 
     node_features, node_type = process_node_features(
-        node, feature_statistics, plan_featurization, db_statistics, db_schema_info, database_id
+        node,
+        feature_statistics,
+        plan_featurization,
+        db_statistics,
+        db_schema_info,
+        database_id,
     )
     if node_type == 0:
         type_local_node_id = len(scan_features_list)

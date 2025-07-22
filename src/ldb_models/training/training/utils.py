@@ -30,7 +30,7 @@ def recursive_to(obj, device):
         return obj
 
 
-def flatten_dict(d, parent_key='', sep='_'):
+def flatten_dict(d, parent_key="", sep="_"):
     """
     https://stackoverflow.com/questions/6027558/flatten-nested-dictionaries-compressing-keys
     """
@@ -65,7 +65,7 @@ def save_config(save_dict, target_dir, json_name):
     target_params_path = os.path.join(target_dir, json_name)
     print(f"Saving best params to {target_params_path}")
 
-    with open(target_params_path, 'w') as f:
+    with open(target_params_path, "w") as f:
         json.dump(save_dict, f)
 
 

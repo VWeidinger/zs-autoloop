@@ -11,12 +11,9 @@ from training.losses import create_loss
 
 
 class E2EModel(nn.Module):
-
-    def __init__(self,
-                 model_config: E2EModelConfig,
-                 input_dims: InputDims,
-                 device='cpu'):
-
+    def __init__(
+        self, model_config: E2EModelConfig, input_dims: InputDims, device="cpu"
+    ):
         super().__init__()
 
         self.hidden_dim = model_config.hidden_dim_pred + model_config.hidden_dim_plan
@@ -29,48 +26,65 @@ class E2EModel(nn.Module):
 
         # original architecture by Sun et al.
         if isinstance(model_config, E2EModelConfig):
-            self.tree_models = nn.ModuleDict({
-                'and': PoolingConv(PoolingType.MIN),
-                'or': PoolingConv(PoolingType.MAX),
-                'intra_plan': LstmConv(hidden_dim=self.hidden_dim)
-            })
+            self.tree_models = nn.ModuleDict(
+                {
+                    "and": PoolingConv(PoolingType.MIN),
+                    "or": PoolingConv(PoolingType.MAX),
+                    "intra_plan": LstmConv(hidden_dim=self.hidden_dim),
+                }
+            )
 
         # uses LSTMs for predicate encoding
         elif isinstance(model_config, TlstmModelConfig):
-            self.tree_models = nn.ModuleDict({
-                'and': LstmConv(hidden_dim=model_config.hidden_dim_pred),
-                'or': LstmConv(hidden_dim=model_config.hidden_dim_pred),
-                'intra_plan': LstmConv(hidden_dim=self.hidden_dim)
-            })
+            self.tree_models = nn.ModuleDict(
+                {
+                    "and": LstmConv(hidden_dim=model_config.hidden_dim_pred),
+                    "or": LstmConv(hidden_dim=model_config.hidden_dim_pred),
+                    "intra_plan": LstmConv(hidden_dim=self.hidden_dim),
+                }
+            )
 
         # just for testing
         elif isinstance(model_config, TestSumModelConfig):
-            self.tree_models = nn.ModuleDict({
-                'and': PoolingConv(PoolingType.MIN),
-                'or': PoolingConv(PoolingType.MAX),
-                'intra_plan': PoolingConv(PoolingType.SUM)
-            })
+            self.tree_models = nn.ModuleDict(
+                {
+                    "and": PoolingConv(PoolingType.MIN),
+                    "or": PoolingConv(PoolingType.MAX),
+                    "intra_plan": PoolingConv(PoolingType.SUM),
+                }
+            )
 
         else:
             raise NotImplementedError
 
-        self.loss_fxn = create_loss(model_config.loss_class_name, loss_kwargs=model_config.loss_class_kwargs)
+        self.loss_fxn = create_loss(
+            model_config.loss_class_name, loss_kwargs=model_config.loss_class_kwargs
+        )
 
         self.pred_encoding = nn.Sequential(
-            *[nn.BatchNorm1d(input_dims.input_dim_pred),
-              nn.Linear(input_dims.input_dim_pred, model_config.hidden_dim_pred),
-              ReLU()])
+            *[
+                nn.BatchNorm1d(input_dims.input_dim_pred),
+                nn.Linear(input_dims.input_dim_pred, model_config.hidden_dim_pred),
+                ReLU(),
+            ]
+        )
 
         self.plan_encoding = nn.Sequential(
-            *[nn.Linear(input_dims.input_dim_plan, model_config.hidden_dim_plan),
-              ReLU()])
+            *[
+                nn.Linear(input_dims.input_dim_plan, model_config.hidden_dim_plan),
+                ReLU(),
+            ]
+        )
 
         self.est_layer = nn.Sequential(
-            *[nn.Linear(self.hidden_dim, self.hidden_dim),
-              ReLU(),
-              nn.Linear(self.hidden_dim, self.hidden_dim),
-              ReLU(),
-              nn.Linear(self.hidden_dim, 1)])
+            *[
+                nn.Linear(self.hidden_dim, self.hidden_dim),
+                ReLU(),
+                nn.Linear(self.hidden_dim, self.hidden_dim),
+                ReLU(),
+                nn.Linear(self.hidden_dim, 1),
+            ]
+        )
 
     def forward(self, input):
         """
@@ -79,7 +93,9 @@ class E2EModel(nn.Module):
         plan_graph, features, pred_graph, plan_pred_mapping = input
 
         # encode predicates (including message passing)
-        plan_pred_hidden = self.encode_predicates(features, pred_graph, plan_pred_mapping)
+        plan_pred_hidden = self.encode_predicates(
+            features, pred_graph, plan_pred_mapping
+        )
 
         # encode plan nodes and append predicates to feature vectors of plan nodes
         enc_plan_feats = dict()
@@ -100,27 +116,30 @@ class E2EModel(nn.Module):
 
     def encode_predicates(self, features, pred_graph, plan_pred_mapping):
         # encode base predicates
-        base_pred_hidden = self.pred_encoding(features['pred'])
+        base_pred_hidden = self.pred_encoding(features["pred"])
         # message passing along logical and/or
         pred_hidden_dict = self.predicate_message_passing(pred_graph, base_pred_hidden)
         # predicate feature vector for plan nodes
         plan_pred_hidden = {
-            node_t: torch.zeros((feats.size(0), base_pred_hidden.size(1)), device=self.device)
-            for node_t, feats in features.items() if node_t.startswith('plan')
+            node_t: torch.zeros(
+                (feats.size(0), base_pred_hidden.size(1)), device=self.device
+            )
+            for node_t, feats in features.items()
+            if node_t.startswith("plan")
         }
-        pred_types = {
-            'and': 1,
-            'or': -1,
-            'pred': 0
-        }
+        pred_types = {"and": 1, "or": -1, "pred": 0}
         max_depth = plan_pred_mapping[:, 0].max()
         # [d_u, u_node_id, pred_id, pred_op]
         for node_type, pred_op in pred_types.items():
             for d in range(max_depth + 1):
-                rel_idx = (plan_pred_mapping[:, 3] == pred_op) & (plan_pred_mapping[:, 0] == d)
+                rel_idx = (plan_pred_mapping[:, 3] == pred_op) & (
+                    plan_pred_mapping[:, 0] == d
+                )
                 pred_idxs = plan_pred_mapping[rel_idx, 2]
                 plan_idxs = plan_pred_mapping[rel_idx, 1]
-                plan_pred_hidden[f'plan{d}'][plan_idxs] = pred_hidden_dict[node_type][pred_idxs]
+                plan_pred_hidden[f"plan{d}"][plan_idxs] = pred_hidden_dict[node_type][
+                    pred_idxs
+                ]
 
         return plan_pred_hidden
 
@@ -130,31 +149,35 @@ class E2EModel(nn.Module):
         if plan_graph.max_depth is not None:
             # intra_pred from deepest node to top node
             for d in reversed(range(plan_graph.max_depth + 1)):
-                pd = PassDirection(model_name='intra_plan',
-                                   g=plan_graph,
-                                   e_name='intra_plan',
-                                   n_dest=f'plan{d}',
-                                   allow_empty=True)
-                pd.out_types = [f'plan{d}']
+                pd = PassDirection(
+                    model_name="intra_plan",
+                    g=plan_graph,
+                    e_name="intra_plan",
+                    n_dest=f"plan{d}",
+                    allow_empty=True,
+                )
+                pd.out_types = [f"plan{d}"]
                 pass_directions.append(pd)
 
         # make sure all edge types are considered in the message passing
         plan_feats = self.execute_pass(plan_feats, pass_directions, plan_graph)
 
-        out = plan_feats['plan0']
+        out = plan_feats["plan0"]
 
         return out
 
     def predicate_message_passing(self, pred_graph, pred_feats):
         feat_dict = {
-            'pred': pred_feats,
+            "pred": pred_feats,
         }
-        for log_type in ['and', 'or']:
+        for log_type in ["and", "or"]:
             if log_type not in pred_graph.ntypes:
                 continue
 
             no_nodes = pred_graph.number_of_nodes(log_type)
-            init_feats = torch.zeros((no_nodes, pred_feats.shape[1]), device=self.device)
+            init_feats = torch.zeros(
+                (no_nodes, pred_feats.shape[1]), device=self.device
+            )
             feat_dict[log_type] = init_feats
 
         # one pass:
@@ -162,10 +185,15 @@ class E2EModel(nn.Module):
         if pred_graph.max_depth is not None:
             # intra_pred from deepest node to top node
             for d in reversed(range(pred_graph.max_depth)):
-                pass_directions += [PassDirection(model_name=v_node_t,
-                                                  g=pred_graph,
-                                                  e_name=f'{v_node_t}_d{d}',
-                                                  allow_empty=True) for v_node_t in ['and', 'or']]
+                pass_directions += [
+                    PassDirection(
+                        model_name=v_node_t,
+                        g=pred_graph,
+                        e_name=f"{v_node_t}_d{d}",
+                        allow_empty=True,
+                    )
+                    for v_node_t in ["and", "or"]
+                ]
 
         # make sure all edge types are considered in the message passing
         feat_dict = self.execute_pass(feat_dict, pass_directions, pred_graph)
@@ -183,10 +211,13 @@ class E2EModel(nn.Module):
             # can happen if one depth does not exist for both AND & OR
             if len(pd.etypes) == 0:
                 continue
-            out_dict = self.tree_models[pd.model_name](pred_graph, etypes=pd.etypes,
-                                                       in_node_types=pd.in_types,
-                                                       out_node_types=pd.out_types,
-                                                       feat_dict=feat_dict)
+            out_dict = self.tree_models[pd.model_name](
+                pred_graph,
+                etypes=pd.etypes,
+                in_node_types=pd.in_types,
+                out_node_types=pd.out_types,
+                feat_dict=feat_dict,
+            )
             for out_type, hidden_out in out_dict.items():
                 feat_dict[out_type] = hidden_out
         return feat_dict

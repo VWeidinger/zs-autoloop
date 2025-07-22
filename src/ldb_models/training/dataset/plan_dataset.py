@@ -24,18 +24,22 @@ class PlanDataset(Dataset):
 
     def split(self, ratio: float) -> Tuple:
         split_idx = int(len(self) * ratio)
-        return PlanDataset(self.plans[:split_idx], self.idxs[:split_idx]), PlanDataset(self.plans[split_idx:],
-                                                                                       self.idxs[split_idx:])
+        return PlanDataset(self.plans[:split_idx], self.idxs[:split_idx]), PlanDataset(
+            self.plans[split_idx:], self.idxs[split_idx:]
+        )
 
     def remove_timeouts(self):
-        self.plans = [plan for plan in self.plans if not plan['timeout']]
-        self.idxs = [idx for idx, plan in zip(self.idxs, self.plans) if not plan['timeout']]
+        self.plans = [plan for plan in self.plans if not plan["timeout"]]
+        self.idxs = [
+            idx for idx, plan in zip(self.idxs, self.plans) if not plan["timeout"]
+        ]
         return self
 
 
 def serialize(data):
     buffer = pickle.dumps(data, protocol=-1)
     return np.frombuffer(buffer, dtype=np.uint8)
+
 
 class PreBatchedDataset(Dataset):
     """
@@ -47,19 +51,25 @@ class PreBatchedDataset(Dataset):
         - Based on: https://ppwwyyxx.com/blog/2022/Demystify-RAM-Usage-in-Multiprocess-DataLoader
         - Code on GitHub: https://github.com/ppwwyyxx/RAM-multiprocess-dataloader/blob/main/serialize.py
     """
+
     def __init__(self, batches: List, batch_size: int):
         self.batch_size = batch_size
 
         # serialize batches
         self._batches = [serialize(batch) for batch in batches]
-        self._addr = torch.asarray([len(batch) for batch in self._batches], dtype=torch.int64)
+        self._addr = torch.asarray(
+            [len(batch) for batch in self._batches], dtype=torch.int64
+        )
         self._addr = torch.cumsum(self._addr, dim=0)
         self._batches = np.concatenate(self._batches)
 
         # convert to tensor
         self._batches = torch.from_numpy(self._batches)
 
-        print(f"Serialization done, dataset takes {len(self._batches) / 1024 ** 2 :.2f} MiB", flush=True)
+        print(
+            f"Serialization done, dataset takes {len(self._batches) / 1024**2:.2f} MiB",
+            flush=True,
+        )
 
     def __len__(self):
         return len(self._addr)
@@ -92,9 +102,15 @@ class OHEMPlanDataset(Dataset):
     Online-Hard-Example-Mining Dataset
     """
 
-    def __init__(self, plan_lists: List[List], plan_idxs_lists: List[List],
-                 workload_file_names: List[Path] = None, limit_plans_per_file: int = None,
-                 limit_plans_overall: int = None, slice_by: str = 'file'):
+    def __init__(
+        self,
+        plan_lists: List[List],
+        plan_idxs_lists: List[List],
+        workload_file_names: List[Path] = None,
+        limit_plans_per_file: int = None,
+        limit_plans_overall: int = None,
+        slice_by: str = "file",
+    ):
         """
         Args:
             plan_lists: List of list of plans (per file)
@@ -103,7 +119,7 @@ class OHEMPlanDataset(Dataset):
             limit_plans_overall: Limit number of plans overall
         """
 
-        assert slice_by in ['file', 'dataset', 'none'], f'Invalid slice_by={slice_by}!'
+        assert slice_by in ["file", "dataset", "none"], f"Invalid slice_by={slice_by}!"
 
         # store input
         self.plan_lists = plan_lists
@@ -131,18 +147,24 @@ class OHEMPlanDataset(Dataset):
         # count total number of plans
         self.total_num_plans = sum([len(l) for l in self.plan_lists])
         print(
-            f'OHEMDataset initialized with {self.total_num_plans} plans - willl pick {self.__len__()} plans from it (limit_plans_per_file={self.limit_plans_per_file}, limit_plans_overall={self.limit_plans_overall})')
+            f"OHEMDataset initialized with {self.total_num_plans} plans - willl pick {self.__len__()} plans from it (limit_plans_per_file={self.limit_plans_per_file}, limit_plans_overall={self.limit_plans_overall})"
+        )
 
         # apply ohem:
-        self.apply_ohem = limit_plans_per_file is not None or limit_plans_overall is not None  # apply OHEM if any limit is set - if not limit is given, always return everything -> no OHEM necessary
+        self.apply_ohem = (
+            limit_plans_per_file is not None or limit_plans_overall is not None
+        )  # apply OHEM if any limit is set - if not limit is given, always return everything -> no OHEM necessary
         self.apply_ohem = self.apply_ohem and self.total_num_plans > self.__len__()
 
         if not self.apply_ohem:
             print(
-                f'Disable OHEM - target dataset size ({self.__len__()}) is larger than num available plans ({self.total_num_plans}).')
+                f"Disable OHEM - target dataset size ({self.__len__()}) is larger than num available plans ({self.total_num_plans})."
+            )
 
         # initialize plan difficulty
-        self.losses = torch.ones(self.total_num_plans) * float('inf')  # initialize with high loss
+        self.losses = torch.ones(self.total_num_plans) * float(
+            "inf"
+        )  # initialize with high loss
 
         # merge plan lists
         self.merge_plan_lists_according_to_slicing()
@@ -153,20 +175,24 @@ class OHEMPlanDataset(Dataset):
             self._all_plans_dataloader = None
         else:
             # still run this - to make sure assembled_plan_list is set
-            self._assemble_plan_list_from_files_with_limits_and_difficulty(skip_sort=True)
+            self._assemble_plan_list_from_files_with_limits_and_difficulty(
+                skip_sort=True
+            )
 
     def merge_plan_lists_according_to_slicing(self):
         """
         Merge plan lists according to slicing
         """
-        if self.slice_by == 'file':
+        if self.slice_by == "file":
             # keep as is
             pass
-        elif self.slice_by == 'dataset':
+        elif self.slice_by == "dataset":
             # merge all plans which are of the same dataset
             file_data_dict = defaultdict(list)
 
-            for wl_name, plans, plan_idxs in zip(self.workload_file_names, self.plan_lists, self.plan_idxs_lists):
+            for wl_name, plans, plan_idxs in zip(
+                self.workload_file_names, self.plan_lists, self.plan_idxs_lists
+            ):
                 # extract dataset from wl_name
                 dataset_name = wl_name.parent.name
                 file_data_dict[dataset_name].append((wl_name, plans, plan_idxs))
@@ -185,14 +211,13 @@ class OHEMPlanDataset(Dataset):
             self.plan_lists = plan_slices
             self.plan_idxs_lists = plan_idxs_slices
 
-        elif self.slice_by == 'none':
+        elif self.slice_by == "none":
             # merge all plans
             all_plans = [p for plans in self.plan_lists for p in plans]
             all_plan_idxs = [p for plan_idxs in self.plan_idxs_lists for p in plan_idxs]
 
             self.plan_lists = [all_plans]
             self.plan_idxs_lists = [all_plan_idxs]
-
 
     def deferred_setup(self, model, criterion, initialize_difficulty: bool = False):
         """
@@ -209,38 +234,48 @@ class OHEMPlanDataset(Dataset):
             # concat all plan lists
             unified_p_list = [plan for plans in self.plan_lists for plan in plans]
 
-            assert self.dataloader_args is not None, 'dataloader_args not set!'
+            assert self.dataloader_args is not None, "dataloader_args not set!"
 
             # create plan dataset & dataloader - this is only internal for OHEM!
-            self._all_plans_dataset = PlanDataset(unified_p_list, range(self.total_num_plans))
-            self._all_plans_dataloader = DataLoader(self._all_plans_dataset, **self.dataloader_args)
+            self._all_plans_dataset = PlanDataset(
+                unified_p_list, range(self.total_num_plans)
+            )
+            self._all_plans_dataloader = DataLoader(
+                self._all_plans_dataset, **self.dataloader_args
+            )
 
             if initialize_difficulty:
                 # run model forward pass
                 self.update_difficulty()
             else:
                 # assemble plan list
-                self._assemble_plan_list_from_files_with_limits_and_difficulty(skip_sort=self.apply_ohem)
+                self._assemble_plan_list_from_files_with_limits_and_difficulty(
+                    skip_sort=self.apply_ohem
+                )
 
     def update_difficulty(self):
         """
         Run forward pass and calculate loss for all plans
         """
-        print(f'Update difficulty for {self.total_num_plans} plans...')
+        print(f"Update difficulty for {self.total_num_plans} plans...")
         if self.apply_ohem:
-            assert self.__len__() < self.total_num_plans, f'len(self)={self.__len__()} is larger than self.total_num_plans={self.total_num_plans}. In this case OHEM makes no sense.'
+            assert self.__len__() < self.total_num_plans, (
+                f"len(self)={self.__len__()} is larger than self.total_num_plans={self.total_num_plans}. In this case OHEM makes no sense."
+            )
 
             self.model.eval()  # set model to eval mode
 
             # run inference
-            labels, preds = inference(dataloader=self._all_plans_dataloader, model=self.model)
+            labels, preds = inference(
+                dataloader=self._all_plans_dataloader, model=self.model
+            )
 
             # compute loss/error
             self.losses: torch.Tensor = self.criterion(preds, labels).cpu()
 
             # compute overall mean loss
             mean_loss = torch.mean(self.losses)
-            print(f'Mean loss: {mean_loss:.4f}')
+            print(f"Mean loss: {mean_loss:.4f}")
 
             # assemble plan list from files with limits and difficulty
             self._assemble_plan_list_from_files_with_limits_and_difficulty()
@@ -263,7 +298,9 @@ class OHEMPlanDataset(Dataset):
 
         return dataset_length
 
-    def _assemble_plan_list_from_files_with_limits_and_difficulty(self, skip_sort: bool = False):
+    def _assemble_plan_list_from_files_with_limits_and_difficulty(
+        self, skip_sort: bool = False
+    ):
         """
         Assemble plan list from files with limits and difficulty
         """
@@ -279,7 +316,7 @@ class OHEMPlanDataset(Dataset):
                 sorted_plan_idxs = plan_idxs
             else:
                 # extract corresponding losses
-                loss_list = self.losses[plan_count:plan_count + len(plans)]
+                loss_list = self.losses[plan_count : plan_count + len(plans)]
 
                 # sort plans by loss (descending)
                 sorted_idxs = torch.argsort(loss_list, descending=True)
@@ -288,8 +325,8 @@ class OHEMPlanDataset(Dataset):
 
             if self.limit_plans_per_file is not None:
                 assert isinstance(self.limit_plans_per_file, int)
-                plan_list.extend(sorted_plans[:self.limit_plans_per_file])
-                idx_list.extend(sorted_plan_idxs[:self.limit_plans_per_file])
+                plan_list.extend(sorted_plans[: self.limit_plans_per_file])
+                idx_list.extend(sorted_plan_idxs[: self.limit_plans_per_file])
             else:
                 plan_list.extend(plans)
                 idx_list.extend(sorted_plan_idxs)
@@ -311,8 +348,8 @@ class OHEMPlanDataset(Dataset):
             idx_list = [idx_list[i] for i in shuffle_idxs]
 
             # cap to limit
-            plan_list = plan_list[:self.limit_plans_overall]
-            idx_list = idx_list[:self.limit_plans_overall]
+            plan_list = plan_list[: self.limit_plans_overall]
+            idx_list = idx_list[: self.limit_plans_overall]
 
         # randomly shuffle plans and idxs
         random = np.random.RandomState(42)
@@ -324,5 +361,7 @@ class OHEMPlanDataset(Dataset):
         self.assembled_idx_list = idx_list
 
     def __getitem__(self, i: int):
-        assert self.assembled_plan_list is not None, 'assembled_plan_list not set! Have you called deferred_setup()?'
+        assert self.assembled_plan_list is not None, (
+            "assembled_plan_list not set! Have you called deferred_setup()?"
+        )
         return self.assembled_idx_list[i], self.assembled_plan_list[i]

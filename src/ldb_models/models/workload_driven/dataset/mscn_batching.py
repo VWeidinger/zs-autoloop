@@ -1,28 +1,65 @@
 import dgl
 import numpy as np
 
-from models.workload_driven.dataset.plan_tree_batching import extract_dimensions, encode_predicate, encode_one_hot, \
-    tensorize_feats
+from models.workload_driven.dataset.plan_tree_batching import (
+    extract_dimensions,
+    encode_predicate,
+    encode_one_hot,
+    tensorize_feats,
+)
 from models.zeroshot.postgres_plan_batching import assign_additional_plan_info
 from training.dataset.cmp_operator import LogicalOperator
 
 
-def extract_predicate_features(n, pred_feats, column_statistics, db_statistics, dim_word_emdb, dim_word_hash,
-                               feature_statistics, word_embeddings):
+def extract_predicate_features(
+    n,
+    pred_feats,
+    column_statistics,
+    db_statistics,
+    dim_word_emdb,
+    dim_word_hash,
+    feature_statistics,
+    word_embeddings,
+):
     # (column one hot, operator one hot, predicate)
     if n["operator"] not in {str(LogicalOperator.AND), str(LogicalOperator.OR)}:
-        pred_feat_vec = encode_predicate(column_statistics, db_statistics, dim_word_emdb, dim_word_hash,
-                                         feature_statistics, n, word_embeddings)
+        pred_feat_vec = encode_predicate(
+            column_statistics,
+            db_statistics,
+            dim_word_emdb,
+            dim_word_hash,
+            feature_statistics,
+            n,
+            word_embeddings,
+        )
         pred_feats.append(pred_feat_vec)
 
     if "children" in n.keys():
         for c in n["children"]:
-            extract_predicate_features(c, pred_feats, column_statistics, db_statistics, dim_word_emdb, dim_word_hash,
-                                       feature_statistics, word_embeddings)
+            extract_predicate_features(
+                c,
+                pred_feats,
+                column_statistics,
+                db_statistics,
+                dim_word_emdb,
+                dim_word_hash,
+                feature_statistics,
+                word_embeddings,
+            )
 
 
-def extract_set_features(plan, feature_statistics, dim_word_hash, dim_word_emdb, column_statistics, db_statistics,
-                         word_embeddings, dim_bitmaps, table_feats=None, pred_feats=None):
+def extract_set_features(
+    plan,
+    feature_statistics,
+    dim_word_hash,
+    dim_word_emdb,
+    column_statistics,
+    db_statistics,
+    word_embeddings,
+    dim_bitmaps,
+    table_feats=None,
+    pred_feats=None,
+):
     if table_feats is None:
         table_feats = []
     if pred_feats is None:
@@ -37,15 +74,17 @@ def extract_set_features(plan, feature_statistics, dim_word_hash, dim_word_emdb,
         if "sample_vec" not in params.keys():
             raise ValueError("Please make sure to augment sample vectors before use")
         sample_bitmap_vec = params["sample_vec"]
-        sample_bitmap[:len(sample_bitmap_vec)] = np.array(sample_bitmap_vec)
-        extract_predicate_features(filter_columns,
-                                   pred_feats,
-                                   column_statistics,
-                                   db_statistics,
-                                   dim_word_emdb,
-                                   dim_word_hash,
-                                   feature_statistics,
-                                   word_embeddings)
+        sample_bitmap[: len(sample_bitmap_vec)] = np.array(sample_bitmap_vec)
+        extract_predicate_features(
+            filter_columns,
+            pred_feats,
+            column_statistics,
+            db_statistics,
+            dim_word_emdb,
+            dim_word_hash,
+            feature_statistics,
+            word_embeddings,
+        )
 
     # table feature set#
 
@@ -59,20 +98,51 @@ def extract_set_features(plan, feature_statistics, dim_word_hash, dim_word_emdb,
 
     if "children" in plan.keys():
         for c in plan["children"]:
-            extract_set_features(c, feature_statistics, dim_word_hash, dim_word_emdb, column_statistics, db_statistics,
-                                 word_embeddings, dim_bitmaps, table_feats=table_feats, pred_feats=pred_feats)
+            extract_set_features(
+                c,
+                feature_statistics,
+                dim_word_hash,
+                dim_word_emdb,
+                column_statistics,
+                db_statistics,
+                word_embeddings,
+                dim_bitmaps,
+                table_feats=table_feats,
+                pred_feats=pred_feats,
+            )
 
     return table_feats, pred_feats
 
+
 def get_condition(params: dict, feature_statistics: dict):
     if "join" in params.keys():
-        condition = (params["join"]["table_name1"] + "." + params["join"]["column_name1"] + " " + params["join"][
-            "operator"] + " " + params["join"]["table_name2"] + "." + params["join"]["column_name2"])
+        condition = (
+            params["join"]["table_name1"]
+            + "."
+            + params["join"]["column_name1"]
+            + " "
+            + params["join"]["operator"]
+            + " "
+            + params["join"]["table_name2"]
+            + "."
+            + params["join"]["column_name2"]
+        )
 
         if condition not in feature_statistics["join"]["value_dict"].keys():
-            condition = (params["join"]["table_name2"] + "." + params["join"]["column_name2"] + " " + params["join"][
-                "operator"] + " " + params["join"]["table_name1"] + "." + params["join"]["column_name1"])
-        assert condition in feature_statistics["join"]["value_dict"].keys(), f"Join condition {condition} not in feature statistics"
+            condition = (
+                params["join"]["table_name2"]
+                + "."
+                + params["join"]["column_name2"]
+                + " "
+                + params["join"]["operator"]
+                + " "
+                + params["join"]["table_name1"]
+                + "."
+                + params["join"]["column_name1"]
+            )
+        assert condition in feature_statistics["join"]["value_dict"].keys(), (
+            f"Join condition {condition} not in feature statistics"
+        )
 
         return condition
 
@@ -94,8 +164,17 @@ def get_all_join_conds(plan: dict, feature_statistics: dict):
             join_conditions += get_all_join_conds(c, feature_statistics)
     return join_conditions
 
-def mscn_plan_collator(plans, feature_statistics=None, db_statistics=None, column_statistics=None, word_embeddings=None,
-                       dim_word_hash=None, dim_word_emdb=None, dim_bitmaps=None):
+
+def mscn_plan_collator(
+    plans,
+    feature_statistics=None,
+    db_statistics=None,
+    column_statistics=None,
+    word_embeddings=None,
+    dim_word_hash=None,
+    dim_word_emdb=None,
+    dim_bitmaps=None,
+):
     """
     Combines physical plans into a large graph that can be fed into ML models.
     :return:
@@ -108,17 +187,12 @@ def mscn_plan_collator(plans, feature_statistics=None, db_statistics=None, colum
 
     # compute input dimensions for model
     db_stats = db_statistics[0]
-    features = {
-        'table': [],
-        'pred': [],
-        'agg': [],
-        'join': []
-    }
+    features = {"table": [], "pred": [], "agg": [], "join": []}
     edge_dict = {
-        ('table', 'table_plan', 'plan'): [],
-        ('pred', 'pred_plan', 'plan'): [],
-        ('agg', 'agg_plan', 'plan'): [],
-        ('join', 'join_plan', 'plan'): []
+        ("table", "table_plan", "plan"): [],
+        ("pred", "pred_plan", "plan"): [],
+        ("agg", "agg_plan", "plan"): [],
+        ("join", "join_plan", "plan"): [],
     }
     labels = []
     sql_statements = []
@@ -131,7 +205,6 @@ def mscn_plan_collator(plans, feature_statistics=None, db_statistics=None, colum
     num_tables_list = []
     graph_depth_list = []
 
-
     sample_idxs = []
     for plan_id, (sample_idx, p) in enumerate(plans):
         sample_idxs.append(sample_idx)
@@ -143,14 +216,23 @@ def mscn_plan_collator(plans, feature_statistics=None, db_statistics=None, colum
         selectivity_list += p["selectivity"]
         scan_op_list += p["scan_op"]
         join_op_list += p["join_op"]
-        graph_depth_list.append(0) # ToDo, port this from Zeroshot code
+        graph_depth_list.append(0)  # ToDo, port this from Zeroshot code
 
-        curr_table_feats, curr_pred_feats = extract_set_features(p, feature_statistics, dim_word_hash, dim_word_emdb,
-                                                                 column_statistics, db_stats, word_embeddings,
-                                                                 dim_bitmaps)
+        curr_table_feats, curr_pred_feats = extract_set_features(
+            p,
+            feature_statistics,
+            dim_word_hash,
+            dim_word_emdb,
+            column_statistics,
+            db_stats,
+            word_embeddings,
+            dim_bitmaps,
+        )
 
         join_conditions = get_all_join_conds(p, feature_statistics)
-        curr_agg_feats, curr_join_feats = extract_joins_aggregations(feature_statistics, p, join_conditions)
+        curr_agg_feats, curr_join_feats = extract_joins_aggregations(
+            feature_statistics, p, join_conditions
+        )
 
         # sanity checks
         assert curr_agg_feats is not None
@@ -161,17 +243,43 @@ def mscn_plan_collator(plans, feature_statistics=None, db_statistics=None, colum
         # physical table.
 
         def append_edges_and_feats(features, plan_id, node_type, curr_feats, edges):
-            edges += [(len(features[node_type]) + i, plan_id) for i in range(len(curr_feats))]
+            edges += [
+                (len(features[node_type]) + i, plan_id) for i in range(len(curr_feats))
+            ]
             features[node_type] += curr_feats
 
-        append_edges_and_feats(features, plan_id, 'table', curr_table_feats, edge_dict[('table', 'table_plan', 'plan')])
-        append_edges_and_feats(features, plan_id, 'pred', curr_pred_feats, edge_dict[('pred', 'pred_plan', 'plan')])
-        append_edges_and_feats(features, plan_id, 'agg', curr_agg_feats, edge_dict[('agg', 'agg_plan', 'plan')])
+        append_edges_and_feats(
+            features,
+            plan_id,
+            "table",
+            curr_table_feats,
+            edge_dict[("table", "table_plan", "plan")],
+        )
+        append_edges_and_feats(
+            features,
+            plan_id,
+            "pred",
+            curr_pred_feats,
+            edge_dict[("pred", "pred_plan", "plan")],
+        )
+        append_edges_and_feats(
+            features,
+            plan_id,
+            "agg",
+            curr_agg_feats,
+            edge_dict[("agg", "agg_plan", "plan")],
+        )
         if curr_join_feats:
-            append_edges_and_feats(features, plan_id, 'join', curr_join_feats, edge_dict[('join', 'join_plan', 'plan')])
+            append_edges_and_feats(
+                features,
+                plan_id,
+                "join",
+                curr_join_feats,
+                edge_dict[("join", "join_plan", "plan")],
+            )
 
     num_nodes_dict = {k: len(v) for k, v in features.items()}
-    num_nodes_dict.update({'plan': len(plans)})
+    num_nodes_dict.update({"plan": len(plans)})
 
     graph = dgl.heterograph(edge_dict, num_nodes_dict=num_nodes_dict)
 
@@ -179,15 +287,29 @@ def mscn_plan_collator(plans, feature_statistics=None, db_statistics=None, colum
     labels = np.array(labels, dtype=np.float32)
     labels /= 1000
 
-    return graph, features, labels, sample_idxs, sql_statements, hints, selectivity_list, scan_op_list, join_op_list, num_tables_list, graph_depth_list
+    return (
+        graph,
+        features,
+        labels,
+        sample_idxs,
+        sql_statements,
+        hints,
+        selectivity_list,
+        scan_op_list,
+        join_op_list,
+        num_tables_list,
+        graph_depth_list,
+    )
 
 
-def extract_joins_aggregations(feature_statistics: dict, p: dict, join_conditions: list):
+def extract_joins_aggregations(
+    feature_statistics: dict, p: dict, join_conditions: list
+):
     # join feature set
     curr_join_feats = []
 
     for join_cond in join_conditions:
-        join_vec = encode_one_hot('join', feature_statistics, join_cond)
+        join_vec = encode_one_hot("join", feature_statistics, join_cond)
         curr_join_feats.append(join_vec)
     # output column set
     curr_agg_feats = []
@@ -195,7 +317,9 @@ def extract_joins_aggregations(feature_statistics: dict, p: dict, join_condition
     for output_col in p["plan_parameters"]["output_columns"]:
         if output_col["aggregation"] is None:
             continue
-        agg_vec = encode_one_hot('aggregation', feature_statistics, output_col["aggregation"])
+        agg_vec = encode_one_hot(
+            "aggregation", feature_statistics, output_col["aggregation"]
+        )
         col_vec = np.zeros(dim_cols)
         for c_idx in output_col["columns"]:
             col_vec[c_idx["col_id"]] = 1

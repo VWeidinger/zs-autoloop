@@ -7,23 +7,32 @@ from tqdm import tqdm
 from training.batch_to_funcs import zs_batch_to
 
 
-def inference(dataloader: DataLoader, model, batch_to: Callable = zs_batch_to) -> Tuple[torch.Tensor, torch.Tensor]:
+def inference(
+    dataloader: DataLoader, model, batch_to: Callable = zs_batch_to
+) -> Tuple[torch.Tensor, torch.Tensor]:
     labels = []
     preds = []
 
     model.eval()
 
-    for batch in tqdm(dataloader, desc='Inference: '):
-        input_model, label, sample_idxs_batch, sql, hints, selectivity, scan_op, join_op = batch_to(batch,
-                                                                                                    model.device,
-                                                                                                    model.label_norm)
+    for batch in tqdm(dataloader, desc="Inference: "):
+        (
+            input_model,
+            label,
+            sample_idxs_batch,
+            sql,
+            hints,
+            selectivity,
+            scan_op,
+            join_op,
+        ) = batch_to(batch, model.device, model.label_norm)
 
         with torch.no_grad():
             output = model(input_model)
 
         if model.label_norm is not None:
-            pred = model.label_norm.inverse_transform(output).to('cpu')
-            label = model.label_norm.inverse_transform(label.reshape(-1, 1)).to('cpu')
+            pred = model.label_norm.inverse_transform(output).to("cpu")
+            label = model.label_norm.inverse_transform(label.reshape(-1, 1)).to("cpu")
         else:
             pred = output
 

@@ -12,18 +12,22 @@ from classes.classes import ModelConfig, shorten_model_name
 from training.training.utils import find_early_stopping_metric
 
 
-def torch_save(checkpoint, target_path, model_name, postfix='', filetype='.m'):
+def torch_save(checkpoint, target_path, model_name, postfix="", filetype=".m"):
     save_start_t = time.perf_counter()
     if not (target_path is None or model_name is None):
         os.makedirs(target_path, exist_ok=True)
         # make saving atomic by first writing a temp file and then renaming it
-        target_temp_m_path = os.path.join(target_path, f'temp_{model_name}{postfix}{filetype}')
+        target_temp_m_path = os.path.join(
+            target_path, f"temp_{model_name}{postfix}{filetype}"
+        )
         torch.save(checkpoint, target_temp_m_path)
 
-        target_m_path = os.path.join(target_path, f'{model_name}{postfix}{filetype}')
+        target_m_path = os.path.join(target_path, f"{model_name}{postfix}{filetype}")
         shutil.move(target_temp_m_path, target_m_path)
 
-        print(f"Saved checkpoint to {target_m_path} in {time.perf_counter() - save_start_t:.3f} secs")
+        print(
+            f"Saved checkpoint to {target_m_path} in {time.perf_counter() - save_start_t:.3f} secs"
+        )
     else:
         print("Skipping saving")
 
@@ -37,7 +41,7 @@ def save_csv(csv_rows, target_csv_path):
             if key not in csv_rows[0].keys():
                 csv_rows[0][key] = None
 
-    with open(target_csv_path, 'w', newline='') as f:
+    with open(target_csv_path, "w", newline="") as f:
         w = csv.DictWriter(f, csv_rows[0].keys())
         for i, row in enumerate(csv_rows):
             if i == 0:
@@ -49,35 +53,45 @@ def save_csv(csv_rows, target_csv_path):
         pass
 
 
-def save_checkpoint(epochs_wo_improvement, epoch, model, optimizer, target_path, config: ModelConfig, metrics,
-                    csv_stats, finished=False, rank_model: bool = False):
+def save_checkpoint(
+    epochs_wo_improvement,
+    epoch,
+    model,
+    optimizer,
+    target_path,
+    config: ModelConfig,
+    metrics,
+    csv_stats,
+    finished=False,
+    rank_model: bool = False,
+):
     checkpoint = {
-        'epochs_wo_improvement': epochs_wo_improvement,
-        'epoch': epoch,
-        'model': model.state_dict(),
-        'optimizer': optimizer.state_dict(),
-        'finished': finished
+        "epochs_wo_improvement": epochs_wo_improvement,
+        "epoch": epoch,
+        "model": model.state_dict(),
+        "optimizer": optimizer.state_dict(),
+        "finished": finished,
     }
     if metrics is not None:
         for m in metrics:
-            checkpoint[m.metric_name + '_best_model'] = m.best_model
-            checkpoint[m.metric_name + '_best_seen_value'] = m.best_seen_value
+            checkpoint[m.metric_name + "_best_model"] = m.best_model
+            checkpoint[m.metric_name + "_best_seen_value"] = m.best_seen_value
 
     if rank_model:
-        model_name = f'{config.name.NAME}_{config.seed}_rankmodel'
+        model_name = f"{config.name.NAME}_{config.seed}_rankmodel"
     else:
-        model_name = f'{config.name.NAME}_{config.seed}'
+        model_name = f"{config.name.NAME}_{config.seed}"
 
     # shorten model name - otherwise we are hitting file-name limits
     model_name = shorten_model_name(model_name)
 
-    torch_save(checkpoint, target_path, model_name, filetype='.pt')
+    torch_save(checkpoint, target_path, model_name, filetype=".pt")
 
     if not (target_path is None or config.name.NAME is None):
-        target_csv_path = os.path.join(target_path, f'{model_name}.csv')
+        target_csv_path = os.path.join(target_path, f"{model_name}.csv")
         save_csv(csv_stats, target_csv_path)
         if model.label_norm is not None:
-            label_norm_path = os.path.join(target_path, f'{model_name}_label_norm.pkl')
+            label_norm_path = os.path.join(target_path, f"{model_name}_label_norm.pkl")
             joblib.dump(model.label_norm, label_norm_path, compress=1)
     else:
         print("Skipping saving the epoch stats")
@@ -92,16 +106,18 @@ def load_stats_csv(target_csv_path):
     return csv_rows
 
 
-def load_checkpoint(model: nn.Module,
-                    target_path: Path,
-                    config: ModelConfig,
-                    filetype: str = '.pt',
-                    optimizer = None,
-                    metrics = None,
-                    prefer_ft_rank:bool = False,
-                    manual_model_dir:str=None,
-                    manual_model_name: str = None,
-                    load_last_checkpoint: bool = True):
+def load_checkpoint(
+    model: nn.Module,
+    target_path: Path,
+    config: ModelConfig,
+    filetype: str = ".pt",
+    optimizer=None,
+    metrics=None,
+    prefer_ft_rank: bool = False,
+    manual_model_dir: str = None,
+    manual_model_name: str = None,
+    load_last_checkpoint: bool = True,
+):
     """
     Load all training state from a checkpoint. Does not work across devices (e.g., GPU->CPU).
     """
@@ -112,10 +128,10 @@ def load_checkpoint(model: nn.Module,
     csv_stats = []
 
     if manual_model_name is None:
-        model_name = f'{config.name.NAME}_{config.seed}'
+        model_name = f"{config.name.NAME}_{config.seed}"
         if prefer_ft_rank:
-            rank_model_name = f'{model_name}_rankmodel'
-            checkpoint_file = os.path.join(target_path, f'{rank_model_name}{filetype}')
+            rank_model_name = f"{model_name}_rankmodel"
+            checkpoint_file = os.path.join(target_path, f"{rank_model_name}{filetype}")
             if os.path.exists(checkpoint_file):
                 # we found a rank model checkpoint
                 model_name = rank_model_name
@@ -131,30 +147,36 @@ def load_checkpoint(model: nn.Module,
     if target_path is not None:
         try:
             if torch.cuda.is_available():
-                checkpoint = torch.load(os.path.join(target_path, f'{model_name}{filetype}'), map_location=model.device)
+                checkpoint = torch.load(
+                    os.path.join(target_path, f"{model_name}{filetype}"),
+                    map_location=model.device,
+                )
             else:
-                checkpoint = torch.load(os.path.join(target_path, f'{model_name}{filetype}'), map_location=torch.device('cpu'))
+                checkpoint = torch.load(
+                    os.path.join(target_path, f"{model_name}{filetype}"),
+                    map_location=torch.device("cpu"),
+                )
 
-            epochs_wo_improvement = checkpoint['epochs_wo_improvement']
-            epoch = checkpoint['epoch']
+            epochs_wo_improvement = checkpoint["epochs_wo_improvement"]
+            epoch = checkpoint["epoch"]
 
             if load_last_checkpoint:
                 # load last checkpoint
-                model.load_state_dict(checkpoint['model'])
+                model.load_state_dict(checkpoint["model"])
 
             # read label normalizer
-            label_norm_path = os.path.join(target_path, f'{model_name}_label_norm.pkl')
+            label_norm_path = os.path.join(target_path, f"{model_name}_label_norm.pkl")
             if os.path.exists(label_norm_path):
                 model.label_norm = joblib.load(label_norm_path)
 
             if optimizer is not None:
-                optimizer.load_state_dict(checkpoint['optimizer'])
-            finished = checkpoint['finished']
+                optimizer.load_state_dict(checkpoint["optimizer"])
+            finished = checkpoint["finished"]
 
             if metrics is not None:
                 for m in metrics:
-                    m.best_model = checkpoint[m.metric_name + '_best_model']
-                    m.best_seen_value = checkpoint[m.metric_name + '_best_seen_value']
+                    m.best_model = checkpoint[m.metric_name + "_best_model"]
+                    m.best_seen_value = checkpoint[m.metric_name + "_best_seen_value"]
 
             if not load_last_checkpoint:
                 # load best checkpoint
@@ -162,31 +184,43 @@ def load_checkpoint(model: nn.Module,
                 early_stop_m = find_early_stopping_metric(metrics)
                 model.load_state_dict(early_stop_m.best_model)
 
-            target_csv_path = os.path.join(target_path, f'{model_name}.csv')
+            target_csv_path = os.path.join(target_path, f"{model_name}.csv")
             csv_stats = load_stats_csv(target_csv_path)
             epoch += 1
 
-            print(f"Successfully loaded checkpoint from epoch {epoch} ({len(csv_stats)} csv rows) "
-                  f"in {time.perf_counter() - load_start_t:.3f} secs")
+            print(
+                f"Successfully loaded checkpoint from epoch {epoch} ({len(csv_stats)} csv rows) "
+                f"in {time.perf_counter() - load_start_t:.3f} secs"
+            )
 
-            if '_rankmodel' in model_name:
-                rank_found=True
-                found=False
+            if "_rankmodel" in model_name:
+                rank_found = True
+                found = False
             else:
-                found=True
-                rank_found=False
+                found = True
+                rank_found = False
         # reset to defaults if something goes wrong
         except Exception as e:
             epochs_wo_improvement = 0
             epoch = 0
             finished = False
             csv_stats = []
-            found=False
-            rank_found=False
+            found = False
+            rank_found = False
             print(f"No valid checkpoint found {e}")
     else:
         print("Filetype or model name are None")
-        found=False
-        rank_found=False
+        found = False
+        rank_found = False
 
-    return csv_stats, epochs_wo_improvement, epoch, model, optimizer, metrics, finished, found, rank_found
+    return (
+        csv_stats,
+        epochs_wo_improvement,
+        epoch,
+        model,
+        optimizer,
+        metrics,
+        finished,
+        found,
+        rank_found,
+    )

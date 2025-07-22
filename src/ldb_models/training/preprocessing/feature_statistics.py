@@ -11,16 +11,22 @@ from tqdm import tqdm
 
 
 def assemble_join_str(join_dict):
-    if 'children' in join_dict:
-        children_str = [f'({assemble_join_str(child)})' for child in join_dict['children']]
+    if "children" in join_dict:
+        children_str = [
+            f"({assemble_join_str(child)})" for child in join_dict["children"]
+        ]
 
-        join_str = f' {join_dict["operator"]} '.join(children_str)
+        join_str = f" {join_dict['operator']} ".join(children_str)
         return join_str
     else:
         # sort by alphabet
-        table_str = [f'{join_dict["table_name1"]}.{join_dict["column_name1"]}',
-                     f'{join_dict["table_name2"]}.{join_dict["column_name2"]}']
-        assert 'operator' in join_dict, f"Join dict does not contain operator: {join_dict}"
+        table_str = [
+            f"{join_dict['table_name1']}.{join_dict['column_name1']}",
+            f"{join_dict['table_name2']}.{join_dict['column_name2']}",
+        ]
+        assert "operator" in join_dict, (
+            f"Join dict does not contain operator: {join_dict}"
+        )
         return f" {join_dict['operator']} ".join(sorted(table_str))
 
 
@@ -30,16 +36,33 @@ def gather_values_recursively(json_dict, value_dict=None):
 
     if isinstance(json_dict, dict):
         for k, v in json_dict.items():
-            if k == 'join':
+            if k == "join":
                 # manually construct join key
-                value_dict['join'].append(assemble_join_str(v))
-            elif k in ['hint_notices', 'sql', 'Index Cond', 'Filter', 'sql_string', 'Output', 'hint']:
+                value_dict["join"].append(assemble_join_str(v))
+            elif k in [
+                "hint_notices",
+                "sql",
+                "Index Cond",
+                "Filter",
+                "sql_string",
+                "Output",
+                "hint",
+            ]:
                 # skip these values
                 pass
-            elif not (isinstance(v, list) or isinstance(v, tuple) or isinstance(v, dict)):
+            elif not (
+                isinstance(v, list) or isinstance(v, tuple) or isinstance(v, dict)
+            ):
                 value_dict[k].append(v)
-            elif (isinstance(v, list) or isinstance(v, tuple)) and len(v) > 0 and \
-                    (isinstance(v[0], int) or isinstance(v[0], float) or isinstance(v[0], str)):
+            elif (
+                (isinstance(v, list) or isinstance(v, tuple))
+                and len(v) > 0
+                and (
+                    isinstance(v[0], int)
+                    or isinstance(v[0], float)
+                    or isinstance(v[0], str)
+                )
+            ):
                 for v_e in v:
                     value_dict[k].append(v_e)
             else:
@@ -52,8 +75,8 @@ def gather_values_recursively(json_dict, value_dict=None):
 
 
 class FeatureType(Enum):
-    numeric = 'numeric'
-    categorical = 'categorical'
+    numeric = "numeric"
+    categorical = "categorical"
 
     def __str__(self):
         return self.value
@@ -76,7 +99,12 @@ def gather_feature_statistics(workload_run_paths, target):
 
     with multiprocessing.Pool() as pool:
         value_dicts = list(
-            tqdm(pool.imap(gather_values_fn, workload_run_paths), desc="Reading Runs", total=len(workload_run_paths)))
+            tqdm(
+                pool.imap(gather_values_fn, workload_run_paths),
+                desc="Reading Runs",
+                total=len(workload_run_paths),
+            )
+        )
 
     # combine value dicts
     value_dict = collections.defaultdict(list)
@@ -92,29 +120,31 @@ def gather_feature_statistics(workload_run_paths, target):
         if len(values) == 0:
             continue
 
-        if all([isinstance(v, int) or isinstance(v, float) or v is None for v in values]):
+        if all(
+            [isinstance(v, int) or isinstance(v, float) or v is None for v in values]
+        ):
             scaler = RobustScaler()
             np_values = np.array(values, dtype=np.float32).reshape(-1, 1)
             scaler.fit(np_values)
 
             statistics_dict[k] = {
-                'max': float(np_values.max()),
-                'min': float(np_values.min()),
-                'avg': float(np_values.mean()),
-                'scale': scaler.scale_.item(),
-                'center': scaler.center_.item(),
-                'type': str(FeatureType.numeric)
+                "max": float(np_values.max()),
+                "min": float(np_values.min()),
+                "avg": float(np_values.mean()),
+                "scale": scaler.scale_.item(),
+                "center": scaler.center_.item(),
+                "type": str(FeatureType.numeric),
             }
         else:
             unique_values = set(values)
             statistics_dict[k] = {
-                'no_vals': len(unique_values),
-                'type': str(FeatureType.categorical),
-                'value_dict': {v: id for id, v in enumerate(unique_values)},
+                "no_vals": len(unique_values),
+                "type": str(FeatureType.categorical),
+                "value_dict": {v: id for id, v in enumerate(unique_values)},
             }
 
     # save as json
     os.makedirs(os.path.dirname(target), exist_ok=True)
-    with open(target, 'w') as outfile:
+    with open(target, "w") as outfile:
         json.dump(statistics_dict, outfile)
     os.chmod(target, 0o777)

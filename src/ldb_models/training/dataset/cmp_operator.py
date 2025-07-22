@@ -2,24 +2,24 @@ from enum import Enum
 
 
 class Operator(Enum):
-    NEQ = '!='
-    EQ = '='
-    LEQ = '<='
-    GEQ = '>='
-    LIKE = 'LIKE'
-    NOT_LIKE = 'NOT LIKE'
-    IS_NOT_NULL = 'IS NOT NULL'
-    IS_NULL = 'IS NULL'
-    IN = 'IN'
-    BETWEEN = 'BETWEEN'
+    NEQ = "!="
+    EQ = "="
+    LEQ = "<="
+    GEQ = ">="
+    LIKE = "LIKE"
+    NOT_LIKE = "NOT LIKE"
+    IS_NOT_NULL = "IS NOT NULL"
+    IS_NULL = "IS NULL"
+    IN = "IN"
+    BETWEEN = "BETWEEN"
 
     def __str__(self):
         return self.value
 
 
 class LogicalOperator(Enum):
-    AND = 'AND'
-    OR = 'OR'
+    AND = "AND"
+    OR = "OR"
 
     def __str__(self):
         return self.value
@@ -34,14 +34,14 @@ class PredicateOperator:
 
 
 class Aggregator(Enum):
-    AVG = 'AVG'
-    SUM = 'SUM'
-    COUNT = 'COUNT'
+    AVG = "AVG"
+    SUM = "SUM"
+    COUNT = "COUNT"
 
     def __str__(self):
         return self.value
 
 
 class ExtendedAggregator(Enum):
-    MIN = 'MIN'
-    MAX = 'MAX'
+    MIN = "MIN"
+    MAX = "MAX"

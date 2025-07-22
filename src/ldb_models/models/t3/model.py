@@ -23,14 +23,15 @@ class T3Model(ABC):
     def get_feature_mapper(self) -> FeatureMapper:
         pass
 
-    def estimate_runtime_wrapper(self, queries: list["BenchmarkedQuery"]) -> list[float]:
+    def estimate_runtime_wrapper(
+        self, queries: list["BenchmarkedQuery"]
+    ) -> list[float]:
         preds = np.asarray([self.estimate_runtime(q) for q in queries])
 
         # convert to seconds
         preds = preds / 1000
 
         return preds
-
 
 
 class TreeModel(T3Model):
@@ -79,7 +80,9 @@ class FlatTreeModel:
     def get_feature_mapper(self) -> FeatureMapper:
         return self._feature_mapper
 
-    def estimate_runtime_wrapper(self, queries: list["BenchmarkedQuery"]) -> list[float]:
+    def estimate_runtime_wrapper(
+        self, queries: list["BenchmarkedQuery"]
+    ) -> list[float]:
         preds = np.asarray([self.estimate_runtime(q) for q in queries])
 
         # convert to seconds
@@ -102,8 +105,8 @@ class PerTupleTreeModel(T3Model):
         return sum(self.estimate_pipeline_runtime(query))
 
     def estimate_pipeline_runtime(
-            self,
-            query: "BenchmarkedQuery",
+        self,
+        query: "BenchmarkedQuery",
     ) -> list[float]:
         x = query.get_feature_matrix(self._feature_mapper)
         scan_sizes = self._feature_mapper.get_pipeline_scan_sizes(query.query_plan)
@@ -111,9 +114,9 @@ class PerTupleTreeModel(T3Model):
         return [max(0.0, float(e)) for e in pred]
 
     def predict(
-            self,
-            x,
-            scan_sizes,
+        self,
+        x,
+        scan_sizes,
     ) -> np.ndarray:
         mask = np.any(x != 0, axis=1)
         pred = self.tree.predict(x).flatten()
@@ -129,7 +132,9 @@ class PerTupleTreeModel(T3Model):
         scan_sizes = []
         pipeline_vectors = []
         for i, q in enumerate(queries):
-            current_pipeline_vectors = self._feature_mapper.get_pipeline_estimation_matrix(q)
+            current_pipeline_vectors = (
+                self._feature_mapper.get_pipeline_estimation_matrix(q)
+            )
             current_scan_sizes = self._feature_mapper.get_pipeline_scan_sizes(q)
             pipeline_vectors += [v for v in current_pipeline_vectors]
             scan_sizes += [s for s in current_scan_sizes]

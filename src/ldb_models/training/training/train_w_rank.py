@@ -34,9 +34,15 @@ class RankModel(nn.Module):
         return x
 
 
-def train_epoch_rank(epoch_stats: dict, train_loader: DataLoader, model: nn.Module,
-                     optimizer: Optimizer, max_epoch_tuples: int, custom_batch_to=None,
-                     profiler: Optional[torch.profiler.profile] = None):
+def train_epoch_rank(
+    epoch_stats: dict,
+    train_loader: DataLoader,
+    model: nn.Module,
+    optimizer: Optimizer,
+    max_epoch_tuples: int,
+    custom_batch_to=None,
+    profiler: Optional[torch.profiler.profile] = None,
+):
     model.train()
 
     train_start_t = time.perf_counter()
@@ -57,7 +63,9 @@ def train_epoch_rank(epoch_stats: dict, train_loader: DataLoader, model: nn.Modu
 
     for batch_idx, batch in enumerate(tqdm(train_loader)):
         # batch data
-        input1, label1, sample_idxs1 = custom_batch_to(batch, model.device, model.label_norm)
+        input1, label1, sample_idxs1 = custom_batch_to(
+            batch, model.device, model.label_norm
+        )
 
         # skip the batch if it is not full
         if len(label1) != batch_size:
@@ -92,12 +100,14 @@ def train_epoch_rank(epoch_stats: dict, train_loader: DataLoader, model: nn.Modu
             # apply cross entropy loss
             loss = loss_fn(output, label)
             if torch.isnan(loss):
-                raise ValueError('Loss was NaN')
+                raise ValueError("Loss was NaN")
 
             # Loss backward step
             loss.backward()
 
-            if isinstance(model, (PostgresZeroShotModel, MSCNModel, E2EModel, QPPNet, QueryFormer)):
+            if isinstance(
+                model, (PostgresZeroShotModel, MSCNModel, E2EModel, QPPNet, QueryFormer)
+            ):
                 clipping_value = 1
                 torch.nn.utils.clip_grad_norm_(model.parameters(), clipping_value)
 
@@ -113,7 +123,9 @@ def train_epoch_rank(epoch_stats: dict, train_loader: DataLoader, model: nn.Modu
             # compute ranking accuracy
             faster_real = torch.argmin(label, dim=1)
             faster_pred = torch.argmin(output, dim=1)
-            ranking_correct.append(torch.eq(faster_real, faster_pred).detach().cpu().numpy())
+            ranking_correct.append(
+                torch.eq(faster_real, faster_pred).detach().cpu().numpy()
+            )
 
             if profiler is not None:
                 profiler.step()
@@ -127,22 +139,31 @@ def train_epoch_rank(epoch_stats: dict, train_loader: DataLoader, model: nn.Modu
     ranking_correct = np.concatenate(ranking_correct)
     ranking_accuracy = np.mean(ranking_correct)
 
-    epoch_stats.update(train_time=time.perf_counter() - train_start_t, train_loss=mean_loss,
-                       train_ranking_accuracy=ranking_accuracy)
+    epoch_stats.update(
+        train_time=time.perf_counter() - train_start_t,
+        train_loss=mean_loss,
+        train_ranking_accuracy=ranking_accuracy,
+    )
 
 
-def validate_rank(val_loader: DataLoader, model: nn.Module, epoch_stats: Dict, rank_metric: Metric,
-                  custom_batch_to: Callable = None):
+def validate_rank(
+    val_loader: DataLoader,
+    model: nn.Module,
+    epoch_stats: Dict,
+    rank_metric: Metric,
+    custom_batch_to: Callable = None,
+):
     model.eval()
 
     with torch.autograd.no_grad():
-
         ranking_correct = []
         last_batch = None
 
         for batch_idx, batch in enumerate(tqdm(val_loader)):
             # batch data
-            input1, label1, sample_idxs1 = custom_batch_to(batch, model.device, model.label_norm)
+            input1, label1, sample_idxs1 = custom_batch_to(
+                batch, model.device, model.label_norm
+            )
 
             # skip the batch if it is not full
             if len(label1) != val_loader.batch_size:
@@ -160,7 +181,9 @@ def validate_rank(val_loader: DataLoader, model: nn.Module, epoch_stats: Dict, r
                 # compute ranking accuracy
                 faster_real = torch.argmin(label, dim=1)
                 faster_pred = torch.argmin(output, dim=1)
-                ranking_correct.append(torch.eq(faster_real, faster_pred).detach().cpu().numpy())
+                ranking_correct.append(
+                    torch.eq(faster_real, faster_pred).detach().cpu().numpy()
+                )
 
             # update last batch information
             last_batch = input1, label1, sample_idxs1
@@ -169,11 +192,13 @@ def validate_rank(val_loader: DataLoader, model: nn.Module, epoch_stats: Dict, r
         ranking_correct = np.concatenate(ranking_correct)
 
         # save best model for metric
-        any_best_metric=False
-        assert isinstance(model,RankModel),f'Model instance: {model} is not of type RankModel'
-        best_seen = rank_metric.evaluate(metrics_dict=epoch_stats,
-                                                model=model.model,
-                                                ranking_correct=ranking_correct)
+        any_best_metric = False
+        assert isinstance(model, RankModel), (
+            f"Model instance: {model} is not of type RankModel"
+        )
+        best_seen = rank_metric.evaluate(
+            metrics_dict=epoch_stats, model=model.model, ranking_correct=ranking_correct
+        )
 
         if best_seen and rank_metric.early_stopping_metric:
             any_best_metric = True

@@ -45,19 +45,27 @@ class BenchmarkedQuery:
                 common_ops = list(set(ids1).intersection(set(ids2)))
                 if not len(common_ops) > 0:
                     pipelines_start_stop = [(p.start, p.stop) for p in pipelines]
-                    raise ValueError(f"pipelines overlap without common op: {pipelines_start_stop} \n{self.query_plan}")
+                    raise ValueError(
+                        f"pipelines overlap without common op: {pipelines_start_stop} \n{self.query_plan}"
+                    )
                     print(" pipelines overlap without common op")
                 common_ops = [o for o in p.operators if o.operator.op_id in common_ops]
-                if len(common_ops) == 1 and common_ops[0].operator.type == OperatorType.SetOperation:
+                if (
+                    len(common_ops) == 1
+                    and common_ops[0].operator.type == OperatorType.SetOperation
+                ):
                     # SetOperation operators do not show pipeline correctly
                     # assert common_ops[0].operator.json["operation"] != "unionall", "unionall should be fixed already"
                     p.stop = p2.start
                     p2.stop = max(p.stop, p2.stop)
                 else:
                     raise ValueError(
-                        f"pipelines overlap! common ops: {', '.join(o.operator.operator_name for o in common_ops)}")
+                        f"pipelines overlap! common ops: {', '.join(o.operator.operator_name for o in common_ops)}"
+                    )
                     print("pipelines overlap!")
-                    print(f" common ops: {', '.join(o.operator.operator_name for o in common_ops)}")
+                    print(
+                        f" common ops: {', '.join(o.operator.operator_name for o in common_ops)}"
+                    )
 
     def get_pipeline_runtimes(self, verbose: bool = False) -> list[float]:
         if self.pipeline_runtimes is None:
@@ -70,46 +78,62 @@ class BenchmarkedQuery:
             result = []
             self.check_pipeline_overlap()
             for p in self.query_plan.pipelines:
-                result.append((p.stop - p.start) / (analyze_plan_runtime * 1_000_000) * total_time)
+                result.append(
+                    (p.stop - p.start) / (analyze_plan_runtime * 1_000_000) * total_time
+                )
             pipeline_times_sum = sum(result)
             if abs(pipeline_times_sum - total_time) > max(total_time * 0.25, 0.0005):
                 if verbose:
-                    print(f"pipeline times do not add up: {pipeline_times_sum} != {total_time}")
+                    print(
+                        f"pipeline times do not add up: {pipeline_times_sum} != {total_time}"
+                    )
             if pipeline_times_sum == 0:
                 result = [total_time / len(result) for _ in result]
             else:
                 correction_factor = total_time / pipeline_times_sum
                 result = [x * correction_factor for x in result]
             pipeline_times_sum = sum(result)
-            assert (
-                abs(pipeline_times_sum - total_time) < 0.0005
-            ), f"pipeline times do not add up: {pipeline_times_sum} != {total_time}"
+            assert abs(pipeline_times_sum - total_time) < 0.0005, (
+                f"pipeline times do not add up: {pipeline_times_sum} != {total_time}"
+            )
             self.pipeline_runtimes = result
         return self.pipeline_runtimes
 
     def get_per_tuple_pipeline_runtimes(self) -> list[float]:
         result = []
-        for pipeline, runtime in zip(self.query_plan.pipelines, self.get_pipeline_runtimes()):
+        for pipeline, runtime in zip(
+            self.query_plan.pipelines, self.get_pipeline_runtimes()
+        ):
             if pipeline.get_pipeline_scan_cardinality() == 0:
                 result.append(runtime)
             else:
                 result.append(runtime / pipeline.get_pipeline_scan_cardinality())
         return result
 
-    def get_runtime_data(self, feature_mapper: FeatureMapper) -> Tuple[np.ndarray, float]:
-        return feature_mapper.get_single_estimation_vector(self.query_plan), self.get_total_runtime()
+    def get_runtime_data(
+        self, feature_mapper: FeatureMapper
+    ) -> Tuple[np.ndarray, float]:
+        return feature_mapper.get_single_estimation_vector(
+            self.query_plan
+        ), self.get_total_runtime()
 
-    def get_pipeline_runtime_data(self, feature_mapper: FeatureMapper) -> list[Tuple[np.ndarray, float]]:
+    def get_pipeline_runtime_data(
+        self, feature_mapper: FeatureMapper
+    ) -> list[Tuple[np.ndarray, float]]:
         features = feature_mapper.get_pipeline_estimation_matrix(self.query_plan)
         targets = self.get_pipeline_runtimes()
         return list((f, t) for f, t in zip(features, targets))
 
-    def get_per_tuple_pipeline_runtime_data(self, feature_mapper: FeatureMapper) -> list[tuple[np.ndarray, float]]:
+    def get_per_tuple_pipeline_runtime_data(
+        self, feature_mapper: FeatureMapper
+    ) -> list[tuple[np.ndarray, float]]:
         features = self.get_feature_matrix(feature_mapper)
         targets = self.get_per_tuple_pipeline_runtimes()
         return list((f, t) for f, t in zip(features, targets))
 
     def get_feature_matrix(self, feature_mapper: FeatureMapper) -> np.ndarray:
         if self.feature_matrix is None:
-            self.feature_matrix = feature_mapper.get_pipeline_estimation_matrix(self.query_plan)
+            self.feature_matrix = feature_mapper.get_pipeline_estimation_matrix(
+                self.query_plan
+            )
         return self.feature_matrix

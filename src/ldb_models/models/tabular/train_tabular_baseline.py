@@ -14,9 +14,18 @@ from ldb_schema.load_schema import load_json
 from sklearn.linear_model import LinearRegression
 from wandb.apis.public import Run
 
-from classes.classes import FlatModelConfig, ModelConfig, ScaledPostgresModelConfig, \
-    AnalyticalEstCardModelConfig, AnalyticalActCardModelConfig, DataLoaderOptions, T3ModelConfig, T3FlatModelConfig, \
-    T3TreeModelConfig, SPNModelConfig
+from classes.classes import (
+    FlatModelConfig,
+    ModelConfig,
+    ScaledPostgresModelConfig,
+    AnalyticalEstCardModelConfig,
+    AnalyticalActCardModelConfig,
+    DataLoaderOptions,
+    T3ModelConfig,
+    T3FlatModelConfig,
+    T3TreeModelConfig,
+    SPNModelConfig,
+)
 from classes.workload_runs import WorkloadRuns
 from models.t3.model import T3Model, TreeModel, FlatTreeModel, PerTupleTreeModel
 from models.t3.t3_dataloader import gen_t3_dataset
@@ -24,8 +33,11 @@ from models.tabular.slice_train_val import slice_train_val
 from models.zeroshot.postgres_plan_batching import assign_additional_plan_info
 from training.bound_predictions_with_history import PredictionBounder
 from training.dataset.dataset_creation import read_workload_runs
-from training.evaluate_query_optimization import evaluate_join_order, evaluate_physical_plan_selection, \
-    evaluate_access_path_selection
+from training.evaluate_query_optimization import (
+    evaluate_join_order,
+    evaluate_physical_plan_selection,
+    evaluate_access_path_selection,
+)
 from training.featurizations import Featurization
 from training.training.checkpoint import save_csv
 from training.training.metrics import init_metrics
@@ -37,20 +49,24 @@ from spn.structure.Base import Context
 from spn.structure.leaves.parametric.Parametric import Gaussian
 from spn.algorithms.MPE import mpe
 
-def train_tabular_model(workload_runs: WorkloadRuns,
-                        config: ModelConfig,
-                        statistics_file: Path,
-                        model_dir: Path,
-                        cap_training_samples: int = None,
-                        early_stopping_rounds: int = 20,
-                        num_boost_round: int = 1000,
-                        bound_predictions: bool = False,
-                        prediction_bounder: Optional[PredictionBounder] = None,
-                        dataloader_options: DataLoaderOptions = None,
-                        verbose: bool = True
-                        ):
+
+def train_tabular_model(
+    workload_runs: WorkloadRuns,
+    config: ModelConfig,
+    statistics_file: Path,
+    model_dir: Path,
+    cap_training_samples: int = None,
+    early_stopping_rounds: int = 20,
+    num_boost_round: int = 1000,
+    bound_predictions: bool = False,
+    prediction_bounder: Optional[PredictionBounder] = None,
+    dataloader_options: DataLoaderOptions = None,
+    verbose: bool = True,
+):
     if bound_predictions or prediction_bounder:
-        raise NotImplementedError("prediction bounding needs to be implemented for flat models")
+        raise NotImplementedError(
+            "prediction bounding needs to be implemented for flat models"
+        )
 
     # seed for reproducibility
     torch.manual_seed(config.seed)
@@ -65,70 +81,104 @@ def train_tabular_model(workload_runs: WorkloadRuns,
     elif isinstance(config, ScaledPostgresModelConfig):
         gen_dataset_func = gen_postgres_cost_dataset
     elif isinstance(config, AnalyticalEstCardModelConfig):
-        gen_dataset_func = functools.partial(gen_analytical_flattened_dataset, act_card=False)
+        gen_dataset_func = functools.partial(
+            gen_analytical_flattened_dataset, act_card=False
+        )
     elif isinstance(config, AnalyticalActCardModelConfig):
-        gen_dataset_func = functools.partial(gen_analytical_flattened_dataset, act_card=True)
+        gen_dataset_func = functools.partial(
+            gen_analytical_flattened_dataset, act_card=True
+        )
     elif isinstance(config, T3ModelConfig):
         gen_dataset_func = functools.partial(gen_t3_dataset, verbose=verbose)
     else:
         raise RuntimeError("Not supported")
 
-    if config.type == 'wl_driven':
-        x_train, x_test, y_train, y_test, _, _ = gen_dataset_func(workload_runs=workload_runs.train_workload_runs,
-                                                                  statistics_file=statistics_file,
-                                                                  cap_training_samples=cap_training_samples,
-                                                                  val_ratio=0.20,
-                                                                  shuffle=True,
-                                                                  stratify_dataset=dataloader_options.stratify_dataset,
-                                                                  stratify_per_wl_file=dataloader_options.stratify_per_wl_file,
-                                                                  model_config=config)
-        raise NotImplementedError("This needs to be solved for workload driven model due to the correct split")
-    elif config.type == 'wl_agnostic':
-
-        if hasattr(config, 'featurization'):
+    if config.type == "wl_driven":
+        x_train, x_test, y_train, y_test, _, _ = gen_dataset_func(
+            workload_runs=workload_runs.train_workload_runs,
+            statistics_file=statistics_file,
+            cap_training_samples=cap_training_samples,
+            val_ratio=0.20,
+            shuffle=True,
+            stratify_dataset=dataloader_options.stratify_dataset,
+            stratify_per_wl_file=dataloader_options.stratify_per_wl_file,
+            model_config=config,
+        )
+        raise NotImplementedError(
+            "This needs to be solved for workload driven model due to the correct split"
+        )
+    elif config.type == "wl_agnostic":
+        if hasattr(config, "featurization"):
             featurization = config.featurization
         else:
             featurization = None
-        x_train, x_test, y_train, y_test, sqls, hints, selectivities, scan_op, join_op, num_tables, plan_depths = gen_dataset_func(
+        (
+            x_train,
+            x_test,
+            y_train,
+            y_test,
+            sqls,
+            hints,
+            selectivities,
+            scan_op,
+            join_op,
+            num_tables,
+            plan_depths,
+        ) = gen_dataset_func(
             workload_runs=workload_runs.train_workload_runs,
             statistics_file=statistics_file,
             cap_training_samples=cap_training_samples,
             featurization=featurization,
             val_ratio=0.20,
             shuffle=True,
-            model_config=config
+            model_config=config,
         )
     else:
         raise RuntimeError("Not supported")
 
     if isinstance(x_train, list):
-        print(f"Training model {config.name.NAME} "
-              f"with seed {config.seed} "
-              f"and {len(x_train)} training points "
-              f"and {len(x_test)} validation points")
+        print(
+            f"Training model {config.name.NAME} "
+            f"with seed {config.seed} "
+            f"and {len(x_train)} training points "
+            f"and {len(x_test)} validation points"
+        )
 
     start_t = time.perf_counter()
     model = None
     if isinstance(config, FlatModelConfig):
         train_data = lgb.Dataset(x_train, label=y_train)
         val_data = lgb.Dataset(x_test, label=y_test, reference=train_data)
-        param = dict(metric='mse',
-                     objective='regression',
-                     random_state=config.seed,
-                     seed=config.seed,
-                     bagging_seed=config.seed,
-                     feature_fraction_seed=config.seed)
-        bst = lgb.train(param, train_data, num_boost_round=num_boost_round, valid_sets=[val_data])
-        param_dict.update(num_boost_round=num_boost_round, early_stopping_rounds=early_stopping_rounds)
-        bst.save_model(f'{model_dir}_{config.seed}.txt')
-        print(f'Model saved to {model_dir}_{config.seed}.txt')
+        param = dict(
+            metric="mse",
+            objective="regression",
+            random_state=config.seed,
+            seed=config.seed,
+            bagging_seed=config.seed,
+            feature_fraction_seed=config.seed,
+        )
+        bst = lgb.train(
+            param, train_data, num_boost_round=num_boost_round, valid_sets=[val_data]
+        )
+        param_dict.update(
+            num_boost_round=num_boost_round, early_stopping_rounds=early_stopping_rounds
+        )
+        bst.save_model(f"{model_dir}_{config.seed}.txt")
+        print(f"Model saved to {model_dir}_{config.seed}.txt")
 
-    elif isinstance(config, (ScaledPostgresModelConfig, AnalyticalEstCardModelConfig, AnalyticalActCardModelConfig)):
+    elif isinstance(
+        config,
+        (
+            ScaledPostgresModelConfig,
+            AnalyticalEstCardModelConfig,
+            AnalyticalActCardModelConfig,
+        ),
+    ):
         m = LinearRegression()
         m.fit(x_train, y_train)
-        joblib.dump(m, f'{model_dir}_{config.seed}.pkl')
-        print(f'Model saved to {model_dir}_{config.seed}.pkl')
-        os.chmod(f'{model_dir}_{config.seed}.pkl', 0o777)
+        joblib.dump(m, f"{model_dir}_{config.seed}.pkl")
+        print(f"Model saved to {model_dir}_{config.seed}.pkl")
+        os.chmod(f"{model_dir}_{config.seed}.pkl", 0o777)
 
     elif isinstance(config, T3ModelConfig):
         param = {"objective": "mape", "verbose": 2 if verbose else -1}
@@ -142,9 +192,9 @@ def train_tabular_model(workload_runs: WorkloadRuns,
                 print(i + 1, bst.eval_train(), bst.eval_valid())
 
         # assemble model path
-        model_path = f'{model_dir}_{config.seed}_{config.name.NAME}.txt'
+        model_path = f"{model_dir}_{config.seed}_{config.name.NAME}.txt"
         bst.save_model(model_path)
-        print(f'Model saved to {model_path}.txt')
+        print(f"Model saved to {model_path}.txt")
 
         # wrap the model in the T3Model class
         if isinstance(config, T3FlatModelConfig):
@@ -161,41 +211,51 @@ def train_tabular_model(workload_runs: WorkloadRuns,
         if len(y_train.shape) == 1:
             y_train = y_train.reshape(-1, 1)
         train = np.hstack((x_train, y_train))
-        ds_context = Context(parametric_types=[Gaussian]*train.shape[1]).add_domains(train)
+        ds_context = Context(parametric_types=[Gaussian] * train.shape[1]).add_domains(
+            train
+        )
 
         print("Learning SPN with Gaussian leaves...")
         spn = learn_parametric(train, ds_context, min_instances_slice=20)
 
         print("Saving SPN model...")
-        model_path = f'{model_dir}_{config.seed}_{config.name.NAME}.pkl'
+        model_path = f"{model_dir}_{config.seed}_{config.name.NAME}.pkl"
 
-        with open(f'{model_path}', 'wb') as f:
+        with open(f"{model_path}", "wb") as f:
             pickle.dump(spn, f)
-        print(f'Model saved to {model_path}')
+        print(f"Model saved to {model_path}")
 
     else:
-        raise NotImplementedError('Not supported tabular model')
+        raise NotImplementedError("Not supported tabular model")
 
-    param_dict.update(training_time=time.perf_counter() - start_t,
-                      no_train_points=len(x_train) if isinstance(x_train, list) else -1,
-                      no_val_points=len(x_test) if isinstance(x_test, list) else -1, )
+    param_dict.update(
+        training_time=time.perf_counter() - start_t,
+        no_train_points=len(x_train) if isinstance(x_train, list) else -1,
+        no_val_points=len(x_test) if isinstance(x_test, list) else -1,
+    )
 
-    save_csv([param_dict], str(model_dir) + f'_{config.seed}_{config.name.NAME}_params.csv')
+    save_csv(
+        [param_dict], str(model_dir) + f"_{config.seed}_{config.name.NAME}_params.csv"
+    )
     return model
 
 
-def predict_tabular_model(config: ModelConfig,
-                          workload_runs: WorkloadRuns,
-                          statistics_file: Path,
-                          model_dir: Path,
-                          cap_training_samples: bool = None,
-                          wandb_run: Optional[Run] = None,
-                          bound_predictions: bool = False,
-                          prediction_bounder: Optional[PredictionBounder] = None,
-                          log_all_queries: bool = False,
-                          t3_model: T3Model = None):
+def predict_tabular_model(
+    config: ModelConfig,
+    workload_runs: WorkloadRuns,
+    statistics_file: Path,
+    model_dir: Path,
+    cap_training_samples: bool = None,
+    wandb_run: Optional[Run] = None,
+    bound_predictions: bool = False,
+    prediction_bounder: Optional[PredictionBounder] = None,
+    log_all_queries: bool = False,
+    t3_model: T3Model = None,
+):
     if bound_predictions or prediction_bounder:
-        raise NotImplementedError("prediction bounding needs to be implemented for flat models")
+        raise NotImplementedError(
+            "prediction bounding needs to be implemented for flat models"
+        )
 
     # seed for reproducibility
     torch.manual_seed(config.seed)
@@ -203,7 +263,7 @@ def predict_tabular_model(config: ModelConfig,
 
     if isinstance(config, FlatModelConfig):
         print(f"Loading model from {model_dir}_{config.seed}.txt")
-        bst = lgb.Booster(model_file=f'{model_dir}_{config.seed}.txt')
+        bst = lgb.Booster(model_file=f"{model_dir}_{config.seed}.txt")
 
         # Define a function to apply lower bound
         def predict_with_lower_bound(data, lower_bound, bst=bst):
@@ -217,14 +277,14 @@ def predict_tabular_model(config: ModelConfig,
 
     elif isinstance(config, ScaledPostgresModelConfig):
         print(f"Loading model from {model_dir}_{config.seed}.pkl")
-        m = joblib.load(filename=f'{model_dir}_{config.seed}.pkl')
+        m = joblib.load(filename=f"{model_dir}_{config.seed}.pkl")
         pred_func = m.predict
         gen_dataset_func = gen_postgres_cost_dataset
     elif isinstance(config, T3ModelConfig):
-        model_path = f'{model_dir}_{config.seed}_{config.name.NAME}.txt'
+        model_path = f"{model_dir}_{config.seed}_{config.name.NAME}.txt"
         print(f"Loading model from {model_path}")
         bst = lgb.Booster(model_file=model_path)
-        print(f'Model saved to {model_dir}_{config.seed}.txt')
+        print(f"Model saved to {model_dir}_{config.seed}.txt")
 
         # wrap the model in the T3Model class
         if isinstance(config, T3FlatModelConfig):
@@ -235,43 +295,67 @@ def predict_tabular_model(config: ModelConfig,
             t3_model = PerTupleTreeModel(bst)
         assert t3_model is not None
         pred_func = t3_model.estimate_runtime_wrapper  # use the list-predict wrapper
-        gen_dataset_func = functools.partial(gen_t3_dataset, model_config=config, verbose=False, return_dataset=False)
+        gen_dataset_func = functools.partial(
+            gen_t3_dataset, model_config=config, verbose=False, return_dataset=False
+        )
 
     elif isinstance(config, SPNModelConfig):
-        model_path = f'{model_dir}_{config.seed}_{config.name.NAME}.pkl'
+        model_path = f"{model_dir}_{config.seed}_{config.name.NAME}.pkl"
         print(f"Loading model from {model_path}")
-        with open(f'{model_path}', 'rb') as f:
+        with open(f"{model_path}", "rb") as f:
             spn_loaded = pickle.load(f)
         assert spn_loaded is not None, f"SPN model {model_path} could not be loaded"
         pred_func = lambda x: mpe(spn_loaded, x)
         gen_dataset_func = gen_flattened_dataset
 
     else:
-        raise NotImplementedError('Not supported tabular model')
+        raise NotImplementedError("Not supported tabular model")
 
-    if hasattr(config, 'featurization'):
+    if hasattr(config, "featurization"):
         featurization = config.featurization
     else:
         featurization = None
 
     test_datasets = []
     for test_wl in workload_runs.test_workload_runs:
-        x_test, _, y_test, _, test_sqls, test_hints, test_selectivities, test_scan_op_list, test_join_op_list, test_num_tables, test_plan_depths \
-            = gen_dataset_func(workload_runs=[test_wl],
-                               statistics_file=statistics_file,
-                               cap_training_samples=cap_training_samples,
-                               featurization=featurization,
-                               val_ratio=0,
-                               shuffle=False,
-                               model_config=config,
-                               is_test=True
-                               )
+        (
+            x_test,
+            _,
+            y_test,
+            _,
+            test_sqls,
+            test_hints,
+            test_selectivities,
+            test_scan_op_list,
+            test_join_op_list,
+            test_num_tables,
+            test_plan_depths,
+        ) = gen_dataset_func(
+            workload_runs=[test_wl],
+            statistics_file=statistics_file,
+            cap_training_samples=cap_training_samples,
+            featurization=featurization,
+            val_ratio=0,
+            shuffle=False,
+            model_config=config,
+            is_test=True,
+        )
         test_datasets.append(
-            (x_test, y_test, test_sqls, test_hints, test_selectivities, test_scan_op_list, test_join_op_list,
-             test_num_tables, test_plan_depths))
+            (
+                x_test,
+                y_test,
+                test_sqls,
+                test_hints,
+                test_selectivities,
+                test_scan_op_list,
+                test_join_op_list,
+                test_num_tables,
+                test_plan_depths,
+            )
+        )
 
     # retrieve metrics similar to the ones used for QLoss
-    metrics = init_metrics('QLoss')
+    metrics = init_metrics("QLoss")
 
     # initialize variables for aggregated reporting across all experiments
     job_total_selected_runtime = -1
@@ -287,9 +371,17 @@ def predict_tabular_model(config: ModelConfig,
     accesspath_total_selected_runtime = -1
     accesspath_total_slowdown = None
 
-    for (x_test, y_test, sqls, hints, selectivities, scan_ops, join_ops, num_tables, plan_depths), test_path in zip(
-            test_datasets,
-                                                                                           workload_runs.target_test_csv_paths):
+    for (
+        x_test,
+        y_test,
+        sqls,
+        hints,
+        selectivities,
+        scan_ops,
+        join_ops,
+        num_tables,
+        plan_depths,
+    ), test_path in zip(test_datasets, workload_runs.target_test_csv_paths):
         print(f"Starting validation for {test_path}")
         test_stats = dict()
         start_t = time.perf_counter()
@@ -310,12 +402,17 @@ def predict_tabular_model(config: ModelConfig,
         )
 
         for metric in metrics:
-            metric.evaluate(metrics_dict=test_stats,
-                            model=None,
-                            labels=y_test,
-                            preds=pred_runtimes,
-                            probs=None)
-        save_csv([test_stats], target_csv_path=str(test_path.with_suffix('')) + "_test_stats.csv")
+            metric.evaluate(
+                metrics_dict=test_stats,
+                model=None,
+                labels=y_test,
+                preds=pred_runtimes,
+                probs=None,
+            )
+        save_csv(
+            [test_stats],
+            target_csv_path=str(test_path.with_suffix("")) + "_test_stats.csv",
+        )
 
         # Logging all queries
         rows = to_rows(
@@ -328,7 +425,7 @@ def predict_tabular_model(config: ModelConfig,
             scan_ops=scan_ops,
             join_ops=join_ops,
             num_tables=num_tables,
-            plan_depths=plan_depths
+            plan_depths=plan_depths,
         )
         if log_all_queries:
             save_csv(rows, target_csv_path=str(test_path) + "_test_pred.csv")
@@ -336,37 +433,42 @@ def predict_tabular_model(config: ModelConfig,
         # Log to wandb
         test_file_name = test_path.stem
         # remove _seed from name (this is different from the _s0 suffix)
-        test_file_name = '_'.join(test_file_name.split('_')[:-1])
+        test_file_name = "_".join(test_file_name.split("_")[:-1])
 
         if wandb_run:
-            wandb_run.summary.update(prefix_dict(test_stats, f'{test_file_name}.json/test_'))
+            wandb_run.summary.update(
+                prefix_dict(test_stats, f"{test_file_name}.json/test_")
+            )
 
-        if "join_order" in str(test_path) or 'JOBExtended' in test_file_name:
-            if test_file_name == 'join_order':
-                wl_name = 'job_light'  # job_light
-            elif test_file_name in ['join_order_job', 'join_order_job_w_idxs_combined']:
-                wl_name = 'job'
-            elif 'JOBExtended' in test_file_name:
-                wl_name = 'job_extended'
+        if "join_order" in str(test_path) or "JOBExtended" in test_file_name:
+            if test_file_name == "join_order":
+                wl_name = "job_light"  # job_light
+            elif test_file_name in ["join_order_job", "join_order_job_w_idxs_combined"]:
+                wl_name = "job"
+            elif "JOBExtended" in test_file_name:
+                wl_name = "job_extended"
             else:
                 raise ValueError(f"Unknown workload name: {test_file_name}")
-            rt, slowdown = evaluate_join_order(predictions=rows, wandb_run=wandb_run, wl_name=wl_name)
-            if wl_name == 'job':
+            rt, slowdown = evaluate_join_order(
+                predictions=rows, wandb_run=wandb_run, wl_name=wl_name
+            )
+            if wl_name == "job":
                 job_total_selected_runtime = rt
                 job_total_slowdown = slowdown
-            elif wl_name == 'job_light':
+            elif wl_name == "job_light":
                 joblight_total_selected_runtime = rt
                 joblight_total_slowdown = slowdown
-            elif wl_name == 'job_extended':
+            elif wl_name == "job_extended":
                 jobextended_total_selected_runtime = rt
                 jobextended_total_slowdown = slowdown
             else:
                 raise ValueError(f"Unknown workload name: {wl_name}")
 
         if "physical_operator" in str(test_path):
-            with_idxs = '_w_idx' in str(test_path)
-            rt, slowdown = evaluate_physical_plan_selection(predictions=rows, wandb_run=wandb_run,
-                                                            with_idxs=with_idxs)
+            with_idxs = "_w_idx" in str(test_path)
+            rt, slowdown = evaluate_physical_plan_selection(
+                predictions=rows, wandb_run=wandb_run, with_idxs=with_idxs
+            )
             if with_idxs:
                 physopidx_total_selected_runtime = rt
                 physopidx_total_slowdown = slowdown
@@ -374,11 +476,18 @@ def predict_tabular_model(config: ModelConfig,
                 physop_total_selected_runtime = rt
                 physop_total_slowdown = slowdown
         if "access_path_selection" in str(test_path):
-            accesspath_total_selected_runtime, accesspath_total_slowdown = evaluate_access_path_selection(
-                predictions=rows, wandb_run=wandb_run)
+            accesspath_total_selected_runtime, accesspath_total_slowdown = (
+                evaluate_access_path_selection(predictions=rows, wandb_run=wandb_run)
+            )
 
     # aggregate metrics
-    if job_total_selected_runtime != -1 and joblight_total_selected_runtime != -1 and physop_total_selected_runtime != -1 and physopidx_total_selected_runtime != -1 and accesspath_total_selected_runtime != -1:
+    if (
+        job_total_selected_runtime != -1
+        and joblight_total_selected_runtime != -1
+        and physop_total_selected_runtime != -1
+        and physopidx_total_selected_runtime != -1
+        and accesspath_total_selected_runtime != -1
+    ):
         # if not all 5 workloads are present, do not aggregate
         assert job_total_selected_runtime is not None
         assert joblight_total_selected_runtime is not None
@@ -386,38 +495,53 @@ def predict_tabular_model(config: ModelConfig,
         assert physopidx_total_selected_runtime is not None
         assert accesspath_total_selected_runtime is not None
 
-        total_selected_runtime = (job_total_selected_runtime + joblight_total_selected_runtime +
-                                  physop_total_selected_runtime + physopidx_total_selected_runtime + accesspath_total_selected_runtime)
-        avg_total_slowdown = (job_total_slowdown + joblight_total_slowdown + physop_total_slowdown +
-                              physopidx_total_slowdown + accesspath_total_slowdown) / 5
+        total_selected_runtime = (
+            job_total_selected_runtime
+            + joblight_total_selected_runtime
+            + physop_total_selected_runtime
+            + physopidx_total_selected_runtime
+            + accesspath_total_selected_runtime
+        )
+        avg_total_slowdown = (
+            job_total_slowdown
+            + joblight_total_slowdown
+            + physop_total_slowdown
+            + physopidx_total_slowdown
+            + accesspath_total_slowdown
+        ) / 5
 
         if wandb_run is not None:
-            wandb_run.summary.update({
-                'qo_total/selected_runtime': total_selected_runtime,
-                'qo_total/avg_slowdown': avg_total_slowdown
-            })
+            wandb_run.summary.update(
+                {
+                    "qo_total/selected_runtime": total_selected_runtime,
+                    "qo_total/avg_slowdown": avg_total_slowdown,
+                }
+            )
     return
 
 
-def gen_postgres_cost_dataset(workload_runs: List[Path],
-                              cap_training_samples: Optional[bool],
-                              statistics_file: Path,
-                              featurization: Optional,
-                              shuffle: bool,
-                              model_config: ModelConfig,
-                              val_ratio: float = 0.15,
-                              stratify_dataset: bool = False,
-                              stratify_per_wl_file: bool = False,
-                              is_test: bool = False
-                              ) -> Tuple[np.ndarray]:
-    plans, database_statistics = read_workload_runs(workload_runs,
-                                                    include_timeout_queries=model_config.include_timeout_queries and not is_test,
-                                                    stratify_dataset=stratify_dataset,
-                                                    stratify_per_wl_file=stratify_per_wl_file,
-                                                    limit_plans_overall=model_config.limit_plans_overall,
-                                                    limit_plans_per_file=model_config.limit_plans_per_file,
-                                                    augment_with_subplans=model_config.train_on_subplans and not is_test,
-                                                    remove_join_cond_from_plan=model_config.remove_join_cond_from_plan, )
+def gen_postgres_cost_dataset(
+    workload_runs: List[Path],
+    cap_training_samples: Optional[bool],
+    statistics_file: Path,
+    featurization: Optional,
+    shuffle: bool,
+    model_config: ModelConfig,
+    val_ratio: float = 0.15,
+    stratify_dataset: bool = False,
+    stratify_per_wl_file: bool = False,
+    is_test: bool = False,
+) -> Tuple[np.ndarray]:
+    plans, database_statistics = read_workload_runs(
+        workload_runs,
+        include_timeout_queries=model_config.include_timeout_queries and not is_test,
+        stratify_dataset=stratify_dataset,
+        stratify_per_wl_file=stratify_per_wl_file,
+        limit_plans_overall=model_config.limit_plans_overall,
+        limit_plans_per_file=model_config.limit_plans_per_file,
+        augment_with_subplans=model_config.train_on_subplans and not is_test,
+        remove_join_cond_from_plan=model_config.remove_join_cond_from_plan,
+    )
     feature_vecs = []
     labels = []
     sqls, hints = [], []  # Required to later evaluate against join order
@@ -425,7 +549,7 @@ def gen_postgres_cost_dataset(workload_runs: List[Path],
     for plan in plans:
         # append to all feature vectors and runtime labels
         feature_vecs.append([plan["plan_parameters"]["pg_cost"]])
-        assert plan['plan_runtime_ms'] is not None, f"Plan runtime is None for {plan}"
+        assert plan["plan_runtime_ms"] is not None, f"Plan runtime is None for {plan}"
         labels.append(plan["plan_runtime_ms"] / 1000)
         sqls.append(plan["sql"])
         hints.append(plan["hint"])
@@ -436,36 +560,56 @@ def gen_postgres_cost_dataset(workload_runs: List[Path],
         num_tables.append(plan["num_tables"])
         plan_depths.append(0)
 
-    X_train, X_val, Y_train, Y_val = slice_train_val(cap_training_samples,
-                                                     feature_vecs,
-                                                     labels,
-                                                     plans,
-                                                     val_ratio,
-                                                     shuffle)
+    X_train, X_val, Y_train, Y_val = slice_train_val(
+        cap_training_samples, feature_vecs, labels, plans, val_ratio, shuffle
+    )
 
-    return X_train, X_val, Y_train, Y_val, sqls, hints, selectivities, scan_ops, join_ops, num_tables, plan_depths
+    return (
+        X_train,
+        X_val,
+        Y_train,
+        Y_val,
+        sqls,
+        hints,
+        selectivities,
+        scan_ops,
+        join_ops,
+        num_tables,
+        plan_depths,
+    )
 
 
-def gen_flattened_dataset(workload_runs: List[Path],
-                          statistics_file: Path,
-                          cap_training_samples: Optional[bool],
-                          featurization: Featurization,
-                          model_config: ModelConfig,
-                          val_ratio: float = 0.15,
-                          shuffle: bool = True,
-                          is_test: bool = False
-                          ):
+def gen_flattened_dataset(
+    workload_runs: List[Path],
+    statistics_file: Path,
+    cap_training_samples: Optional[bool],
+    featurization: Featurization,
+    model_config: ModelConfig,
+    val_ratio: float = 0.15,
+    shuffle: bool = True,
+    is_test: bool = False,
+):
     feature_statistics = load_json(str(statistics_file), namespace=False)
-    op_idx_dict = feature_statistics['op_name']['value_dict']
+    op_idx_dict = feature_statistics["op_name"]["value_dict"]
     no_ops = len(op_idx_dict)
-    plans, database_statistics = read_workload_runs(workload_runs,
-                                                    include_timeout_queries=model_config.include_timeout_queries and not is_test,
-                                                    limit_plans_per_file=model_config.limit_plans_per_file,
-                                                    limit_plans_overall=model_config.limit_plans_overall,
-                                                    augment_with_subplans=model_config.train_on_subplans and not is_test,
-                                                    merge_nlj_and_inlj_to_same_op=model_config.merge_nlj_and_inlj_to_same_op,
-                                                    remove_join_cond_from_plan=model_config.remove_join_cond_from_plan, )
-    feature_vecs, labels, selectivities, join_ops, scan_ops, num_tables, plan_depths = [], [], [], [], [], [], []
+    plans, database_statistics = read_workload_runs(
+        workload_runs,
+        include_timeout_queries=model_config.include_timeout_queries and not is_test,
+        limit_plans_per_file=model_config.limit_plans_per_file,
+        limit_plans_overall=model_config.limit_plans_overall,
+        augment_with_subplans=model_config.train_on_subplans and not is_test,
+        merge_nlj_and_inlj_to_same_op=model_config.merge_nlj_and_inlj_to_same_op,
+        remove_join_cond_from_plan=model_config.remove_join_cond_from_plan,
+    )
+    feature_vecs, labels, selectivities, join_ops, scan_ops, num_tables, plan_depths = (
+        [],
+        [],
+        [],
+        [],
+        [],
+        [],
+        [],
+    )
 
     sqls, hints = [], []  # Required to later evaluate against query optimization
     for plan in plans:
@@ -487,15 +631,15 @@ def gen_flattened_dataset(workload_runs: List[Path],
             op_name = p["plan_parameters"]["op_name"]
             op_idx = op_idx_dict[op_name]
             feature_num_vec[op_idx] += 1
-            if featurization.PLAN_FEATURE == 'est_card':
-                if 'est_card' in p["plan_parameters"].keys():
+            if featurization.PLAN_FEATURE == "est_card":
+                if "est_card" in p["plan_parameters"].keys():
                     feature_row_vec[op_idx] += p["plan_parameters"]["est_card"]
                 else:
                     feature_row_vec[op_idx] += p["plan_parameters"]["est_rows"]
-            elif featurization.PLAN_FEATURE == 'act_card':
-                if 'act_card' in p["plan_parameters"].keys():
+            elif featurization.PLAN_FEATURE == "act_card":
+                if "act_card" in p["plan_parameters"].keys():
                     feature_row_vec[op_idx] += p["plan_parameters"]["act_card"]
-                elif 'act_rows' in p["plan_parameters"].keys():
+                elif "act_rows" in p["plan_parameters"].keys():
                     feature_row_vec[op_idx] += p["plan_parameters"]["act_rows"]
                 else:
                     feature_row_vec[op_idx] += p["plan_parameters"]["est_card"]
@@ -508,20 +652,33 @@ def gen_flattened_dataset(workload_runs: List[Path],
         # append to all feature vectors and runtime labels
         feature_vecs.append(np.concatenate((feature_num_vec, feature_row_vec)))
         labels.append(plan["plan_runtime_ms"] / 1000)
-    X_train, X_val, Y_train, Y_val = slice_train_val(cap_training_samples, feature_vecs, labels, plans, val_ratio,
-                                                     shuffle=shuffle)
-    return X_train, X_val, Y_train, Y_val, sqls, hints, selectivities, scan_ops, join_ops, num_tables, plan_depths
+    X_train, X_val, Y_train, Y_val = slice_train_val(
+        cap_training_samples, feature_vecs, labels, plans, val_ratio, shuffle=shuffle
+    )
+    return (
+        X_train,
+        X_val,
+        Y_train,
+        Y_val,
+        sqls,
+        hints,
+        selectivities,
+        scan_ops,
+        join_ops,
+        num_tables,
+        plan_depths,
+    )
 
 
 def extract_card(p, act_card):
     if not act_card:
-        if 'est_card' in p["plan_parameters"].keys():
+        if "est_card" in p["plan_parameters"].keys():
             card = p["plan_parameters"]["est_card"]
         else:
             card = p["plan_parameters"]["est_rows"]
     else:
-        if 'est_card' in p["plan_parameters"].keys():
-            if 'act_card' in p["plan_parameters"].keys():
+        if "est_card" in p["plan_parameters"].keys():
+            if "act_card" in p["plan_parameters"].keys():
                 card = p["plan_parameters"]["act_card"]
             # fallback: for some plan operators, pg does not annotate act cards
             else:
@@ -531,24 +688,32 @@ def extract_card(p, act_card):
     return card
 
 
-def gen_analytical_flattened_dataset(workload_runs, statistics_file, cap_training_samples, model_config: ModelConfig,
-                                     val_ratio=0.15,
-                                     act_card=False,
-                                     stratify_dataset: bool = False, stratify_per_wl_file: bool = False,
-                                     is_test: bool = False
-                                     ):
+def gen_analytical_flattened_dataset(
+    workload_runs,
+    statistics_file,
+    cap_training_samples,
+    model_config: ModelConfig,
+    val_ratio=0.15,
+    act_card=False,
+    stratify_dataset: bool = False,
+    stratify_per_wl_file: bool = False,
+    is_test: bool = False,
+):
     feature_statistics = load_json(str(statistics_file), namespace=False)
-    op_idx_dict = feature_statistics['op_name']['value_dict']
+    op_idx_dict = feature_statistics["op_name"]["value_dict"]
     no_ops = len(op_idx_dict)
-    plans, database_statistics = read_workload_runs(workload_run_paths=workload_runs,
-                                                    include_timeout_queries=model_config.include_timeout_queries and not is_test,
-                                                    stratify_dataset=stratify_dataset,
-                                                    stratify_per_wl_file=stratify_per_wl_file,
-                                                    limit_plans_per_file=model_config.limit_plans_per_file,
-                                                    limit_plans_overall=model_config.limit_plans_overall,
-                                                    augment_with_subplans=model_config.train_on_subplans,
-                                                    merge_nlj_and_inlj_to_same_op=model_config.merge_nlj_and_inlj_to_same_op and not is_test,
-                                                    remove_join_cond_from_plan=model_config.remove_join_cond_from_plan, )
+    plans, database_statistics = read_workload_runs(
+        workload_run_paths=workload_runs,
+        include_timeout_queries=model_config.include_timeout_queries and not is_test,
+        stratify_dataset=stratify_dataset,
+        stratify_per_wl_file=stratify_per_wl_file,
+        limit_plans_per_file=model_config.limit_plans_per_file,
+        limit_plans_overall=model_config.limit_plans_overall,
+        augment_with_subplans=model_config.train_on_subplans,
+        merge_nlj_and_inlj_to_same_op=model_config.merge_nlj_and_inlj_to_same_op
+        and not is_test,
+        remove_join_cond_from_plan=model_config.remove_join_cond_from_plan,
+    )
     feature_vecs = []
     labels = []
     for plan in plans:
@@ -581,8 +746,19 @@ def gen_analytical_flattened_dataset(workload_runs, statistics_file, cap_trainin
         extract_features(plan)
 
         # append to all feature vectors and runtime labels
-        feature_vecs.append(np.concatenate((feature_num_vec, feature_row_vec, feature_row_vec_left_input,
-                                            feature_row_vec_right_input, feature_row_vec_prod_input)))
+        feature_vecs.append(
+            np.concatenate(
+                (
+                    feature_num_vec,
+                    feature_row_vec,
+                    feature_row_vec_left_input,
+                    feature_row_vec_right_input,
+                    feature_row_vec_prod_input,
+                )
+            )
+        )
         labels.append(plan["plan_runtime_ms"] / 1000)
-    X_train, X_val, Y_train, Y_val = slice_train_val(cap_training_samples, feature_vecs, labels, plans, val_ratio)
+    X_train, X_val, Y_train, Y_val = slice_train_val(
+        cap_training_samples, feature_vecs, labels, plans, val_ratio
+    )
     return X_train, X_val, Y_train, Y_val

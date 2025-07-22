@@ -10,13 +10,14 @@ from training.losses import create_loss
 
 
 class FinalPredictionLayer(nn.Module):
-    def __init__(self,
-                 in_feature: int = 69,
-                 hid_units: int = 256,
-                 contract: int = 1,
-                 mid_layers: bool = True,
-                 res_con: bool = True):
-
+    def __init__(
+        self,
+        in_feature: int = 69,
+        hid_units: int = 256,
+        contract: int = 1,
+        mid_layers: bool = True,
+        res_con: bool = True,
+    ):
         super(FinalPredictionLayer, self).__init__()
         self.mid_layers = mid_layers
         self.res_con = res_con
@@ -41,11 +42,13 @@ class FinalPredictionLayer(nn.Module):
 
 
 class FeatureEmbedding(nn.Module):
-    def __init__(self,
-                 feature_statistics: dict,
-                 embedding_size: int = 32,
-                 histogram_bin_number: int = 50,
-                 max_filter_number: int = 3):
+    def __init__(
+        self,
+        feature_statistics: dict,
+        embedding_size: int = 32,
+        histogram_bin_number: int = 50,
+        max_filter_number: int = 3,
+    ):
         # Initialize model
         super(FeatureEmbedding, self).__init__()
         self.embed_size = embedding_size
@@ -54,46 +57,56 @@ class FeatureEmbedding(nn.Module):
         small_embed_size = embedding_size // 8 + 1
 
         # Define embedding layers
-        num_operators = feature_statistics['op_name']['no_vals']
+        num_operators = feature_statistics["op_name"]["no_vals"]
         self.operator_type_embedding = nn.Embedding(num_operators + 2, embedding_size)
 
-        num_tables = feature_statistics['tablename']['no_vals']
+        num_tables = feature_statistics["tablename"]["no_vals"]
         self.table_embedding = nn.Embedding(num_tables + 2, embedding_size)
 
-        num_columns = int(feature_statistics['col_id']['max'])
+        num_columns = int(feature_statistics["col_id"]["max"])
         self.column_embedding = nn.Embedding(num_columns + 2, embedding_size)
 
-        num_filter_operators = feature_statistics['operator']['no_vals']
-        self.filter_operator_embedding = nn.Embedding(num_filter_operators + 2, embedding_size // 8)
+        num_filter_operators = feature_statistics["operator"]["no_vals"]
+        self.filter_operator_embedding = nn.Embedding(
+            num_filter_operators + 2, embedding_size // 8
+        )
 
         # Define linear layers
-        self.linear_filter = nn.Linear(embedding_size + small_embed_size, embedding_size + small_embed_size)
-        self.linear_filter_2 = nn.Linear(embedding_size + small_embed_size, embedding_size + small_embed_size)
+        self.linear_filter = nn.Linear(
+            embedding_size + small_embed_size, embedding_size + small_embed_size
+        )
+        self.linear_filter_2 = nn.Linear(
+            embedding_size + small_embed_size, embedding_size + small_embed_size
+        )
         self.linear_type = nn.Linear(embedding_size, embedding_size)
         self.linear_sample = nn.Linear(1000, embedding_size)
         self.linear_hist = nn.Linear(histogram_bin_number, embedding_size)
-        self.linear_final = nn.Linear(embedding_size * 4 + small_embed_size, embedding_size * 4 + small_embed_size)
+        self.linear_final = nn.Linear(
+            embedding_size * 4 + small_embed_size, embedding_size * 4 + small_embed_size
+        )
 
     def forward(self, input_feature: torch.Tensor) -> torch.Tensor:
-        splits = [1,
-                  self.max_filter_number * 3,
-                  self.max_filter_number,
-                  self.bin_number * self.max_filter_number,
-                  1,
-                  1000]
-        operator_type_id, filter_ids, filter_masks, hists, table, sample = torch.split(input_feature, splits, dim=-1)
+        splits = [
+            1,
+            self.max_filter_number * 3,
+            self.max_filter_number,
+            self.bin_number * self.max_filter_number,
+            1,
+            1000,
+        ]
+        operator_type_id, filter_ids, filter_masks, hists, table, sample = torch.split(
+            input_feature, splits, dim=-1
+        )
 
         type_embedding = self.get_operator_type_embedding(operator_type_id)
         filter_embedding = self.get_filter_embedding(filter_ids, filter_masks)
         histogram_embedding = self.get_histogram_embedding(hists, filter_masks)
         table_embedding = self.get_table_embedding(table, sample)
 
-        out = torch.cat((
-            type_embedding,
-            filter_embedding,
-            table_embedding,
-            histogram_embedding),
-            dim=1)
+        out = torch.cat(
+            (type_embedding, filter_embedding, table_embedding, histogram_embedding),
+            dim=1,
+        )
 
         out = F.leaky_relu(self.linear_final(out))
         return out
@@ -109,10 +122,12 @@ class FeatureEmbedding(nn.Module):
 
     def get_histogram_embedding(self, hists, filters_mask):
         # batch * 50 * 3
-        histExpand = hists.view(-1, self.bin_number, self.max_filter_number).transpose(1, 2)
+        histExpand = hists.view(-1, self.bin_number, self.max_filter_number).transpose(
+            1, 2
+        )
 
         emb = self.linear_hist(histExpand)
-        emb[~filters_mask.bool()] = 0.  # mask out space holder
+        emb[~filters_mask.bool()] = 0.0  # mask out space holder
 
         # avg by # of filters
         num_filters = torch.sum(filters_mask, dim=1)
@@ -122,7 +137,9 @@ class FeatureEmbedding(nn.Module):
 
     def get_filter_embedding(self, filters_id, filters_mask):
         # get filters, then apply mask
-        filter_expand = filters_id.view(-1, self.max_filter_number, 3)# .transpose(1, 2) ToDo
+        filter_expand = filters_id.view(
+            -1, self.max_filter_number, 3
+        )  # .transpose(1, 2) ToDo
         column_ids = filter_expand[:, :, 0].long()
         operator_ids = filter_expand[:, :, 1].long()
         literals = filter_expand[:, :, 2].unsqueeze(-1)  # b by 3 by 1
@@ -135,7 +152,7 @@ class FeatureEmbedding(nn.Module):
         concat = F.leaky_relu(self.linear_filter_2(concat))
 
         # apply mask
-        concat[~filters_mask.bool()] = 0.
+        concat[~filters_mask.bool()] = 0.0
 
         # avg by # of filters
         num_filters = torch.sum(filters_mask, dim=1)
@@ -145,12 +162,13 @@ class FeatureEmbedding(nn.Module):
 
 
 class QueryFormer(nn.Module):
-    def __init__(self,
-                 config: QueryFormerModelConfig,
-                 input_dims: InputDims,
-                 feature_statistics: dict,
-                 label_norm):
-
+    def __init__(
+        self,
+        config: QueryFormerModelConfig,
+        input_dims: InputDims,
+        feature_statistics: dict,
+        label_norm,
+    ):
         super(QueryFormer, self).__init__()
 
         # Initialize Model
@@ -159,30 +177,47 @@ class QueryFormer(nn.Module):
         self.head_size = config.head_size
         self.device = config.device
         self.label_norm = None
-        self.loss_fxn = create_loss(config.loss_class_name, loss_kwargs=config.loss_class_kwargs)
+        self.loss_fxn = create_loss(
+            config.loss_class_name, loss_kwargs=config.loss_class_kwargs
+        )
 
         # Define encoders for features
-        self.feature_embedding_layer = FeatureEmbedding(embedding_size=config.embedding_size,
-                                                        histogram_bin_number=config.histogram_bin_number,
-                                                        feature_statistics=feature_statistics,
-                                                        max_filter_number=config.max_num_filters)
+        self.feature_embedding_layer = FeatureEmbedding(
+            embedding_size=config.embedding_size,
+            histogram_bin_number=config.histogram_bin_number,
+            feature_statistics=feature_statistics,
+            max_filter_number=config.max_num_filters,
+        )
 
         # Define encoders for further inputs
-        self.relative_position_encoder = nn.Embedding(64, config.head_size, padding_idx=0)
+        self.relative_position_encoder = nn.Embedding(
+            64, config.head_size, padding_idx=0
+        )
         self.height_encoder = nn.Embedding(64, hidden_dim, padding_idx=0)
         self.join_encoder = nn.Embedding(256, hidden_dim, padding_idx=0)
 
         # Define intermediate transformer layers
         self.input_dropout = nn.Dropout(config.dropout)
         self.layers = nn.ModuleList(
-            [EncoderLayer(hidden_dim, config.ffn_dim, config.dropout, config.attention_dropout_rate, config.head_size)
-             for _ in range(config.n_layers)])
+            [
+                EncoderLayer(
+                    hidden_dim,
+                    config.ffn_dim,
+                    config.dropout,
+                    config.attention_dropout_rate,
+                    config.head_size,
+                )
+                for _ in range(config.n_layers)
+            ]
+        )
         self.final_ln = nn.LayerNorm(hidden_dim)
         self.super_token = nn.Embedding(1, hidden_dim)
         self.super_token_virtual_distance = nn.Embedding(1, config.head_size)
 
         # Define prediction layer
-        self.prediction_layer = FinalPredictionLayer(in_feature=hidden_dim, hid_units=config.hidden_dim_prediction)
+        self.prediction_layer = FinalPredictionLayer(
+            in_feature=hidden_dim, hid_units=config.hidden_dim_prediction
+        )
 
     def forward(self, input_batch: Tuple) -> torch.Tensor:
         # Read batch
@@ -195,10 +230,14 @@ class QueryFormer(nn.Module):
 
         # Relative position encoding and rearranging dimensions
         # [n_batch, n_node, n_node, n_head] -> [# n_batch, n_head, n_node, n_node]
-        node_distances_bias = self.relative_position_encoder(node_distances).permute(0, 3, 1, 2)
+        node_distances_bias = self.relative_position_encoder(node_distances).permute(
+            0, 3, 1, 2
+        )
 
         # Adding relative position encoding to attention bias but excluding the first position in the last two dimensions
-        tree_attn_bias[:, :, 1:, 1:] = tree_attn_bias[:, :, 1:, 1:] + node_distances_bias
+        tree_attn_bias[:, :, 1:, 1:] = (
+            tree_attn_bias[:, :, 1:, 1:] + node_distances_bias
+        )
 
         # Reset relative position encoding
         # Reshape the weights of super token virtual distance to the shape of (1, headsize, 1).
@@ -214,7 +253,9 @@ class QueryFormer(nn.Module):
         # features_view = node_features.view(-1, 1165)
         features_view = node_features.flatten(start_dim=0, end_dim=1)
 
-        embedded_features = self.feature_embedding_layer(features_view).view(batch_size, -1, self.hidden_dim)
+        embedded_features = self.feature_embedding_layer(features_view).view(
+            batch_size, -1, self.hidden_dim
+        )
 
         # Add height encoding to the embedded features
         encoded_heights = self.height_encoder(node_heights)
@@ -226,7 +267,9 @@ class QueryFormer(nn.Module):
         embedded_features = embedded_features + embedded_joins
 
         # Add super token to the embedded features
-        super_token_feature = self.super_token.weight.unsqueeze(0).repeat(batch_size, 1, 1)
+        super_token_feature = self.super_token.weight.unsqueeze(0).repeat(
+            batch_size, 1, 1
+        )
         super_node_feature = torch.cat([super_token_feature, embedded_features], dim=1)
 
         # Pass through transformer layers
@@ -259,7 +302,7 @@ class MultiHeadAttention(nn.Module):
         super(MultiHeadAttention, self).__init__()
         self.head_size = head_size
         self.att_size = att_size = hidden_size // head_size
-        self.scale = att_size ** -0.5
+        self.scale = att_size**-0.5
         self.linear_q = nn.Linear(hidden_size, head_size * att_size)
         self.linear_k = nn.Linear(hidden_size, head_size * att_size)
         self.linear_v = nn.Linear(hidden_size, head_size * att_size)
@@ -298,11 +341,19 @@ class MultiHeadAttention(nn.Module):
 
 
 class EncoderLayer(nn.Module):
-    def __init__(self, hidden_size: int, ffn_size: int, dropout_rate: float,
-                 attention_dropout_rate: float, head_size: int):
+    def __init__(
+        self,
+        hidden_size: int,
+        ffn_size: int,
+        dropout_rate: float,
+        attention_dropout_rate: float,
+        head_size: int,
+    ):
         super(EncoderLayer, self).__init__()
         self.self_attention_norm = nn.LayerNorm(hidden_size)
-        self.self_attention = MultiHeadAttention(hidden_size, attention_dropout_rate, head_size)
+        self.self_attention = MultiHeadAttention(
+            hidden_size, attention_dropout_rate, head_size
+        )
         self.self_attention_dropout = nn.Dropout(dropout_rate)
         self.ffn_norm = nn.LayerNorm(hidden_size)
         self.ffn = FeedForwardNetwork(hidden_size, ffn_size)

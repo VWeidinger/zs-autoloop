@@ -21,11 +21,14 @@ class MessageAggregator(FcOutModel):
         for out_type in out_node_types:
             if out_type in feat and out_type in rst:
                 assert feat[out_type].shape[0] == rst[out_type].shape[0]
-                assert len(feat[out_type].shape) == len(
-                    rst[out_type].shape), f'{feat[out_type].shape} vs {rst[out_type].shape}'
+                assert len(feat[out_type].shape) == len(rst[out_type].shape), (
+                    f"{feat[out_type].shape} vs {rst[out_type].shape}"
+                )
                 # send through fully connected layers
                 if not self.test:
-                    out_dict[out_type] = self.fcout(torch.cat([feat[out_type], rst[out_type]], dim=1))
+                    out_dict[out_type] = self.fcout(
+                        torch.cat([feat[out_type], rst[out_type]], dim=1)
+                    )
                 # simply add in debug mode for testing
                 else:
                     out_dict[out_type] = feat[out_type] + rst[out_type]

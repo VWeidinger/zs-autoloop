@@ -102,7 +102,7 @@ class PostgresZeroShotModelVAE(nn.Module):
         predictions = torch.mean(predictions, dim=0)
 
         return predictions
-    
+
     def loss(self, input, target):
         recon_loss = self.loss_fcn(input, target)
         kl_loss = -0.5 * torch.sum(1 + self.logvar - self.mu.pow(2) - self.logvar.exp())

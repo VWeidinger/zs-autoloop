@@ -29,46 +29,59 @@ class TrainingServers:
 
 
 class ExpRunner:
-    database_conn = 'user=postgres,password=bM2YGRAX*bG_QAilUid§2iD,host=localhost'
+    database_conn = "user=postgres,password=bM2YGRAX*bG_QAilUid§2iD,host=localhost"
 
-    def __init__(self,
-                 replicate: bool,
-                 node_names: List[str],
-                 python_version: str = "3.9",
-                 available_sockets: List[int] = [0, 1],  # this does not apply to dgx: dgx automatically select socket 0
-                 num_parallel_screens_or_jobs: int = None,
-                 dgx_num_parallel_screens_or_jobs: int = None,
-                 dgx_num_parallel_tasks_per_job: int = 1,
-                 ssh_path: str = 'ssh',
-                 stop_on_error: bool = True,
-                 ):
-
+    def __init__(
+        self,
+        replicate: bool,
+        node_names: List[str],
+        python_version: str = "3.9",
+        available_sockets: List[int] = [
+            0,
+            1,
+        ],  # this does not apply to dgx: dgx automatically select socket 0
+        num_parallel_screens_or_jobs: int = None,
+        dgx_num_parallel_screens_or_jobs: int = None,
+        dgx_num_parallel_tasks_per_job: int = 1,
+        ssh_path: str = "ssh",
+        stop_on_error: bool = True,
+    ):
         if num_parallel_screens_or_jobs is not None:
-            assert num_parallel_screens_or_jobs > 0, "num_parallel_screens_or_jobs must be greater than 0"
+            assert num_parallel_screens_or_jobs > 0, (
+                "num_parallel_screens_or_jobs must be greater than 0"
+            )
         if dgx_num_parallel_screens_or_jobs is not None:
-            assert dgx_num_parallel_screens_or_jobs > 0, "dgx_num_parallel_screens_or_jobs must be greater than 0"
+            assert dgx_num_parallel_screens_or_jobs > 0, (
+                "dgx_num_parallel_screens_or_jobs must be greater than 0"
+            )
 
         # Read environments variable and arguments
         # Read credentials from environment variables
         load_dotenv()
-        self.wandb_project = os.getenv('WANDB_PROJECT')
-        self.wandb_entity = os.getenv('WANDB_ENTITY')
+        self.wandb_project = os.getenv("WANDB_PROJECT")
+        self.wandb_entity = os.getenv("WANDB_ENTITY")
 
         if "cloudlab" in node_names[0]:
-            self.ssh_username = os.getenv('CLOUDLAB_SSH_USERNAME')
-            self.ssh_passphrase = os.getenv('CLOUDLAB_SSH_PASSPHRASE')
-            self.private_key_path = os.getenv('CLOUDLAB_SSH_KEY_PATH')
+            self.ssh_username = os.getenv("CLOUDLAB_SSH_USERNAME")
+            self.ssh_passphrase = os.getenv("CLOUDLAB_SSH_PASSPHRASE")
+            self.private_key_path = os.getenv("CLOUDLAB_SSH_KEY_PATH")
             self.root_path = CloudlabPaths().Models.root.as_posix()
         else:
-            self.ssh_username = os.getenv('CLUSTER_SSH_USERNAME')
-            self.ssh_passphrase = os.getenv('CLUSTER_SSH_PASSPHRASE')
-            self.private_key_path = os.getenv('CLUSTER_SSH_KEY_PATH')
+            self.ssh_username = os.getenv("CLUSTER_SSH_USERNAME")
+            self.ssh_passphrase = os.getenv("CLUSTER_SSH_PASSPHRASE")
+            self.private_key_path = os.getenv("CLUSTER_SSH_KEY_PATH")
             self.root_path = ClusterPaths().Models.root.as_posix()
         self.python_version = python_version
 
-        assert self.ssh_username is not None, "Please set environment variable SSH_USERNAME "
-        assert self.ssh_passphrase is not None, "Please set environment variable SSH_PASSPHRASE"
-        assert self.private_key_path is not None, "Please set environment variable PRIVATE_KEY_PATH"
+        assert self.ssh_username is not None, (
+            "Please set environment variable SSH_USERNAME "
+        )
+        assert self.ssh_passphrase is not None, (
+            "Please set environment variable SSH_PASSPHRASE"
+        )
+        assert self.private_key_path is not None, (
+            "Please set environment variable PRIVATE_KEY_PATH"
+        )
 
         args = self.parse_args()
 
@@ -82,35 +95,42 @@ class ExpRunner:
             self.prefix = f"set -x; cd {self.root_path}/src/ldb_models \n"
 
         # Create nodes
-        self.nodes = self.create_nodes(node_names, self.ssh_username, self.private_key_path, self.ssh_passphrase,
-                                       available_sockets=available_sockets,
-                                       num_parallel_screens_or_jobs=num_parallel_screens_or_jobs,
-                                       dgx_num_parallel_screens_or_jobs=dgx_num_parallel_screens_or_jobs)
+        self.nodes = self.create_nodes(
+            node_names,
+            self.ssh_username,
+            self.private_key_path,
+            self.ssh_passphrase,
+            available_sockets=available_sockets,
+            num_parallel_screens_or_jobs=num_parallel_screens_or_jobs,
+            dgx_num_parallel_screens_or_jobs=dgx_num_parallel_screens_or_jobs,
+        )
         self.dgx_num_parallel_tasks_per_job = dgx_num_parallel_tasks_per_job
 
         # Define script distribution
-        self.exp_script_gen = functools.partial(distribute_exp_scripts, shuffle=False, replicate=replicate)
+        self.exp_script_gen = functools.partial(
+            distribute_exp_scripts, shuffle=False, replicate=replicate
+        )
         self.shuffle_seed = randint(0, 8192)
         self.ssh_path = ssh_path
 
-    def run_exp(self,
-                commands: List[str],
-                set_up_steps: List[Step],
-                purge_steps: List[Step],
-                pickup_steps: List[Step],
-                offset: int = 0,
-                run_exp_pin: bool = True
-                ):
-
+    def run_exp(
+        self,
+        commands: List[str],
+        set_up_steps: List[Step],
+        purge_steps: List[Step],
+        pickup_steps: List[Step],
+        offset: int = 0,
+        run_exp_pin: bool = True,
+    ):
         e = Experiment(
             experiment_commands=commands,
             experiment_prefix=self.prefix,
-            local_cmd_prefix='',
+            local_cmd_prefix="",
             nodes=self.nodes,
             setup_steps=set_up_steps,
             purge_steps=purge_steps,
             monitor_steps=[CheckActiveScreens()],
-            check_error_steps=[CheckOutput(['grep -B 5 Error output_screen*'])],
+            check_error_steps=[CheckOutput(["grep -B 5 Error output_screen*"])],
             pickup_steps=pickup_steps,
             exp_folder_path=self.root_path,
             exp_script_gen=self.exp_script_gen,
@@ -122,42 +142,62 @@ class ExpRunner:
             use_run_exp_pin=run_exp_pin,
             screen_or_job_id_offset=offset,
             python_version=self.python_version,
-            ssh_path=self.ssh_path)
+            ssh_path=self.ssh_path,
+        )
 
-        print(f'Execute Tasks: {self.tasks}')
+        print(f"Execute Tasks: {self.tasks}")
         for task in self.tasks:
             e.run_task(task)
 
-    def create_nodes(self, names: List[str], username: str, key_path: str, passphrase: str,
-                     available_sockets: List[int] = [0, 1],
-                     num_parallel_screens_or_jobs: int = None,
-                     dgx_num_parallel_screens_or_jobs: int = None) -> List[Node]:
+    def create_nodes(
+        self,
+        names: List[str],
+        username: str,
+        key_path: str,
+        passphrase: str,
+        available_sockets: List[int] = [0, 1],
+        num_parallel_screens_or_jobs: int = None,
+        dgx_num_parallel_screens_or_jobs: int = None,
+    ) -> List[Node]:
         # Create nodes
         nodes = []
 
-        nodes += [Node(ssh_hostname=ssh_hostname,
-                       ssh_username=username,
-                       ssh_private_key=key_path,
-                       rsync_private_key=key_path,
-                       ssh_passphrase=passphrase,
-                       hardware_desc='c8220',
-                       ssh_hostkeys=str(LocalPaths().known_hosts),
-                       use_slurm="dgx" in ssh_hostname,
-                       use_run_exp="dgx" not in ssh_hostname and "cloudlab" not in ssh_hostname,
-                       python_version=self.python_version,
-                       test_connection=False,
-                       available_sockets=available_sockets if 'dgx' not in ssh_hostname else [0],
-                       num_parallel_screens_or_jobs=num_parallel_screens_or_jobs if 'dgx' not in ssh_hostname else dgx_num_parallel_screens_or_jobs)
-                  for ssh_hostname in names]
+        nodes += [
+            Node(
+                ssh_hostname=ssh_hostname,
+                ssh_username=username,
+                ssh_private_key=key_path,
+                rsync_private_key=key_path,
+                ssh_passphrase=passphrase,
+                hardware_desc="c8220",
+                ssh_hostkeys=str(LocalPaths().known_hosts),
+                use_slurm="dgx" in ssh_hostname,
+                use_run_exp="dgx" not in ssh_hostname
+                and "cloudlab" not in ssh_hostname,
+                python_version=self.python_version,
+                test_connection=False,
+                available_sockets=available_sockets
+                if "dgx" not in ssh_hostname
+                else [0],
+                num_parallel_screens_or_jobs=num_parallel_screens_or_jobs
+                if "dgx" not in ssh_hostname
+                else dgx_num_parallel_screens_or_jobs,
+            )
+            for ssh_hostname in names
+        ]
         return nodes
 
     @staticmethod
     def parse_args() -> argparse.Namespace:
         # Parse arguments
         parser = argparse.ArgumentParser()
-        parser.add_argument('--task',
-                            type=ExperimentTask,
-                            choices=list(ExperimentTask),
-                            default=[ExperimentTask.PRINT],
-                            nargs='+', help='type of tasks which should be executed', required=True)
+        parser.add_argument(
+            "--task",
+            type=ExperimentTask,
+            choices=list(ExperimentTask),
+            default=[ExperimentTask.PRINT],
+            nargs="+",
+            help="type of tasks which should be executed",
+            required=True,
+        )
         return parser.parse_args()

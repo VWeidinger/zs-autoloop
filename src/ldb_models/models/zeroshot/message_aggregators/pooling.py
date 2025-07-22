@@ -5,10 +5,10 @@ from torch import nn
 
 
 class PoolingType(Enum):
-    MIN = 'min'
-    MAX = 'max'
-    MEAN = 'mean'
-    SUM = 'sum'
+    MIN = "min"
+    MAX = "max"
+    MEAN = "mean"
+    SUM = "sum"
 
     def __str__(self):
         return self.value
@@ -32,16 +32,28 @@ class PoolingConv(nn.Module):
         }
         self.pooling_fn = dgl_mapping[self.pooling_type]
 
-    def forward(self, graph=None, etypes=None, in_node_types=None, out_node_types=None, feat_dict=None):
+    def forward(
+        self,
+        graph=None,
+        etypes=None,
+        in_node_types=None,
+        out_node_types=None,
+        feat_dict=None,
+    ):
         with graph.local_scope():
-            graph.ndata['h'] = feat_dict
+            graph.ndata["h"] = feat_dict
 
             # message passing
-            graph.multi_update_all({etype: (fn.copy_u('h', 'm'), self.pooling_fn('m', 'ft')) for etype in etypes},
-                                   cross_reducer=str(self.pooling_type))
+            graph.multi_update_all(
+                {
+                    etype: (fn.copy_u("h", "m"), self.pooling_fn("m", "ft"))
+                    for etype in etypes
+                },
+                cross_reducer=str(self.pooling_type),
+            )
 
-            feat = graph.ndata['h']
-            rst = graph.ndata['ft']
+            feat = graph.ndata["h"]
+            rst = graph.ndata["ft"]
 
             # simply add to avoid overwriting old values
             out_dict = self.combine(feat, out_node_types, rst)
