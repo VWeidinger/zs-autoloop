@@ -28,6 +28,9 @@ class MambaFullWIdx(MambaFull):
 class MambaFullWIdxCor(MambaFull):
     SCAN_FEATURES = ['est_card', 'est_width', 'op_name','base_table_card','est_loops','filter_flat_vector', 'outcols_flat_vector', 'idxcol_null_frac', 'idxcol_n_distinct', 'idxcol_correlation']
 
+class MambaFullWIdxCor2(MambaFull):
+    SCAN_FEATURES = ['est_card', 'est_width', 'op_name','base_table_card','est_loops','filter_flat_vector', 'outcols_flat_vector', 'idxcol_null_frac', 'idxcol_n_distinct', 'idxcol_correlation','idxcol_correlation_squared']
+
 class DACEFeaturization(Featurization):
     PLAN_FEATURES = ["op_name", "pg_cost", "est_card"]
 

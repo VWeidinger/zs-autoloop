@@ -165,3 +165,4 @@ src/ldb_models/evaluation/wandb_df_cache.pkl
 tmp/
 wandb/
 artifacts/
+wandb_df_cache.pkl

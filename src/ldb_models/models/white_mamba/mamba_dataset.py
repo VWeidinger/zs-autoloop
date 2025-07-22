@@ -45,6 +45,14 @@ def augment_feature_stats_for_mamba(feature_statistics: Dict):
 
     # idxcol entries
     feature_statistics["idxcol_correlation"] = feature_statistics['correlation']
+    feature_statistics["idxcol_correlation_squared"] = {
+        "type": str(FeatureType.numeric),
+        "min": 0,
+        "max": 1,
+        "avg": 0.5,
+        "scale": 0.5,
+        "center": 0.5,
+    }
     feature_statistics["idxcol_null_frac"] = feature_statistics['null_frac']
     feature_statistics["idxcol_n_distinct"] = feature_statistics['n_distinct']
 
@@ -406,20 +414,30 @@ def process_node_features(node, feature_statistics, plan_featurization, db_stati
                 base_table_card = db_statistics[database_id]["table_stats"][plan_params["table_id"]]["reltuples"]
                 enc_value = encode('est_card',{'est_card':base_table_card},feature_statistics)
                 node_features.append(enc_value)
-            elif feature_name in ["idxcol_correlation","idxcol_null_frac","idxcol_n_distinct"]:
+            elif feature_name.startswith('idxcol_'):
                 idx_name = plan_params.get("index_name", None)
                 if idx_name is not None:
                     assert phys_op in ['Index Scan','Index Only Scan'], f'Expected index name for {phys_op}, but got {idx_name}. Plan parameters: {plan_params}'
                     idx_col_stats = get_col_stats_for_idx_name(idx_name)
 
                     # lookup value
-                    key = feature_name[7:]  # remove 'idxcol_' prefix
-                    assert key in idx_col_stats, (
-                        f"Key {key} not found in index column stats {idx_col_stats} for index {idx_name}."
-                    )
-                    value = idx_col_stats[key]
+                    if feature_name == "idxcol_correlation_squared":
+                        # special case for idxcol_correlation_squared
+                        assert "correlation" in idx_col_stats, (
+                            f"Key 'correlation' not found in index column stats {idx_col_stats} for index {idx_name}."
+                        )
+                        value = idx_col_stats["correlation"]
+                        if value is not None:
+                            value = value ** 2
+                    else:
+                        # get the value from the index column stats
+                        key = feature_name[7:]  # remove 'idxcol_' prefix
+                        assert key in idx_col_stats, (
+                            f"Key {key} not found in index column stats {idx_col_stats} for index {idx_name}."
+                        )
+                        value = idx_col_stats[key]
 
-                    if feature_name == "idxcol_correlation" and value is None:
+                    if feature_name in ["idxcol_correlation",'idxcol_correlation_squared'] and value is None:
                         # sometimes correlation is not available, we use a safe default value (this happens if most values are null i.e. null_frac>0.95)
                         value = 0
 
@@ -432,6 +450,8 @@ def process_node_features(node, feature_statistics, plan_featurization, db_stati
                     # use a safe default value
                     if feature_name == "idxcol_correlation":
                         value = 0.5
+                    elif feature_name == "idxcol_correlation_squared":
+                        value = 0.25
                     elif feature_name == "idxcol_null_frac":
                         value = 0.0
                     elif feature_name == "idxcol_n_distinct":
