@@ -42,7 +42,7 @@ def create_loss(loss_name: str, loss_kwargs: Dict):
 
 
 class MSELoss(nn.Module):
-    def __init__(self, model, weight=None, **kwargs):
+    def __init__(self, **kwargs):
         super().__init__()
 
     def forward(self, input, target):

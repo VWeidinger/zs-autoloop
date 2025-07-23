@@ -2,9 +2,8 @@ import inspect
 import re
 from typing import Dict
 
-import torch.optim as opt
-
 import classes.classes as cls
+import torch.optim as opt
 import training.featurizations as fts
 from classes.classes import ModelConfig, Name
 from training.featurizations import Featurization
@@ -66,6 +65,10 @@ def get_model_config(model_type: str, m_args: dict) -> ModelConfig:
             instantiated_obj = obj()
             if instantiated_obj.name is None:
                 continue
+            assert instantiated_obj.name.NAME not in classes_dict, (
+                f"Model type {instantiated_obj.name.NAME} already exists in classes.py. "
+                "This is not allowed. Please change the name."
+            )
             classes_dict[instantiated_obj.name.NAME] = obj
 
     if model_type not in classes_dict.keys():

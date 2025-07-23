@@ -3,12 +3,6 @@ from typing import Optional
 
 import numpy as np
 import torch
-from schedulefree import AdamWScheduleFree
-from torch import nn
-from torch.optim import Optimizer
-from torch.utils.data import DataLoader
-from tqdm import tqdm
-
 from classes.classes import ModelConfig
 from models.qppnet.qppnet_model import QPPNet
 from models.query_former.model import QueryFormer
@@ -18,6 +12,11 @@ from models.zeroshot.specific_models.postgres_zero_shot import PostgresZeroShotM
 from models.zeroshot.subplan_runtime_helper import (
     extract_smaller_larger_preds_tensor_for_subplan_graphs,
 )
+from schedulefree import AdamWScheduleFree
+from torch import nn
+from torch.optim import Optimizer
+from torch.utils.data import DataLoader
+from tqdm import tqdm
 from training.losses import LessThanLoss, RelativeLessThanLoss
 
 
@@ -68,7 +67,7 @@ def train_epoch(
             and batch_idx * model_config.batch_size > max_epoch_tuples
         ):
             break
-        input_model, label, sample_idxs, _, _, _, _, _, _, _ = custom_batch_to(
+        input_model, label, sample_idxs, _, _, _, _, _, _, _, _ = custom_batch_to(
             batch, model.device, model.label_norm
         )
 

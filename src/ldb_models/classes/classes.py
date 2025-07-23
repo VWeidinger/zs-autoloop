@@ -101,6 +101,8 @@ class ModelName:
 
     NEO = Name("neo", "Neo")
     MAMBA = Name("mamba", "Mamba")
+    MAMBA_TANH = Name("mamba_tanh", "Mamba (Tanh)")
+    MAMBA_RELU = Name("mamba_relu", "Mamba (ReLU)")
 
 
 class ModelType:
@@ -552,6 +554,50 @@ class MambaModelConfig(ModelConfig):
     add_child_type_info_to_messages: bool = False  # add child type information to the messages in the message passing layers
     use_dcn: bool = False  # use deep cross network in the feature extraction layers
     residual_connection: bool = False  # use residual connections skipping the message aggregation layer (before layer norm)
+
+
+@attrs.define(frozen=True, slots=False)
+class MambaModelConfigTanH(MambaModelConfig):
+    name: Name = ModelName.MAMBA_TANH
+
+    node_type_kwargs: dict = dict(
+        width_factor=1.5,
+        n_layers=4,
+        one_hot_embeddings=True,
+        max_emb_dim=32,
+        drop_whole_embeddings=False,
+        activation_class_name="Tanh",
+        activation_class_kwargs={},
+        norm_class_name="Identity",
+        norm_class_kwargs={},
+        residual=False,
+        dropout=False,
+        p_dropout=0.0,
+        activation=True,
+        inplace=True,
+    )
+
+
+@attrs.define(frozen=True, slots=False)
+class MambaModelConfigRelu(MambaModelConfig):
+    name: Name = ModelName.MAMBA_RELU
+
+    node_type_kwargs: dict = dict(
+        width_factor=1.5,
+        n_layers=4,
+        one_hot_embeddings=True,
+        max_emb_dim=32,
+        drop_whole_embeddings=False,
+        activation_class_name="ReLU",
+        activation_class_kwargs={},
+        norm_class_name="Identity",
+        norm_class_kwargs={},
+        residual=False,
+        dropout=False,
+        p_dropout=0.0,
+        activation=True,
+        inplace=True,
+    )
 
 
 @attrs.define(frozen=True, slots=False)

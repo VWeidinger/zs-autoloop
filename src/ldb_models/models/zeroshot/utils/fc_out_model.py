@@ -1,11 +1,10 @@
 import math
 
 import torch
+from models.zeroshot.utils import activations
 from torch import nn
 from torch.nn import init
 from torch.nn.parameter import Parameter
-
-from models.zeroshot.utils import activations
 
 
 class DynamicLayer(nn.Module):
@@ -33,7 +32,10 @@ class DynamicLayer(nn.Module):
         self.norm_class_kwargs = norm_class_kwargs
 
     def get_act(self):
-        return self.act_class(inplace=self.inplace, **self.act_class_kwargs)
+        if "inplace" in self.act_class.__init__.__code__.co_varnames:
+            return self.act_class(inplace=self.inplace, **self.act_class_kwargs)
+        else:
+            return self.act_class(**self.act_class_kwargs)
 
     def get_norm(self, num_feats):
         return self.norm_class(

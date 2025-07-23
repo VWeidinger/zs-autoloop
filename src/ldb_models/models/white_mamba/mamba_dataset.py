@@ -410,7 +410,13 @@ def process_node_features(
                     assert phys_op in ["Index Scan", "Index Only Scan"], (
                         f"Expected index name for {phys_op}, but got {idx_name}. Plan parameters: {plan_params}"
                     )
-                    idx_col_stats = get_col_stats_for_idx_name(idx_name)
+                    idx_col_stats = get_col_stats_for_idx_name(
+                        idx_name,
+                        plan_params,
+                        db_schema_info,
+                        database_id,
+                        db_statistics,
+                    )
 
                     # lookup value
                     if feature_name == "idxcol_correlation_squared":

@@ -25,8 +25,6 @@ from classes.model_config_helper import parameterized_config
 from scripts.exp_runner.exp_runner import ExpRunner, TrainingServers
 from training.featurizations import (
     MambaFull,
-    MambaFullWIdx,
-    MambaFullWIdxCor,
     MambaFullWIdxCor2,
 )
 
@@ -363,9 +361,9 @@ if __name__ == "__main__":
         # TrainingServers.NODE09,
     ]
     sockets = [0, 1]
-    out_file_id_offset = 0
+    out_file_id_offset = 4
     num_parallel_screens = len(sockets)
-    num_parallel_jobs_dgx = 4
+    num_parallel_jobs_dgx = 8
     num_parallel_tasks_per_job_dgx = 1
     run_exp_pin = False
 
@@ -377,25 +375,25 @@ if __name__ == "__main__":
     test_against = "imdb"  # if not set, will test against all in an leave one out style
     ft_with_ranking = False  # fine-tune with ranking (pretrains a model and then fine-tunes it with ranking)
     bound_predictions = False  # bound predictions to the range of the training data and output them as separate metrics - at the moment not competitive
-    eval_join_order = (
-        False and not quick_run
-    )  # evaluate join order using JOB-Light runs with exhaustive join orders
-    eval_access_path = (
-        True and not quick_run
-    )  # evaluate access path selection (Idx Scan vs. SeqScan)
-    eval_physical_operator = (
-        False and not quick_run
-    )  # evaluate physical operator selection
-    qo_eval_after_each_epoch = (
-        True  # if True, will run a full QO evaluation after each epoch
-    )
+
+    # evaluate join order using JOB-Light runs with exhaustive join orders
+    eval_join_order = False and not quick_run
+
+    # evaluate access path selection (Idx Scan vs. SeqScan)
+    eval_access_path = True and not quick_run
+
+    # evaluate physical operator selection
+    eval_physical_operator = False and not quick_run
+
+    # if True, will run a full QO evaluation after each epoch
+    qo_eval_after_each_epoch = True
+
     use_romans_runs = False
     assemble_data_up_front = True  # run data / graph assemble up front i.e. during dataset creation instead of collate / training time
+
     # =================== (pretrained / wandb reuse configs)
-    is_pretrained = (
-        True  # if True, assumes that the model is pretrained and does not train it
-    )
-    update_wandb_summary = True  # (works only together with pretrained) if True, it will update the wandb summaries of the first run with this layout
+    is_pretrained = False  # if True, assumes that the model is pretrained and does not train it # noqa: E501
+    update_wandb_summary = False  # (works only together with pretrained) if True, it will update the wandb summaries of the first run with this layout # noqa: E501
     # ===================
 
     # generate model configs
@@ -416,6 +414,8 @@ if __name__ == "__main__":
         # 'e2e',
         # 'query_former'
         "mamba"
+        # "mamba_tanh",
+        # "mamba_relu",
         #'query_former'
         #'spn',
     ]:
@@ -426,24 +426,34 @@ if __name__ == "__main__":
 
         for featurization in [
             MambaFull,
-            MambaFullWIdx,
-            MambaFullWIdxCor,
+            # MambaFullWIdx,
+            # MambaFullWIdxCor,
             MambaFullWIdxCor2,
         ]:
-            model_configs.extend(
-                [
-                    parameterized_config(
-                        model_type,
-                        wandb_group="ap_experiments",
-                        layer_norm=True,
-                        include_scan_only_hint_workloads=True,
-                        featurization=featurization,
-                        **model_specific_args,
-                    )
-                    if model_type == "mamba"
-                    else None,
-                ]
-            )
+            for loss_fn in [
+                # "QLogSqLoss",
+                "MSELoss",
+                # "LogQLoss",
+                # "LogHuberQLoss",
+                # "LogQLossPenalty",
+            ]:
+                model_configs.extend(
+                    [
+                        parameterized_config(
+                            model_type,
+                            wandb_group="ap_experiments",
+                            layer_norm=True,
+                            include_scan_only_hint_workloads_stratified=True,
+                            featurization=featurization,
+                            use_dcn=True,
+                            loss_class_name=loss_fn,
+                            epochs=75,
+                            **model_specific_args,
+                        )
+                        if model_type.startswith("mamba")
+                        else None,
+                    ]
+                )
 
     model_configs = [model for model in model_configs if model is not None]
 
