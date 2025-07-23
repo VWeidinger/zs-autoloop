@@ -1,15 +1,10 @@
 import time
 from pathlib import Path
-from typing import Optional, List, Callable, Tuple, Dict
+from typing import Callable, Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
 import torch
-import wandb
-from torch import nn
-from torch.utils.data import DataLoader
-from tqdm import tqdm
-
 from classes.classes import ModelConfig
 from models.zeroshot.specific_models.postgres_zero_shot_vae import (
     PostgresZeroShotModelVAE,
@@ -17,13 +12,18 @@ from models.zeroshot.specific_models.postgres_zero_shot_vae import (
 from models.zeroshot.subplan_runtime_helper import (
     extract_smaller_larger_preds_tensor_for_subplan_graphs,
 )
+from torch import nn
+from torch.utils.data import DataLoader
+from tqdm import tqdm
 from training.bound_predictions_with_history import (
     PredictionBounder,
     bound_predictions_helper,
 )
 from training.losses import LessThanLoss
 from training.training.checkpoint import save_csv
-from training.training.metrics import Metric, RankAccuracy, QError
+from training.training.metrics import Metric, QError, RankAccuracy
+
+import wandb
 
 
 def validate_model(
@@ -64,6 +64,7 @@ def validate_model(
         all_join_op = []
         all_num_tables = []
         all_plan_depths = []
+        all_col_correlations = []
 
         if (
             hasattr(model_config, "subplan_monotonicity_loss")
@@ -100,6 +101,7 @@ def validate_model(
                 join_op,
                 num_tables,
                 plan_depths,
+                col_correlations,
             ) = custom_batch_to(batch, model.device, model.label_norm)
 
             sample_idxs += sample_idxs_batch
@@ -150,6 +152,7 @@ def validate_model(
             all_join_op.extend(join_op)
             all_num_tables.extend(num_tables)
             all_plan_depths.extend(plan_depths)
+            all_col_correlations.extend(col_correlations)
 
         labels = np.concatenate(labels, axis=0)
         preds = np.concatenate(preds, axis=0)
@@ -226,6 +229,7 @@ def validate_model(
             join_ops=all_join_op,
             num_tables=all_num_tables,
             plan_depths=all_plan_depths,
+            col_correlations=all_col_correlations,
         )
 
         if wandb_plots_dict is not None:
@@ -312,6 +316,7 @@ def to_rows(
     join_ops,
     num_tables,
     plan_depths,
+    col_correlations,
 ):
     """Write down test-set predictions to file and to wandb"""
     assert (
@@ -325,8 +330,9 @@ def to_rows(
         == len(join_ops)
         == len(num_tables)
         == len(plan_depths)
+        == len(col_correlations)
     ), (
-        f"len(indexes): {len(indexes)} len(labels): {len(labels)} len(predictions): {len(predictions)} len(sqls): {len(sqls)} len(hints): {len(hints)} len(selectivitys): {len(selectivitys)} len(scan_ops): {len(scan_ops)} len(join_ops): {len(join_ops)} len(num_tables): {len(num_tables)} len(plan_depths): {len(plan_depths)}"
+        f"len(indexes): {len(indexes)} len(labels): {len(labels)} len(predictions): {len(predictions)} len(sqls): {len(sqls)} len(hints): {len(hints)} len(selectivitys): {len(selectivitys)} len(scan_ops): {len(scan_ops)} len(join_ops): {len(join_ops)} len(num_tables): {len(num_tables)} len(plan_depths): {len(plan_depths)} len(col_correlations): {len(col_correlations)}"
     )
 
     rows = []
@@ -341,6 +347,7 @@ def to_rows(
         join_op,
         num_t,
         depth,
+        col_correlation,
     ) in zip(
         indexes,
         labels,
@@ -352,6 +359,7 @@ def to_rows(
         join_ops,
         num_tables,
         plan_depths,
+        col_correlations,
     ):
         entry = dict(
             query_index=index,
@@ -364,6 +372,7 @@ def to_rows(
             join_op=join_op,
             num_tables=num_t,
             plan_depth=depth,
+            col_correlation=col_correlation,
         )
         entry.update(qerror=QError().evaluate_metric(label, prediction))
         rows.append(entry)

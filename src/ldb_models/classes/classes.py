@@ -1,42 +1,41 @@
 from pathlib import Path
-from typing import List, Callable, Optional
+from typing import Callable, List, Optional
 
 import attrs as attrs
 from attr import field
 from ldb_schema.datasets import Dataset
-from ldb_schema.paths import Paths, ClusterPaths
-
+from ldb_schema.paths import ClusterPaths, Paths
 from models.query_former.dataloader import query_former_batch_to
 from models.t3.query_plan import CardType
+from models.white_mamba.mamba_dataset import mamba_plan_collator
 from models.workload_driven.dataset.mscn_batching import mscn_plan_collator
 from models.workload_driven.dataset.plan_tree_batching import (
-    plan_batch_to,
     baseline_plan_collator,
+    plan_batch_to,
 )
 from models.zeroshot.postgres_plan_batching import postgres_plan_collator
 from training.batch_to_funcs import (
     dace_batch_to,
+    mamba_batch_to,
+    neo_batch_to,
     simple_batch_to,
     zs_batch_to,
-    neo_batch_to,
-    mamba_batch_to,
 )
 from training.featurizations import (
-    Featurization,
-    DACEFeaturization,
-    QPPNetFeaturization,
-    PostgresEstSystemCardDetail,
-    DACEFeaturizationNoCosts,
-    QPPNetNoCostsFeaturization,
-    FlatModelFeaturization,
-    FlatModelActCardFeaturization,
-    QPPNetActCardsFeaturization,
-    PostgresTrueCardDetail,
     DACEActCardFeaturization,
-    PostgresEstWithPGCost,
+    DACEFeaturization,
+    DACEFeaturizationNoCosts,
+    Featurization,
+    FlatModelActCardFeaturization,
+    FlatModelFeaturization,
     MambaFeaturization,
+    PostgresEstSystemCardDetail,
+    PostgresEstWithPGCost,
+    PostgresTrueCardDetail,
+    QPPNetActCardsFeaturization,
+    QPPNetFeaturization,
+    QPPNetNoCostsFeaturization,
 )
-from models.white_mamba.mamba_dataset import mamba_plan_collator
 
 
 class InputFormats:
@@ -116,6 +115,7 @@ def shorten_model_name(name: str) -> str:
     name = name.replace("include_hint_workloads", "hint")
     name = name.replace("include_hint_idx_workloads", "hintidx")
     name = name.replace("include_scan_only_hint_workloads", "scanhint")
+    name = name.replace("include_scan_only_hint_workloads_stratified", "scanstrat")
     name = name.replace("train_on_subplans", "subplans")
     name = name.replace("PostgresEstWithIsIndexCond", "FeatPGEstIsIdxC")
     name = name.replace("limit_plans_per_file", "limitpf")
@@ -163,6 +163,7 @@ class ModelConfig:
     include_hint_idx_workloads: bool = False
     include_gt30_hints: bool = False
     include_scan_only_hint_workloads: bool = False
+    include_scan_only_hint_workloads_stratified: bool = False
     include_complex_workloads: bool = False
     include_complex_ranking_workloads: bool = False
     include_complex_many_joins_workloads: bool = False
@@ -266,6 +267,9 @@ class ModelConfig:
 
         if self.include_scan_only_hint_workloads:
             workload_names.append("scan_only_s1_access_path_hints")
+
+        if self.include_scan_only_hint_workloads_stratified:
+            workload_names.append("scan_only_s1_access_path_hints_stratified")
 
         if self.include_complex_ranking_workloads:
             workload_names.append("full_qo_complex_workload_200k_s1")

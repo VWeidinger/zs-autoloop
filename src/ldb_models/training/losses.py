@@ -13,6 +13,12 @@ def create_loss(loss_name: str, loss_kwargs: Dict):
         loss = QLoss(**loss_kwargs)
     elif loss_name == "QLogSqLoss":
         loss = QLogSqLoss(**loss_kwargs)
+    elif loss_name == "LogQLoss":
+        loss = LogQLoss(**loss_kwargs)
+    elif loss_name == "LogHuberQLoss":
+        loss = LogHuberQLoss(**loss_kwargs)
+    elif loss_name == "LogQLossPenalty":
+        loss = LogQLossPenalty(**loss_kwargs)
     elif loss_name == "DaceLoss":
         loss = DaceLoss(**loss_kwargs)
     elif loss_name == "QPPLoss":
@@ -117,6 +123,81 @@ class QLogSqLoss(nn.Module):
             torch.log(self.qloss(input, target, return_aggregated=return_aggregated))
             ** 2
         )
+
+
+class LogQLoss(nn.Module):
+    # computes absolute difference in log space
+    # symmetric like q-error
+    # but smoother gradient near 1
+    # penalizes deviations less aggressively for large errors compared to q-error
+
+    def __init__(self, min_val=1e-6, **kwargs):
+        super().__init__()
+        self.min_val = min_val
+
+    def forward(self, input, target, return_aggregated: bool = True):
+        pred = torch.clamp(input, min=self.min_val)
+        label = torch.clamp(target, min=self.min_val)
+
+        # Calculate the log-based q-error
+        loss = torch.abs(torch.log(pred) - torch.log(label))
+
+        if return_aggregated:
+            return torch.mean(loss)
+        else:
+            return loss
+
+
+class LogQLossPenalty(nn.Module):
+    # computes absolute difference in log space
+    # symmetric like q-error
+    # but smoother gradient near 1
+    # penalizes deviations less aggressively for large errors compared to q-error
+
+    def __init__(self, min_val=1e-6, **kwargs):
+        super().__init__()
+        self.min_val = min_val
+
+    def forward(self, input, target, return_aggregated: bool = True):
+        pred = torch.clamp(input, min=self.min_val)
+        label = torch.clamp(target, min=self.min_val)
+
+        # Calculate the log-based q-error
+        loss = torch.abs(torch.log(pred) - torch.log(label))
+        penalty = torch.sum(torch.relu(-input))  # penalizes negatives
+
+        if return_aggregated:
+            return torch.mean(loss + 0.001 * penalty)
+        else:
+            return loss
+
+
+class LogHuberQLoss(nn.Module):
+    # computes absolute difference in log space
+    # symmetric like q-error
+    # but smoother gradient near 1
+    # penalizes deviations less aggressively for large errors compared to q-error
+
+    def __init__(self, min_val=1e-6, **kwargs):
+        super().__init__()
+        self.min_val = min_val
+
+    def forward(self, input, target, return_aggregated: bool = True):
+        pred = torch.clamp(input, min=self.min_val)
+        label = torch.clamp(target, min=self.min_val)
+
+        # Calculate the log-based q-error
+        log_diff = torch.abs(torch.log(pred) - torch.log(label))
+
+        # huber loss
+        loss = torch.where(
+            torch.abs(log_diff) < 1, 0.5 * log_diff**2, torch.abs(log_diff) - 0.5
+        )
+
+        if return_aggregated:
+            return torch.mean(loss)
+        else:
+            return loss
 
 
 class DaceLoss(nn.Module):

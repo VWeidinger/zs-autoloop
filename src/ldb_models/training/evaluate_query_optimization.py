@@ -3,25 +3,25 @@ from collections import defaultdict
 
 import numpy as np
 import pandas as pd
-import wandb
 from matplotlib import pyplot as plt
 from sklearn.metrics import (
+    ConfusionMatrixDisplay,
     balanced_accuracy_score,
     confusion_matrix,
-    ConfusionMatrixDisplay,
 )
-from wandb.sdk.wandb_run import Run
-
 from training.training.metrics import (
-    SpearmanRank,
-    SelectedRuntime,
-    SurpassedPlans,
-    QError,
     MaxOverestimation,
     MaxUnderestimation,
-    PickRate,
     OptimalRuntime,
+    PickRate,
+    QError,
+    SelectedRuntime,
+    SpearmanRank,
+    SurpassedPlans,
 )
+
+import wandb
+from wandb.sdk.wandb_run import Run
 
 
 def evaluate_join_order(
@@ -695,5 +695,32 @@ def evaluate_access_path_selection(
             wandb_run.log({f"{prefix}/scan_op_confusion": wandb.Image(plt)}, step=epoch)
         else:
             wandb_run.log({f"{prefix}/scan_op_confusion": wandb.Image(plt)})
+
+    ###
+    # show q-error in correlation to index-correlation
+    ###
+
+    # extract column correlation
+    filtered_df = prediction_dataframe[
+        prediction_dataframe["col_correlation"].notnull()
+    ]
+    col_correlation = filtered_df["col_correlation"].astype(float).to_numpy()
+    q_error = filtered_df["qerror"].astype(float).to_numpy()
+
+    table = wandb.Table(
+        columns=["Column Correlation", "QError"],
+        data=list(zip(col_correlation, q_error)),
+    )
+    if wandb_run:
+        scatter = wandb.plot.scatter(
+            table,
+            "Column Correlation",
+            "QError",
+            title="QError vs Column Correlation",
+        )
+        if is_per_epoch:
+            wandb_run.log({f"{prefix}/q_error_vs_col_corr": scatter}, step=epoch)
+        else:
+            wandb_run.log({f"{prefix}/q_error_vs_col_corr": scatter})
 
     return total_selected_runtime, total_selected_runtime / total_optimal_runtime

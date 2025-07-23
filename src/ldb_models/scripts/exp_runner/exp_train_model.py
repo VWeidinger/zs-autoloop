@@ -1,20 +1,20 @@
 import os
+
+# add to python path
+import sys
 from typing import List
 
 from ldb_schema.datasets import Dataset
 from ldb_schema.paths import ClusterPaths, LocalPaths
 from octopus.step import (
-    Rsync,
     KillAllScreens,
-    SetupVenv,
+    Rsync,
     RsyncCurrentRepo,
     SetupRYEVenv,
+    SetupVenv,
 )
 
 import wandb
-
-# add to python path
-import sys
 
 sys.path.append(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -23,7 +23,12 @@ sys.path.append(
 from classes.classes import ModelConfig, shorten_model_name
 from classes.model_config_helper import parameterized_config
 from scripts.exp_runner.exp_runner import ExpRunner, TrainingServers
-from training.featurizations import MambaFullWIdxCor2
+from training.featurizations import (
+    MambaFull,
+    MambaFullWIdx,
+    MambaFullWIdxCor,
+    MambaFullWIdxCor2,
+)
 
 
 def generate_training_commands(
@@ -358,9 +363,9 @@ if __name__ == "__main__":
         # TrainingServers.NODE09,
     ]
     sockets = [0, 1]
-    out_file_id_offset = 3
+    out_file_id_offset = 0
     num_parallel_screens = len(sockets)
-    num_parallel_jobs_dgx = 1
+    num_parallel_jobs_dgx = 4
     num_parallel_tasks_per_job_dgx = 1
     run_exp_pin = False
 
@@ -388,9 +393,9 @@ if __name__ == "__main__":
     assemble_data_up_front = True  # run data / graph assemble up front i.e. during dataset creation instead of collate / training time
     # =================== (pretrained / wandb reuse configs)
     is_pretrained = (
-        False  # if True, assumes that the model is pretrained and does not train it
+        True  # if True, assumes that the model is pretrained and does not train it
     )
-    update_wandb_summary = False  # (works only together with pretrained) if True, it will update the wandb summaries of the first run with this layout
+    update_wandb_summary = True  # (works only together with pretrained) if True, it will update the wandb summaries of the first run with this layout
     # ===================
 
     # generate model configs
@@ -419,7 +424,12 @@ if __name__ == "__main__":
         else:
             model_specific_args = {}
 
-        for featurization in [MambaFullWIdxCor2]:
+        for featurization in [
+            MambaFull,
+            MambaFullWIdx,
+            MambaFullWIdxCor,
+            MambaFullWIdxCor2,
+        ]:
             model_configs.extend(
                 [
                     parameterized_config(

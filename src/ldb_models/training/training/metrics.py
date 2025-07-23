@@ -71,7 +71,15 @@ class Metric:
 
 
 def init_metrics(loss_class_name: str) -> List[Metric]:
-    if loss_class_name in ["QLoss", "QPPLoss", "DaceLoss", "QLogSqLoss"]:
+    if loss_class_name in [
+        "QLoss",
+        "QPPLoss",
+        "DaceLoss",
+        "QLogSqLoss",
+        "LogQLoss",
+        "LogHuberQLoss",
+        "LogQLossPenalty",
+    ]:
         metrics: List[Metric] = [
             RMSE(),
             MAPE(),
@@ -80,7 +88,6 @@ def init_metrics(loss_class_name: str) -> List[Metric]:
             QError(percentile=100),
             SpearmanRank(),
         ]
-
     elif loss_class_name in ["MSELoss"]:
         metrics: List[Metric] = [
             RMSE(early_stopping_metric=True),

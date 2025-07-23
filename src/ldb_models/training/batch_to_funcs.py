@@ -1,6 +1,5 @@
 import numpy as np
 import torch
-
 from training.training.utils import recursive_to
 
 
@@ -19,6 +18,7 @@ def dace_batch_to(batch, device, label_norm):
         join_op,
         num_tables,
         plan_depths,
+        col_correlations,
     ) = batch
     recursive_to(seq_encodings, device)
     recursive_to(attention_masks, device)
@@ -36,6 +36,7 @@ def dace_batch_to(batch, device, label_norm):
         join_op,
         num_tables,
         plan_depths,
+        col_correlations,
     )
 
 
@@ -51,6 +52,7 @@ def simple_batch_to(batch, device, label_norm):
         join_op,
         num_tables,
         plan_depths,
+        col_correlations,
     ) = batch
     if label_norm is not None:
         labels = label_norm.transform(np.asarray(labels.reshape(-1, 1)))
@@ -69,6 +71,7 @@ def simple_batch_to(batch, device, label_norm):
         join_op,
         num_tables,
         plan_depths,
+        col_correlations,
     )
 
 
@@ -85,6 +88,7 @@ def zs_batch_to(batch, device, label_norm):
         join_op,
         num_tables,
         plan_depths,
+        col_correlations,
     ) = batch
 
     # normalize the labels for training
@@ -108,6 +112,7 @@ def zs_batch_to(batch, device, label_norm):
         join_op,
         num_tables,
         plan_depths,
+        col_correlations,
     )
 
 
@@ -126,6 +131,7 @@ def neo_batch_to(batch, device, label_norm):
         join_op,
         num_tables,
         plan_depths,
+        col_correlations,
     ) = batch
 
     # Normalize the labels for training
@@ -150,6 +156,7 @@ def neo_batch_to(batch, device, label_norm):
         join_op,
         num_tables,
         plan_depths,
+        col_correlations,
     )
 
 
@@ -172,6 +179,7 @@ def mamba_batch_to(batch, device, label_norm):
         join_op,
         num_tables,
         plan_depths,
+        col_correlations,
     ) = batch
 
     # normalize the labels for training
@@ -205,4 +213,5 @@ def mamba_batch_to(batch, device, label_norm):
         join_op,
         num_tables,
         plan_depths,
+        col_correlations,
     )

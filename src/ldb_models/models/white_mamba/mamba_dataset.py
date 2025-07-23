@@ -1,5 +1,10 @@
-from typing import Tuple, List, Dict
+from collections import defaultdict
+from functools import lru_cache
+from typing import Dict, List, Tuple
+
 import numpy as np
+import torch
+from models.white_mamba.col_info_extractor import get_col_stats_for_idx_name
 from models.zeroshot.postgres_plan_batching import (
     add_numerical_scalers,
     apply_feature_scalers,
@@ -7,9 +12,6 @@ from models.zeroshot.postgres_plan_batching import (
     postprocess_labels,
 )
 from training.preprocessing.feature_statistics import FeatureType
-import torch
-from collections import defaultdict
-from functools import lru_cache
 
 
 def augment_feature_stats_for_mamba(feature_statistics: Dict):
@@ -87,6 +89,7 @@ def mamba_plan_collator(
 
     # other test information
     selectivity_list = []
+    col_correlation_list = []  # correlation of columns in the plan
     scan_op_list = []
     join_op_list = []
     num_tables_list = []
@@ -107,8 +110,9 @@ def mamba_plan_collator(
         num_tables_list.append(plan["num_tables"])
 
         # annotate additional info
-        assign_additional_plan_info(plan, db_statistics)
+        assign_additional_plan_info(plan, db_statistics, db_schema_info)
         selectivity_list += plan["selectivity"]
+        col_correlation_list += plan["col_correlation"]
         scan_op_list += plan["scan_op"]
         join_op_list += plan["join_op"]
 
@@ -248,6 +252,7 @@ def mamba_plan_collator(
         join_op_list,
         num_tables_list,
         graph_depth_list,
+        col_correlation_list,
     )
 
 
@@ -387,47 +392,6 @@ def process_node_features(
 ):
     plan_params = node["plan_parameters"]
     phys_op = plan_params["op_name"]
-
-    @lru_cache(maxsize=1000)
-    def get_col_stats_for_idx_name(idx_name):
-        if idx_name is None:
-            return None
-
-        if idx_name.endswith("_pkey"):
-            # special case for primary key index
-            col_name = find_pk_for_table(plan_params["table_name"])
-            idx_col = f"{plan_params['table_name']}_{col_name}"
-        else:
-            assert idx_name.startswith("idx_"), (
-                f"Index name {idx_name} does not start with 'idx_'."
-            )
-            idx_col = idx_name[4:]  # remove 'idx_' prefix
-
-        for stats in db_statistics[database_id]["column_stats"]:
-            if (
-                idx_col.lower()
-                == f"{stats['tablename'].lower()}_{stats['attname'].lower()}"
-            ):
-                return stats
-
-        raise ValueError(
-            f"Column stats for index {idx_name} not found in database {database_id}."
-        )
-
-    @lru_cache(maxsize=1000)
-    def find_pk_for_table(table_name: str):
-        pk_candidates = []
-        for col_name, stats in db_schema_info[database_id]["table_col_info"][
-            table_name
-        ].items():
-            if stats["pk"]:
-                pk_candidates.append(col_name)
-
-        # there might be composite primary keys, so we return the first one - this is a simplification
-        assert len(pk_candidates) >= 1, (
-            f"Expected at least one primary key for table {table_name}, but found {len(pk_candidates)}: {pk_candidates}"
-        )
-        return pk_candidates[0]
 
     if phys_op in phys_op_scan_list:
         node_features = []

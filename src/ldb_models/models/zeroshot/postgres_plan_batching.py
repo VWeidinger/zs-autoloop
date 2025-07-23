@@ -1,11 +1,11 @@
 import collections
-from typing import List, Tuple, Dict
+from typing import Dict, List, Tuple
 
 import dgl
 import numpy as np
 import torch
+from models.zeroshot.annotate_additional_plan_info import assign_additional_plan_info
 from sklearn.preprocessing import RobustScaler
-
 from training.dataset.cmp_operator import Operator
 from training.featurizations import Featurization
 from training.preprocessing.feature_statistics import FeatureType
@@ -32,75 +32,6 @@ def encode(column, plan_params, feature_statistics):
     else:
         raise NotImplementedError
     return enc_value
-
-
-def assign_additional_plan_info(plan: dict, db_statistics: dict):
-    selectivity_list = []
-    scan_op_list = []
-    join_op_list = []
-
-    # extract additional info
-    if plan["num_tables"] == 1:
-        # compute selectivity
-        def get_leaf_node(p):
-            if len(p["children"]) == 0:
-                return p
-            else:
-                return get_leaf_node(p["children"][0])
-
-        leaf_node = get_leaf_node(plan)
-        scan_op = leaf_node["plan_parameters"]["op_name"]
-        out_card = leaf_node["plan_parameters"]["act_card"]
-
-        # compute base table size
-        base_table_name = leaf_node["plan_parameters"]["table_name"]
-        base_table_id = leaf_node["plan_parameters"]["table_id"]
-
-        assert "database_id" in plan, f"No database_id in plan: {plan}"
-        assert plan["database_id"] in db_statistics
-        assert "table_stats" in db_statistics[plan["database_id"]]
-
-        assert (
-            "reltuples"
-            in db_statistics[plan["database_id"]]["table_stats"][base_table_id]
-        ), (
-            f"table_size not in {db_statistics[plan['database_id']]['table_stats'][base_table_id].keys()}"
-        )
-
-        base_table_size = db_statistics[plan["database_id"]]["table_stats"][
-            base_table_id
-        ]["reltuples"]
-
-        # compute selectivity
-        selectivity_list.append(out_card / base_table_size)
-        scan_op_list.append(scan_op)
-        join_op_list.append(None)
-
-    elif plan["num_tables"] == 2:
-        # compute join info
-        selectivity_list.append(None)
-        scan_op_list.append(None)
-
-        def get_top_join_node(p):
-            if len(p["children"]) == 2:
-                return p
-            elif len(p["children"]) == 1:
-                return get_top_join_node(p["children"][0])
-            else:
-                raise ValueError("Invalid plan structure")
-
-        join_node = get_top_join_node(plan)
-        join_op_list.append(join_node["plan_parameters"]["op_name"])
-
-    else:
-        selectivity_list.append(None)
-        scan_op_list.append(None)
-        join_op_list.append(None)
-
-    plan["selectivity"] = selectivity_list
-    plan["scan_op"] = scan_op_list
-    plan["join_op"] = join_op_list
-    return
 
 
 def plan_to_graph(
@@ -710,6 +641,7 @@ def postgres_plan_collator(
     join_op_list = []
     num_tables_list = []
     graph_depth_list = []
+    col_correlation_list = []
 
     # prepare robust encoder for the numerical fields
     add_numerical_scalers(feature_statistics)
@@ -722,10 +654,11 @@ def postgres_plan_collator(
         num_tables_list.append(p["num_tables"])
         sql_statements.append(p["sql"])
         hints.append(p["hint"])
-        assign_additional_plan_info(p, db_statistics)
+        assign_additional_plan_info(p, db_statistics, db_schema_info)
         selectivity_list += p["selectivity"]
         scan_op_list += p["scan_op"]
         join_op_list += p["join_op"]
+        col_correlation_list += p["col_correlation"]
 
         if enforce_aggregation_node_at_root:
             # check if plan has aggregation node at root
@@ -992,6 +925,7 @@ def postgres_plan_collator(
         join_op_list,
         num_tables_list,
         graph_depth_list,
+        col_correlation_list,
     )
 
 
