@@ -131,7 +131,7 @@ class LogQLoss(nn.Module):
     # but smoother gradient near 1
     # penalizes deviations less aggressively for large errors compared to q-error
 
-    def __init__(self, min_val=1e-6, **kwargs):
+    def __init__(self, min_val=1e-6):
         super().__init__()
         self.min_val = min_val
 
@@ -164,12 +164,14 @@ class LogQLossPenalty(nn.Module):
 
         # Calculate the log-based q-error
         loss = torch.abs(torch.log(pred) - torch.log(label))
-        penalty = torch.sum(torch.relu(-input))  # penalizes negatives
+        penalty = torch.relu(-input)  # penalizes negatives only
+
+        total_loss = loss + 0.001 * penalty
 
         if return_aggregated:
-            return torch.mean(loss + 0.001 * penalty)
+            return torch.mean(total_loss)
         else:
-            return loss
+            return total_loss
 
 
 class LogHuberQLoss(nn.Module):

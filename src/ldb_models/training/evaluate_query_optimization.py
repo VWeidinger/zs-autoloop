@@ -353,7 +353,7 @@ def evaluate_physical_plan_selection(
 
 def create_confusion_matrix_from_str_list(labels, predictions):
     # translate classes to integers
-    classes = list(set(labels + predictions))
+    classes = sorted(list(set(labels + predictions)))
     classes_lookup_dict = {c: i for i, c in enumerate(classes)}
 
     # convert str classes to ints

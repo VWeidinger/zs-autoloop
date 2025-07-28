@@ -4,26 +4,25 @@ import math
 import time
 from json import JSONDecodeError
 from pathlib import Path
-from typing import List, Optional, Dict
+from typing import Dict, List, Optional
 
 import numpy as np
-from ldb_schema.load_schema import load_json, get_json_schema
+from classes.classes import (
+    DataLoaderOptions,
+    InputFormats,
+    MambaModelConfig,
+    ModelConfig,
+    ZeroShotModelConfig,
+)
+from classes.workload_runs import WorkloadRuns
+from ldb_schema.load_schema import get_json_schema, load_json
 from sklearn import preprocessing
 from sklearn.pipeline import Pipeline
 from torch.utils.data import DataLoader
 from tqdm import tqdm
-
-
-from classes.classes import (
-    ZeroShotModelConfig,
-    DataLoaderOptions,
-    ModelConfig,
-    InputFormats,
-)
-from classes.workload_runs import WorkloadRuns
 from training.dataset.plan_dataset import (
-    PlanDataset,
     OHEMPlanDataset,
+    PlanDataset,
     PreBatchedDataset,
 )
 from training.dataset.pushdown_projections import apply_projection_pushdown
@@ -741,7 +740,7 @@ def create_zeroshot_dataloader(
         pin_memory=data_loader_options.pin_memory,
     )
 
-    collator_args = {}
+    collator_args = {"scaler_type": model_config.scaler_type}
     if isinstance(model_config, ZeroShotModelConfig):
         collator_args["skip_top_aggregation"] = model_config.skip_top_aggregation
         collator_args["filter_inline_col_feats"] = model_config.filter_inline_col_feats
@@ -754,6 +753,21 @@ def create_zeroshot_dataloader(
         collator_args["prohibit_aggregation_node_at_root"] = (
             model_config.prohibit_aggregation_node_at_root
         )
+    elif isinstance(model_config, MambaModelConfig):
+        if model_config.filter_condense_operators:
+            # overwrite part of the featurization
+            scan_features = model_config.featurization.SCAN_FEATURES
+
+            # remove flat_vector
+            assert "filter_flat_vector" in scan_features, (
+                f'cannot apply condense, "filter_flat_vector" not in {scan_features}'
+            )
+
+            scan_features.remove("filter_flat_vector")
+            scan_features.append("filter_flat_vector_condensed")
+
+            # overwrite the scan features
+            model_config.featurization.SCAN_FEATURES = scan_features
 
     if workload_runs.train_workload_runs and len(workload_runs.train_workload_runs) > 0:
         # Split plans into train/test/validation set

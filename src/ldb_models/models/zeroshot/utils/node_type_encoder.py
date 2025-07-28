@@ -2,10 +2,9 @@ from typing import List
 
 import numpy as np
 import torch
-from torch import nn
-
 from models.zeroshot.utils.embeddings import EmbeddingInitializer
 from models.zeroshot.utils.fc_out_model import FcOutModel
+from torch import nn
 from training.preprocessing.feature_statistics import FeatureType
 
 
@@ -23,11 +22,13 @@ class NodeTypeEncoder(FcOutModel):
         one_hot_embeddings=True,
         apply_optimized_nte=False,
         apply_dcn: bool = False,
+        apply_layer_norm_before_dcn: bool = False,
         num_dcn_layers: int = 1,
         **kwargs,
     ):
         self.apply_optimized_nte = apply_optimized_nte
         self.apply_dcn = apply_dcn  # apply deep cross network to the input features
+        self.apply_layer_norm_before_dcn = apply_layer_norm_before_dcn
         self.num_dcn_layers = num_dcn_layers
 
         for f in features:
@@ -81,6 +82,9 @@ class NodeTypeEncoder(FcOutModel):
         if self.apply_dcn:
             # add dcm
             self.dcn = DCNLayer(self.input_dim, num_layers=self.num_dcn_layers)
+
+            if self.apply_layer_norm_before_dcn:
+                self.dcn_layer_norm = nn.LayerNorm(self.input_dim)
 
         self.embeddings = nn.ModuleDict(embeddings)
 
@@ -148,6 +152,9 @@ class NodeTypeEncoder(FcOutModel):
         input_enc = torch.cat(encoded_input, dim=1)
 
         if self.apply_dcn:
+            if self.apply_layer_norm_before_dcn:
+                input_enc = self.dcn_layer_norm(input_enc)
+            # Apply the deep cross network
             input_enc = self.dcn(input_enc)
 
         return self.fcout(input_enc)

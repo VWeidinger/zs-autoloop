@@ -5,7 +5,7 @@ import dgl
 import numpy as np
 import torch
 from models.zeroshot.annotate_additional_plan_info import assign_additional_plan_info
-from sklearn.preprocessing import RobustScaler
+from sklearn.preprocessing import MinMaxScaler, RobustScaler
 from training.dataset.cmp_operator import Operator
 from training.featurizations import Featurization
 from training.preprocessing.feature_statistics import FeatureType
@@ -19,7 +19,6 @@ def encode(column, plan_params, feature_statistics):
         value = plan_params[column]
     if feature_statistics[column].get("type") == str(FeatureType.numeric):
         enc_value = value  # we do the feature scaling later on - more efficiently
-        # enc_value = feature_statistics[column]['scaler'].transform(np.array([[value]])).item()
     elif feature_statistics[column].get("type") == str(FeatureType.categorical):
         value_dict = feature_statistics[column]["value_dict"]
         assert len(list(value_dict.keys())) > 1, (
@@ -117,15 +116,14 @@ def plan_to_graph(
                 plan_params["table_id"]
             ]["reltuples"]
 
-            # apply scaler
-            enc_value = (
-                feature_statistics[feature_name]["scaler"]
-                .transform(np.array([[base_table_card]]))
-                .item()
+            # annotate the base table card to the scan op
+            curr_plan_features.append(
+                encode(
+                    "base_table_card",
+                    {feature_name: base_table_card},
+                    feature_statistics,
+                )
             )
-
-            # annotate base_case
-            curr_plan_features.append(enc_value)
         else:
             curr_plan_features.append(
                 encode(feature_name, plan_params, feature_statistics)
@@ -587,6 +585,7 @@ def postgres_plan_collator(
     enforce_aggregation_node_at_root: bool = False,
     prohibit_aggregation_node_at_root: bool = False,
     output_tensors: bool = False,
+    scaler_type: str = "robust",
 ):
     """
     Combines physical plans into a large graph that can be fed into ML models.
@@ -644,7 +643,7 @@ def postgres_plan_collator(
     col_correlation_list = []
 
     # prepare robust encoder for the numerical fields
-    add_numerical_scalers(feature_statistics)
+    add_numerical_scalers(feature_statistics, scaler_type=scaler_type)
 
     # iterate over plans and create lists of edges and features per node
     sample_idxs = []
@@ -1024,13 +1023,41 @@ def create_node_types_per_depth(plan_depths, plan_to_plan_edges):
     return data_dict, nodes_per_depth, plan_dict
 
 
-def add_numerical_scalers(feature_statistics):
+def add_numerical_scalers(feature_statistics, scaler_type: str):
     for k, v in feature_statistics.items():
         if v.get("type") == str(FeatureType.numeric):
-            scaler = RobustScaler()
-            scaler.center_ = v["center"]
-            scaler.scale_ = v["scale"]
-            feature_statistics[k]["scaler"] = scaler
+            if scaler_type == "robust":
+                scaler = RobustScaler()
+                scaler.center_ = v["center"]
+                scaler.scale_ = v["scale"]
+                feature_statistics[k]["scaler"] = scaler
+            elif scaler_type == "minmax":
+                feature_range = (0, 1)
+                scaler = MinMaxScaler(feature_range=feature_range)
+                scaler.data_min_ = np.array([v["min"]], dtype=np.float32)
+                scaler.data_max_ = np.array([v["max"]], dtype=np.float32)
+
+                range_diff = v["max"] - v["min"]
+                if range_diff == 0:
+                    # avoid division by zero
+                    range_diff = 1.0
+                scaler.data_range_ = np.array([range_diff], dtype=np.float32)
+
+                scaler.scale_ = (
+                    np.array([feature_range[1] - feature_range[0]], dtype=np.float32)
+                    / scaler.data_range_
+                )
+                scaler.min_ = (
+                    np.array([feature_range[0]], dtype=np.float32)
+                    - scaler.data_min_ * scaler.scale_
+                )
+                scaler.n_samples_seen_ = 1  # any positive int to mark as "fit"
+
+                feature_statistics[k]["scaler"] = scaler
+            else:
+                raise ValueError(
+                    f"Unknown scaler type: {scaler_type}. Use 'robust' or 'minmax'."
+                )
 
 
 def pred_node_type_id(logical_preds, pred_dict, u):

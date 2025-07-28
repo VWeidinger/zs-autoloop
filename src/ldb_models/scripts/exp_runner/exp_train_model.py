@@ -25,6 +25,8 @@ from classes.model_config_helper import parameterized_config
 from scripts.exp_runner.exp_runner import ExpRunner, TrainingServers
 from training.featurizations import (
     MambaFull,
+    MambaFullWIdx,
+    MambaFullWIdxCor,
     MambaFullWIdxCor2,
 )
 
@@ -377,13 +379,13 @@ if __name__ == "__main__":
     bound_predictions = False  # bound predictions to the range of the training data and output them as separate metrics - at the moment not competitive
 
     # evaluate join order using JOB-Light runs with exhaustive join orders
-    eval_join_order = False and not quick_run
+    eval_join_order = True and not quick_run
 
     # evaluate access path selection (Idx Scan vs. SeqScan)
     eval_access_path = True and not quick_run
 
     # evaluate physical operator selection
-    eval_physical_operator = False and not quick_run
+    eval_physical_operator = True and not quick_run
 
     # if True, will run a full QO evaluation after each epoch
     qo_eval_after_each_epoch = True
@@ -413,9 +415,9 @@ if __name__ == "__main__":
         # 'mscn',
         # 'e2e',
         # 'query_former'
-        "mamba"
+        # "mamba"
         # "mamba_tanh",
-        # "mamba_relu",
+        "mamba_relu",
         #'query_former'
         #'spn',
     ]:
@@ -426,34 +428,32 @@ if __name__ == "__main__":
 
         for featurization in [
             MambaFull,
-            # MambaFullWIdx,
-            # MambaFullWIdxCor,
+            MambaFullWIdx,
+            MambaFullWIdxCor,
             MambaFullWIdxCor2,
         ]:
-            for loss_fn in [
-                # "QLogSqLoss",
-                "MSELoss",
-                # "LogQLoss",
-                # "LogHuberQLoss",
-                # "LogQLossPenalty",
-            ]:
-                model_configs.extend(
-                    [
-                        parameterized_config(
-                            model_type,
-                            wandb_group="ap_experiments",
-                            layer_norm=True,
-                            include_scan_only_hint_workloads_stratified=True,
-                            featurization=featurization,
-                            use_dcn=True,
-                            loss_class_name=loss_fn,
-                            epochs=75,
-                            **model_specific_args,
-                        )
-                        if model_type.startswith("mamba")
-                        else None,
-                    ]
-                )
+            model_configs.extend(
+                [
+                    parameterized_config(
+                        model_type,
+                        wandb_group="relu",
+                        layer_norm=True,
+                        include_scan_only_hint_workloads_stratified=True,
+                        include_hint_idx_workloads=True,
+                        include_complex_workloads=True,
+                        featurization=featurization,
+                        # use_dcn=True,
+                        # apply_layer_norm_before_dcn=True,
+                        # scaler_type="minmax",
+                        filter_condense_operators=True,
+                        epochs=75,
+                        batch_size=256,
+                        **model_specific_args,
+                    )
+                    if model_type.startswith("mamba")
+                    else None,
+                ]
+            )
 
     model_configs = [model for model in model_configs if model is not None]
 

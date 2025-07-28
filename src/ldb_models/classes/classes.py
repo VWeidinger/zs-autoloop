@@ -553,7 +553,14 @@ class MambaModelConfig(ModelConfig):
     layer_norm: bool = False  # use layer norm in the message passing layers
     add_child_type_info_to_messages: bool = False  # add child type information to the messages in the message passing layers
     use_dcn: bool = False  # use deep cross network in the feature extraction layers
+    apply_layer_norm_before_dcn: bool = (
+        False  # apply layer norm before the dcn in the feature extraction layers
+    )
     residual_connection: bool = False  # use residual connections skipping the message aggregation layer (before layer norm)
+    scaler_type: str = "robust"  # type of scaler to use for the input features - either 'robust' or 'minmax'
+    filter_condense_operators: bool = (
+        False  # whether to condense filter operators (reduce number of different ops)
+    )
 
 
 @attrs.define(frozen=True, slots=False)
@@ -652,6 +659,7 @@ class ZeroShotModelConfig(ModelConfig):
     annotate_base_table_card_to_scan_op: bool = False  # annotate the base table card as children_card at scan ops (instead of setting it to 1 by default)
     subplan_monotonicity_loss: bool = False  # add a loss term that enforces the subplan runtime to be monotonically increasing
     subplan_monotonicity_loss_fn: str = "lt_loss"  # loss function for the subplan monotonicity loss - either lt_loss or relative_lt_loss
+    scaler_type: str = "robust"  # type of scaler to use for the input features - either 'robust' or 'minmax'
 
 
 @attrs.define(frozen=True, slots=False)

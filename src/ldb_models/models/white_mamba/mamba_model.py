@@ -1,16 +1,16 @@
-import torch
-from torch import nn
-from models.zeroshot.zero_shot_model import NodeTypeEncoder
-from classes.classes import MambaModelConfig
-from models.zeroshot.utils.fc_out_model import FcOutModel
 from typing import Dict
-from models.white_mamba.mamba_dataset import (
-    expand_scan_featurization,
-    augment_feature_stats_for_mamba,
-)
-from training.preprocessing.feature_statistics import FeatureType
 
+import torch
+from classes.classes import MambaModelConfig
+from models.white_mamba.mamba_dataset import (
+    augment_feature_stats_for_mamba,
+    expand_scan_featurization,
+)
+from models.zeroshot.utils.fc_out_model import FcOutModel
+from models.zeroshot.zero_shot_model import NodeTypeEncoder
+from torch import nn
 from training.losses import create_loss
+from training.preprocessing.feature_statistics import FeatureType
 
 
 class DAGDualInputConv(nn.Module):
@@ -220,12 +220,14 @@ class MambaModelEncoder(torch.nn.Module):
             scan_features,
             feature_statistics,
             apply_dcn=model_config.use_dcn,
+            apply_layer_norm_before_dcn=model_config.apply_layer_norm_before_dcn,
             **model_config.node_type_kwargs,
         )
         self.join_encoder = NodeTypeEncoder(
             featurization.JOIN_FEATURES,
             feature_statistics,
             apply_dcn=model_config.use_dcn,
+            apply_layer_norm_before_dcn=model_config.apply_layer_norm_before_dcn,
             **model_config.node_type_kwargs,
         )
 

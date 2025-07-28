@@ -127,6 +127,7 @@ def get_parameterized_model_config(model_name: str, m_args: Dict) -> ModelConfig
             "ohem_slice_by",
             "subplan_monotonicity_loss_fn",
             "loss_class_name",
+            "scaler_type",
         ]
         found = False
         for str_keyword in str_keywords:

@@ -59,6 +59,26 @@ def augment_feature_stats_for_mamba(feature_statistics: Dict):
     feature_statistics["idxcol_null_frac"] = feature_statistics["null_frac"]
     feature_statistics["idxcol_n_distinct"] = feature_statistics["n_distinct"]
 
+    # filter flat vector
+    feature_statistics["filter_flat_vector"] = {
+        "type": str(FeatureType.numeric),
+        "min": 0,
+        "max": 5,
+        "avg": 1,
+        "scale": 1,
+        "center": 1,
+    }
+
+    # output columns flat vector
+    feature_statistics["outcols_flat_vector"] = {
+        "type": str(FeatureType.numeric),
+        "min": 0,
+        "max": 5,
+        "avg": 1,
+        "scale": 1,
+        "center": 1,
+    }
+
 
 def mamba_plan_collator(
     plans: List[Tuple],
@@ -66,6 +86,7 @@ def mamba_plan_collator(
     plan_featurization,
     db_statistics: Dict,
     db_schema_info: Dict,
+    scaler_type: str,
     output_tensors: bool = False,
 ):
     # edge information
@@ -100,7 +121,7 @@ def mamba_plan_collator(
     augment_feature_stats_for_mamba(feature_statistics)
 
     # prepare robust encoder for the numerical fields
-    add_numerical_scalers(feature_statistics)
+    add_numerical_scalers(feature_statistics, scaler_type=scaler_type)
 
     for plan_id, plan in plans:
         sample_idxs.append(plan_id)  # store the sample index
@@ -173,23 +194,12 @@ def mamba_plan_collator(
 
         graph_depth_list.append(max(node_depths[plan_depth_start_idx:], default=0))
 
-    # add pseudo entry for filter features
-    local_feature_statistics = (
-        feature_statistics.copy()
-    )  # make a copy to avoid modifying the original
-    local_feature_statistics["filter_flat_vector"] = {
-        "type": str(FeatureType.categorical)
-    }
-    local_feature_statistics["outcols_flat_vector"] = {
-        "type": str(FeatureType.categorical)
-    }
-
     # apply feature scaling
     if len(join_features) > 0:
         try:
             join_features = apply_feature_scalers(
                 join_features,
-                feature_statistics=local_feature_statistics,
+                feature_statistics=feature_statistics,
                 feature_names=plan_featurization.JOIN_FEATURES,
             )
         except Exception as e:
@@ -204,7 +214,7 @@ def mamba_plan_collator(
     assert len(scan_features) > 0, "There should be at least one scan feature."
     scan_features = apply_feature_scalers(
         scan_features,
-        feature_statistics=local_feature_statistics,
+        feature_statistics=feature_statistics,
         feature_names=expand_scan_featurization(plan_featurization),
     )
 
@@ -264,7 +274,6 @@ def encode(column, plan_params, feature_statistics):
         value = plan_params[column]
     if feature_statistics[column].get("type") == str(FeatureType.numeric):
         enc_value = value  # we do the feature scaling later on - more efficiently
-        # enc_value = feature_statistics[column]['scaler'].transform(np.array([[value]])).item()
     elif feature_statistics[column].get("type") == str(FeatureType.categorical):
         value_dict = feature_statistics[column]["value_dict"]
         assert len(list(value_dict.keys())) > 1, (
@@ -294,10 +303,30 @@ cmp_operators = [
     "BETWEEN",
 ]
 
+cmp_operators_condensed = [
+    "=",  # point lookup
+    "!=",  # not equal
+    "<",  # range
+    "LIKE",  # like
+    "IN",  # in
+    "IS NULL",  # is null
+    "BETWEEN",  # range - probably different characteristics
+]
 
-def construct_filter_flat_vector(filter: Dict):
+cmp_operators_condensed_map = {
+    "<=": "<",  # range
+    ">": "<",  # range
+    ">=": "<",  # range
+    "NOT LIKE": "LIKE",  # map to like to avoid negative impact in case we have a data-bias
+    "IS NOT NULL": "IS NULL",  # map to IS NULL to avoid negative impact in case we have a data-bias
+}
+
+
+def construct_filter_flat_vector(filter: Dict, condense_operators: bool = False):
     op_counts = defaultdict(int)
     op_on_index_count = defaultdict(int)
+
+    op_list = cmp_operators_condensed if condense_operators else cmp_operators
 
     def recurse(node):
         if "children" in node and isinstance(node["children"], list):
@@ -305,10 +334,15 @@ def construct_filter_flat_vector(filter: Dict):
                 recurse(child)
         else:
             op = node.get("operator")
+
+            if condense_operators and op in cmp_operators_condensed_map:
+                # map operator to condensed version
+                op = cmp_operators_condensed_map[op]
+
             is_index = node.get("is_index_cond")
 
-            assert op in cmp_operators, (
-                f"Operator {op} not in {cmp_operators}. Available operators: {list(node.keys())}"
+            assert op in op_list, (
+                f"Operator {op} not in {op_list}. Available operators: {list(node.keys())}"
             )
             op_counts[op] += 1
             if is_index:
@@ -318,14 +352,18 @@ def construct_filter_flat_vector(filter: Dict):
         recurse(filter)
 
     # Return as flat vectors in the order of cmp_operators
-    op_count_vec = [op_counts[op] for op in cmp_operators]
-    op_on_index_vec = [op_on_index_count[op] for op in cmp_operators]
+    op_count_vec = [op_counts[op] for op in op_list]
+    op_on_index_vec = [op_on_index_count[op] for op in op_list]
     return op_count_vec + op_on_index_vec
 
 
-def get_filter_flat_vector_length():
+def get_filter_flat_vector_length(filter_condense_operators: bool):
     # Each operator has two values: count and count on index
-    return len(cmp_operators) * 2
+    return (
+        len(cmp_operators) * 2
+        if not filter_condense_operators
+        else len(cmp_operators_condensed) * 2
+    )
 
 
 col_types = ["integer", "float", "character varying"]
@@ -360,9 +398,11 @@ def expand_scan_featurization(featurization):
 
     # expand SCAN_FEATURES
     for feature_name in featurization.SCAN_FEATURES:
-        if feature_name == "filter_flat_vector":
+        if feature_name.startswith("filter_flat_vector"):
             # get the length of the filter flat vector
-            dim = get_filter_flat_vector_length()
+            dim = get_filter_flat_vector_length(
+                feature_name == "filter_flat_vector_condensed"
+            )
 
             # add the feature multiple times
             scan_features.extend(["filter_flat_vector"] * dim)
@@ -471,9 +511,14 @@ def process_node_features(
                 )
                 node_features.append(enc_value)
 
-            elif feature_name == "filter_flat_vector":
+            elif feature_name.startswith("filter_flat_vector"):
                 node_features.extend(
-                    construct_filter_flat_vector(plan_params.get("filter", {}))
+                    construct_filter_flat_vector(
+                        plan_params.get("filter", {}),
+                        condense_operators=(
+                            feature_name == "filter_flat_vector_condensed"
+                        ),
+                    )
                 )
             elif feature_name == "outcols_flat_vector":
                 node_features.extend(

@@ -6,6 +6,7 @@ import torch
 from classes.classes import ModelConfig
 from models.qppnet.qppnet_model import QPPNet
 from models.query_former.model import QueryFormer
+from models.white_mamba.mamba_model import MambaModel
 from models.workload_driven.model.e2e_model import E2EModel
 from models.workload_driven.model.mscn_model import MSCNModel
 from models.zeroshot.specific_models.postgres_zero_shot import PostgresZeroShotModel
@@ -115,7 +116,15 @@ def train_epoch(
         loss.backward()
 
         if isinstance(
-            model, (PostgresZeroShotModel, MSCNModel, E2EModel, QPPNet, QueryFormer)
+            model,
+            (
+                PostgresZeroShotModel,
+                MSCNModel,
+                E2EModel,
+                QPPNet,
+                QueryFormer,
+                MambaModel,
+            ),
         ):
             clipping_value = 1  # arbitrary value of your choosing
             torch.nn.utils.clip_grad_norm_(model.parameters(), clipping_value)
