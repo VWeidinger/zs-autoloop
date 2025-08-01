@@ -1,12 +1,14 @@
 import pickle
 from collections import defaultdict
 from pathlib import Path
-from typing import Tuple, List
+from typing import List, Tuple
 
 import numpy as np
 import torch
-from torch.utils.data import Dataset, DataLoader
-
+from models.white_mamba.mamba_model import MambaModel
+from models.zeroshot.specific_models.postgres_zero_shot import PostgresZeroShotModel
+from torch.utils.data import DataLoader, Dataset
+from training.batch_to_funcs import mamba_batch_to, zs_batch_to
 from training.training.inference import inference
 
 
@@ -265,9 +267,21 @@ class OHEMPlanDataset(Dataset):
 
             self.model.eval()  # set model to eval mode
 
+            if isinstance(self.model, PostgresZeroShotModel):
+                # use zs_batch_to for ZeroShotModel
+                batch_to = zs_batch_to
+            elif isinstance(self.model, MambaModel):
+                batch_to = mamba_batch_to
+            else:
+                raise ValueError(
+                    f"Model {self.model} is not supported for OHEM. Please use PostgresZeroShotModel or MambaModel."
+                )
+
             # run inference
             labels, preds = inference(
-                dataloader=self._all_plans_dataloader, model=self.model
+                dataloader=self._all_plans_dataloader,
+                model=self.model,
+                batch_to=batch_to,
             )
 
             # compute loss/error

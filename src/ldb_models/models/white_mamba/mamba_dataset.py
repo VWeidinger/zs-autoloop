@@ -6,7 +6,6 @@ import numpy as np
 import torch
 from models.white_mamba.col_info_extractor import get_col_stats_for_idx_name
 from models.zeroshot.postgres_plan_batching import (
-    add_numerical_scalers,
     apply_feature_scalers,
     assign_additional_plan_info,
     postprocess_labels,
@@ -135,10 +134,10 @@ def mamba_plan_collator(
     sample_idxs = []
 
     # augment feature_statistics
-    augment_feature_stats_for_mamba(feature_statistics)
+    # augment_feature_stats_for_mamba(feature_statistics)
 
-    # prepare robust encoder for the numerical fields
-    add_numerical_scalers(feature_statistics, scaler_type=scaler_type)
+    # # prepare robust encoder for the numerical fields
+    # add_numerical_scalers(feature_statistics, scaler_type=scaler_type)
 
     for plan_id, plan in plans:
         sample_idxs.append(plan_id)  # store the sample index

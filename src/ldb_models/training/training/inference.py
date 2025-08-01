@@ -3,7 +3,6 @@ from typing import Callable, Tuple
 import torch
 from torch.utils.data import DataLoader
 from tqdm import tqdm
-
 from training.batch_to_funcs import zs_batch_to
 
 
@@ -25,6 +24,7 @@ def inference(
             selectivity,
             scan_op,
             join_op,
+            *kwargs,
         ) = batch_to(batch, model.device, model.label_norm)
 
         with torch.no_grad():

@@ -4,7 +4,7 @@ import math
 import time
 from json import JSONDecodeError
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 from classes.classes import (
@@ -16,6 +16,10 @@ from classes.classes import (
 )
 from classes.workload_runs import WorkloadRuns
 from ldb_schema.load_schema import get_json_schema, load_json
+from models.white_mamba.mamba_dataset import (
+    augment_feature_stats_for_mamba,
+)
+from models.zeroshot.postgres_plan_batching import add_numerical_scalers
 from sklearn import preprocessing
 from sklearn.pipeline import Pipeline
 from torch.utils.data import DataLoader
@@ -78,7 +82,7 @@ def read_workload_runs(
     merge_nlj_and_inlj_to_same_op: bool = False,
     remove_join_cond_from_plan: bool = False,
     apply_outcol_pruning: bool = False,
-) -> (List[dict], dict):
+) -> Tuple[List[dict], dict]:
     # reads several workload runs
     plans = []
     database_statistics = dict()
@@ -768,6 +772,12 @@ def create_zeroshot_dataloader(
 
             # overwrite the scan features
             model_config.featurization.SCAN_FEATURES = scan_features
+
+        # augment feature statistics for Mamba
+        # doing this outside collate to avoid parallelization issues
+        # (e.g. if we have multiple workers, we would augment the feature statistics multiple times)
+        augment_feature_stats_for_mamba(feature_statistics)
+        add_numerical_scalers(feature_statistics, scaler_type=model_config.scaler_type)
 
     if workload_runs.train_workload_runs and len(workload_runs.train_workload_runs) > 0:
         # Split plans into train/test/validation set

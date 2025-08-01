@@ -406,8 +406,8 @@ def use_model(
     # Do deferred setup of OHEM - it was easier to do it here, because we need the model and criterion (not yet available during dataset creation)
     ###
     if config.online_hard_example_mining:
-        assert isinstance(config, ZeroShotModelConfig), (
-            "OHEM is only supported for ZeroShot at the moment"
+        assert isinstance(config, (ZeroShotModelConfig, MambaModelConfig)), (
+            "OHEM is only supported for ZeroShot and Mamba at the moment"
         )
         loss_fn = functools.partial(model.loss_fxn, return_aggregated=False)
 

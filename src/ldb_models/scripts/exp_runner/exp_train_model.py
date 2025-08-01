@@ -24,11 +24,7 @@ from classes.classes import ModelConfig, shorten_model_name
 from classes.model_config_helper import parameterized_config
 from scripts.exp_runner.exp_runner import ExpRunner, TrainingServers
 from training.featurizations import (
-    MambaFull,
-    MambaFullWIdx,
-    MambaFullWIdxCor,
     MambaFullWIdxCor2,
-    MambaFullWIdxCor2Log,
 )
 
 
@@ -392,7 +388,7 @@ if __name__ == "__main__":
     qo_eval_after_each_epoch = True
 
     use_romans_runs = False
-    assemble_data_up_front = True  # run data / graph assemble up front i.e. during dataset creation instead of collate / training time
+    assemble_data_up_front = False  # run data / graph assemble up front i.e. during dataset creation instead of collate / training time
 
     # =================== (pretrained / wandb reuse configs)
     is_pretrained = False  # if True, assumes that the model is pretrained and does not train it # noqa: E501
@@ -416,7 +412,7 @@ if __name__ == "__main__":
         # 'mscn',
         # 'e2e',
         # 'query_former'
-        # "mamba"
+        "mamba",
         # "mamba_tanh",
         "mamba_relu",
         #'query_former'
@@ -428,36 +424,38 @@ if __name__ == "__main__":
             model_specific_args = {}
 
         for featurization in [
-            MambaFull,
-            MambaFullWIdx,
-            MambaFullWIdxCor,
+            # MambaFull,
+            # MambaFullWIdx,
+            # MambaFullWIdxCor,
             MambaFullWIdxCor2,
-            MambaFullWIdxCor2Log,
+            # MambaFullWIdxCor2Log,
         ]:
-            model_configs.extend(
-                [
-                    parameterized_config(
-                        model_type,
-                        wandb_group="relu",
-                        layer_norm=True,
-                        include_scan_only_hint_workloads_stratified=True,
-                        include_hint_workloads=True,
-                        include_hint_idx_workloads=True,
-                        include_complex_workloads=True,
-                        featurization=featurization,
-                        # use_dcn=True,
-                        # apply_layer_norm_before_dcn=True,
-                        # scaler_type="minmax",
-                        filter_condense_operators=True,
-                        epochs=75,
-                        batch_size=256,
-                        subplan_monotonicity_loss=True,
-                        **model_specific_args,
-                    )
-                    if model_type.startswith("mamba")
-                    else None,
-                ]
-            )
+            for ohem_slice_by in ["file", "dataset", "none"]:
+                model_configs.extend(
+                    [
+                        parameterized_config(
+                            model_type,
+                            wandb_group="relu",
+                            layer_norm=True,
+                            include_scan_only_hint_workloads_stratified=True,
+                            include_hint_workloads=True,
+                            include_hint_idx_workloads=True,
+                            include_complex_workloads=True,
+                            featurization=featurization,
+                            # use_dcn=True,
+                            # apply_layer_norm_before_dcn=True,
+                            # scaler_type="minmax",
+                            filter_condense_operators=True,
+                            epochs=75,
+                            batch_size=256,
+                            online_hard_example_mining=True,
+                            ohem_slice_by=ohem_slice_by,
+                            **model_specific_args,
+                        )
+                        if model_type.startswith("mamba")
+                        else None,
+                    ]
+                )
 
     model_configs = [model for model in model_configs if model is not None]
 
