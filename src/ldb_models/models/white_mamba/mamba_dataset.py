@@ -21,6 +21,23 @@ def augment_feature_stats_for_mamba(feature_statistics: Dict):
         "est_card"
     ]  # base table card is the same as est_card
 
+    # add log-feature scalers
+    for feat in [
+        "left_child_card",
+        "right_child_card",
+        "base_table_card",
+        "est_card",
+        "est_children_card",
+    ]:
+        feature_statistics[f"{feat}_log"] = {
+            "type": str(FeatureType.numeric),
+            "min": np.log(feature_statistics[feat]["min"] + 1),
+            "max": np.log(feature_statistics[feat]["max"] + 1),
+            "avg": np.log(feature_statistics[feat]["avg"] + 1),
+            "scale": np.log(feature_statistics[feat]["scale"] + 1),
+            "center": np.log(feature_statistics[feat]["center"] + 1),
+        }
+
     # update op_name list
     op_name_values = phys_op_scan_list + phys_op_join_list
     feature_statistics["op_name"]["no_vals"] = len(op_name_values)
@@ -267,6 +284,10 @@ def mamba_plan_collator(
 
 
 def encode(column, plan_params, feature_statistics):
+    if column.endswith("_log"):
+        # special case for log features, we apply the log scaling later on
+        column = column[:-4]
+
     #  fallback in case actual cardinality is not in plan parameters
     if column == "act_card" and column not in plan_params:
         value = 0
@@ -436,13 +457,18 @@ def process_node_features(
     if phys_op in phys_op_scan_list:
         node_features = []
         for feature_name in plan_featurization.SCAN_FEATURES:
-            if feature_name == "base_table_card":
+            if feature_name in ["base_table_card", "base_table_card_log"]:
                 base_table_card = db_statistics[database_id]["table_stats"][
                     plan_params["table_id"]
                 ]["reltuples"]
                 enc_value = encode(
                     "est_card", {"est_card": base_table_card}, feature_statistics
                 )
+
+                if feature_name == "base_table_card_log":
+                    # apply log scaling
+                    enc_value = np.log(enc_value + 1)
+
                 node_features.append(enc_value)
             elif feature_name.startswith("idxcol_"):
                 idx_name = plan_params.get("index_name", None)
@@ -528,25 +554,34 @@ def process_node_features(
                     )
                 )
             else:
-                node_features.append(
-                    encode(feature_name, plan_params, feature_statistics)
-                )
+                feat = encode(feature_name, plan_params, feature_statistics)
+                if feature_name.endswith("_log"):
+                    # apply log scaling
+                    feat = np.log(feat + 1)
+                node_features.append(feat)
         return node_features, 0  # 0 for scan nodes
 
     elif phys_op in phys_op_join_list:
         node_features = []
         for feature_name in plan_featurization.JOIN_FEATURES:
-            if feature_name == "left_child_card":
+            if feature_name in ["left_child_card", "left_child_card_log"]:
                 left_child_card = node["children"][0]["plan_parameters"]["est_card"]
                 enc_value = encode(
                     "est_card", {"est_card": left_child_card}, feature_statistics
                 )
+
+                if feature_name == "left_child_card_log":
+                    # apply log scaling
+                    enc_value = np.log(enc_value + 1)
                 node_features.append(enc_value)
-            elif feature_name == "right_child_card":
+            elif feature_name in ["right_child_card", "right_child_card_log"]:
                 right_child_card = node["children"][1]["plan_parameters"]["est_card"]
                 enc_value = encode(
                     "est_card", {"est_card": right_child_card}, feature_statistics
                 )
+                if feature_name == "right_child_card_log":
+                    # apply log scaling
+                    enc_value = np.log(enc_value + 1)
                 node_features.append(enc_value)
             elif feature_name in ["left_is_pk", "right_is_pk"]:
                 is_pk = process_primary_key(
@@ -554,9 +589,13 @@ def process_node_features(
                 )
                 node_features.append(1 if is_pk else 0)
             else:
-                node_features.append(
-                    encode(feature_name, plan_params, feature_statistics)
-                )
+                feature_value = encode(feature_name, plan_params, feature_statistics)
+                if feature_name.endswith("_log"):
+                    # apply log scaling
+                    feature_value = np.log(feature_value + 1)
+
+                # add the feature value to the node features
+                node_features.append(feature_value)
         return node_features, 1  # 1 for join nodes
 
     raise NotImplementedError(f"Physical operator {phys_op} not implemented.")

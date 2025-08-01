@@ -133,6 +133,8 @@ def shorten_model_name(name: str) -> str:
     name = name.replace("loss_class_name", "")
     name = name.replace("layer_norm", "layern")
     name = name.replace("add_child_type_info_to_messages", "childtypeinfo")
+    name = name.replace("filter_condense_operators", "filtercondensed")
+    name = name.replace("scanhint_stratified", "scanstrat")
     return name
 
 
@@ -561,6 +563,9 @@ class MambaModelConfig(ModelConfig):
     filter_condense_operators: bool = (
         False  # whether to condense filter operators (reduce number of different ops)
     )
+
+    subplan_monotonicity_loss: bool = False  # add a loss term that enforces the subplan runtime to be monotonically increasing
+    subplan_monotonicity_loss_fn: str = "lt_loss"  # loss function for the subplan monotonicity loss - either lt_loss or relative_lt_loss
 
 
 @attrs.define(frozen=True, slots=False)

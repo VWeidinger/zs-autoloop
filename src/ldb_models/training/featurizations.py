@@ -102,6 +102,32 @@ class MambaFullWIdxCor2(MambaFull):
     ]
 
 
+class MambaFullWIdxCor2Log(MambaFull):
+    SCAN_FEATURES = [
+        "est_card_log",
+        "est_width",
+        "op_name",
+        "base_table_card_log",
+        "est_loops",
+        "filter_flat_vector",
+        "outcols_flat_vector",
+        "idxcol_null_frac",
+        "idxcol_n_distinct",
+        "idxcol_correlation",
+        "idxcol_correlation_squared",
+    ]
+    JOIN_FEATURES = [
+        "est_card_log",
+        "est_children_card_log",
+        "est_width",
+        "op_name",
+        "left_child_card_log",
+        "right_child_card_log",
+        "left_is_pk",
+        "right_is_pk",
+    ]
+
+
 class DACEFeaturization(Featurization):
     PLAN_FEATURES = ["op_name", "pg_cost", "est_card"]
 

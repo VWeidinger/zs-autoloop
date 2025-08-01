@@ -28,6 +28,7 @@ from training.featurizations import (
     MambaFullWIdx,
     MambaFullWIdxCor,
     MambaFullWIdxCor2,
+    MambaFullWIdxCor2Log,
 )
 
 
@@ -358,12 +359,12 @@ if __name__ == "__main__":
         # TrainingServers.NODE01,
         # TrainingServers.NODE02,
         # TrainingServers.NODE03,
-        # TrainingServers.NODE04,
         # TrainingServers.NODE05,
+        # TrainingServers.NODE04,
         # TrainingServers.NODE09,
     ]
     sockets = [0, 1]
-    out_file_id_offset = 4
+    out_file_id_offset = 1
     num_parallel_screens = len(sockets)
     num_parallel_jobs_dgx = 8
     num_parallel_tasks_per_job_dgx = 1
@@ -431,6 +432,7 @@ if __name__ == "__main__":
             MambaFullWIdx,
             MambaFullWIdxCor,
             MambaFullWIdxCor2,
+            MambaFullWIdxCor2Log,
         ]:
             model_configs.extend(
                 [
@@ -439,6 +441,7 @@ if __name__ == "__main__":
                         wandb_group="relu",
                         layer_norm=True,
                         include_scan_only_hint_workloads_stratified=True,
+                        include_hint_workloads=True,
                         include_hint_idx_workloads=True,
                         include_complex_workloads=True,
                         featurization=featurization,
@@ -448,6 +451,7 @@ if __name__ == "__main__":
                         filter_condense_operators=True,
                         epochs=75,
                         batch_size=256,
+                        subplan_monotonicity_loss=True,
                         **model_specific_args,
                     )
                     if model_type.startswith("mamba")

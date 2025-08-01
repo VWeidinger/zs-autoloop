@@ -107,7 +107,7 @@ def get_parameterized_model_config(model_name: str, m_args: Dict) -> ModelConfig
     model_type = args[0]
 
     args = args[1:]
-    args_dict = m_args.copy()
+    args_dict = {}
 
     # featurziation dict
     featurization_dict = get_featurization_dict()
@@ -152,6 +152,7 @@ def get_parameterized_model_config(model_name: str, m_args: Dict) -> ModelConfig
             args_dict[param_name] = True
 
     args_dict["name"] = Name(model_name, model_name)
+    args_dict.update(m_args.copy())
 
     return get_model_config(model_type, args_dict)
 

@@ -9,33 +9,25 @@ import attrs as attrs
 import numpy as np
 import torch
 import torch.optim as opt
-import wandb
-from schedulefree import AdamWScheduleFree
-from torch import nn
-from torch.optim.optimizer import Optimizer
-from torch.utils.data import DataLoader
-from wandb.apis.public import Run
-
 from classes.classes import (
-    ModelConfig,
-    E2EModelConfig,
-    ZeroShotModelConfig,
-    MSCNModelConfig,
-    DataLoaderOptions,
-    TlstmModelConfig,
-    FlatModelConfig,
-    ScaledPostgresModelConfig,
-    TabularModelConfig,
-    QPPNetModelConfig,
     DACEModelConfig,
-    QueryFormerModelConfig,
-    T3ModelConfig,
-    ZeroShotVAEModelConfig,
-    NeoModelConfig,
-    SPNModelConfig,
+    DataLoaderOptions,
+    E2EModelConfig,
+    FlatModelConfig,
     MambaModelConfig,
+    ModelConfig,
+    MSCNModelConfig,
+    NeoModelConfig,
+    QPPNetModelConfig,
+    QueryFormerModelConfig,
+    ScaledPostgresModelConfig,
+    SPNModelConfig,
+    T3ModelConfig,
+    TabularModelConfig,
+    TlstmModelConfig,
+    ZeroShotModelConfig,
+    ZeroShotVAEModelConfig,
 )
-
 from classes.model_config_helper import get_model_config
 from classes.workload_runs import WorkloadRuns
 from models.dace.dace_dataset import create_dace_dataloader
@@ -44,11 +36,11 @@ from models.neo.neo_model import TreeConvolution
 from models.qppnet.qppnet_dataloader import create_qppnet_dataloader
 from models.qppnet.qppnet_model import QPPNet
 from models.query_former.model import QueryFormer
-from models.white_mamba.mamba_model import MambaModel
 from models.tabular.train_tabular_baseline import (
-    train_tabular_model,
     predict_tabular_model,
+    train_tabular_model,
 )
+from models.white_mamba.mamba_model import MambaModel
 from models.workload_driven.dataset.dataset_creation import create_baseline_dataloader
 from models.workload_driven.model.e2e_model import E2EModel
 from models.workload_driven.model.mscn_model import MSCNModel
@@ -56,6 +48,10 @@ from models.zeroshot.specific_models.postgres_zero_shot import PostgresZeroShotM
 from models.zeroshot.specific_models.postgres_zero_shot_vae import (
     PostgresZeroShotModelVAE,
 )
+from schedulefree import AdamWScheduleFree
+from torch import nn
+from torch.optim.optimizer import Optimizer
+from torch.utils.data import DataLoader
 from train import train_model
 from training.bound_predictions_with_history import PredictionBounder
 from training.dataset.dataset_creation import create_zeroshot_dataloader
@@ -63,6 +59,9 @@ from training.dataset.plan_dataset import OHEMPlanDataset
 from training.training.checkpoint import load_checkpoint
 from training.training.metrics import Metric, RankAccuracy, init_metrics
 from training.training.test import test_model
+
+import wandb
+from wandb.apis.public import Run
 
 
 def init_model(
@@ -219,7 +218,7 @@ def init_model(
                 # extract statistics
                 per_batch_labels = batch[2]
                 overall_count += len(per_batch_labels)
-                timeout_count += sum([1 for label in per_batch_labels if label == None])
+                timeout_count += sum([1 for label in per_batch_labels if label is None])
         else:
             for label, plan in dataloader.dataset:  # dataloader is batched
                 overall_count += 1

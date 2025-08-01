@@ -6,6 +6,9 @@ from models.white_mamba.mamba_dataset import (
     augment_feature_stats_for_mamba,
     expand_scan_featurization,
 )
+from models.white_mamba.mamba_subplan_runtime_helper import (
+    mamba_compute_subplan_runtimes,
+)
 from models.zeroshot.utils.fc_out_model import FcOutModel
 from models.zeroshot.zero_shot_model import NodeTypeEncoder
 from torch import nn
@@ -170,7 +173,12 @@ class DAGLayerwiseNetworkBatched(torch.nn.Module):
         )
 
     def forward(
-        self, x, edge_index, node_depths, left_right_edge_info, node_type_lookup
+        self,
+        x: torch.Tensor,
+        edge_index: torch.Tensor,
+        node_depths: torch.Tensor,
+        left_right_edge_info: torch.Tensor,
+        node_type_lookup: torch.Tensor,
     ):
         # compute max depth
         max_depth = node_depths.max().item()
@@ -321,7 +329,7 @@ class MambaModelEncoder(torch.nn.Module):
         # in addition return the node types for the readout features
         node_types = node_type_lookup[readout_mask]
 
-        return readout_features, node_types
+        return readout_features, node_types, mp_results
 
 
 class MambaModel(nn.Module):
@@ -365,22 +373,36 @@ class MambaModel(nn.Module):
             **model_config.final_mlp_kwargs,
         )
 
+        self.subplan_monotonicity_loss = model_config.subplan_monotonicity_loss
+
     def forward(self, model_input):
         # run encoder
-        hidden_states, root_node_types = self.encoder(*model_input)
+        root_node_states, root_node_types, all_node_states = self.encoder(*model_input)
 
-        # extract node type masks
-        join_mask = root_node_types == 1
-        scan_mask = root_node_types == 0
+        def apply_decoder(hidden_states, node_type):
+            # extract node type masks
+            join_mask = node_type == 1
+            scan_mask = node_type == 0
 
-        outputs = torch.zeros(
-            (hidden_states.shape[0], self.join_decoder.output_dim),
-            device=hidden_states.device,
-            dtype=hidden_states.dtype,
-        )
-        if join_mask.any():
-            outputs[join_mask] = self.join_decoder.fcout(hidden_states[join_mask])
-        if scan_mask.any():
-            outputs[scan_mask] = self.scan_decoder.fcout(hidden_states[scan_mask])
+            outputs = torch.zeros(
+                (hidden_states.shape[0], self.join_decoder.output_dim),
+                device=hidden_states.device,
+                dtype=hidden_states.dtype,
+            )
+            if join_mask.any():
+                outputs[join_mask] = self.join_decoder.fcout(hidden_states[join_mask])
+            if scan_mask.any():
+                outputs[scan_mask] = self.scan_decoder.fcout(hidden_states[scan_mask])
 
-        return outputs
+            return outputs
+
+        # apply decoders
+        outputs = apply_decoder(root_node_states, root_node_types)
+
+        if self.subplan_monotonicity_loss:
+            subplan_graphs, subplan_predictions_tensor = mamba_compute_subplan_runtimes(
+                all_node_states, model_input, apply_decoder
+            )
+            return outputs, subplan_graphs, subplan_predictions_tensor
+        else:
+            return outputs
