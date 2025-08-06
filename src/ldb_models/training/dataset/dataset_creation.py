@@ -126,14 +126,23 @@ def read_workload_runs(
                 f"parsed_plans not in {path}, did you maybe used JSON query plans?"
             )
             file_plans = run["parsed_plans"]
-            db_name = file_plans[0]["dataset"]
+            if len(file_plans) == 0:
+                print(f"No plans in {path}, skipping", flush=True)
+                db_name = "unknown"
+            else:
+                db_name = file_plans[0]["dataset"]
         elif input_format == InputFormats.json:
             if "query_list" not in run:
                 raise ValueError(
                     f"This model requires json format, are you sure {path} is in json format?"
                 )
             file_plans = run["query_list"]
-            db_name = file_plans[0]["dataset"]
+
+            if len(file_plans) == 0:
+                print(f"No plans in {path}, skipping", flush=True)
+                db_name = "unknown"
+            else:
+                db_name = file_plans[0]["database_name"]
         else:
             raise ValueError(f"Input format {input_format} not supported")
 
@@ -496,7 +505,9 @@ def create_datasets(
         (db_id, value["database_name"]) for db_id, value in database_statistics.items()
     )
     db_schema_info = dict(
-        (db_id, get_json_schema(db_name)) for db_id, db_name in db_names.items()
+        (db_id, get_json_schema(db_name))
+        for db_id, db_name in db_names.items()
+        if db_name != "unknown"
     )
 
     # derive label normalization
@@ -589,6 +600,7 @@ def create_datasets(
                 limit_plans_per_file=l_plans_per_file,
                 limit_plans_overall=l_plans_overall,
                 slice_by=model_config.ohem_slice_by,
+                ohem_ratio=model_config.ohem_ratio,
             )
         else:
             if assemble_graphs:

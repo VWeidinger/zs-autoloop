@@ -187,6 +187,7 @@ class ModelConfig:
         2  # resort OHEM dataset after this number of epochs
     )
     ohem_slice_by: str = "file"  # file, dataset, none
+    ohem_ratio: float = 1  # ratio of training samples participating in OHEM (1 means all are sampled with OHEM, 50% means half is randomly sampled (static) and the other half is sampled with OHEM)
 
     enforce_aggregation_node_at_root: bool = False  # enforce that the root node is an aggregation node - will be done at the beginning of collator
     prohibit_aggregation_node_at_root: bool = False  # prohibit that the root node is an aggregation node - will be done at the beginning of collator

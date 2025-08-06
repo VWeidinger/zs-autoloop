@@ -88,16 +88,20 @@ def get_model_config(model_type: str, m_args: dict) -> ModelConfig:
 
 
 def split_if_ends_with_digits(input_string):
-    # Match groups of non-digits and digits at the end of the string
-    match = re.match(r"^(.*?)(\d+)$", input_string)
+    # Match groups of non-digits and a float or int at the end of the string
+    match = re.match(r"^(.*?)(\d+\.\d+|\d+)$", input_string)
     if match:
         non_digit_part = match.group(1)
-        digit_part = match.group(2)
-        return non_digit_part, digit_part
+        number_part = match.group(2)
+        # Try to convert to float if it contains a dot, else int
+        if "." in number_part:
+            return non_digit_part, float(number_part)
+        else:
+            return non_digit_part, int(number_part)
     return (
         input_string,
         None,
-    )  # Return the original string and None if no digits at the end
+    )  # Return the original string and None if no number at the end
 
 
 def get_parameterized_model_config(model_name: str, m_args: Dict) -> ModelConfig:
@@ -144,7 +148,7 @@ def get_parameterized_model_config(model_name: str, m_args: Dict) -> ModelConfig
         param_name, number = split_if_ends_with_digits(arg)
 
         if number is not None:
-            args_dict[param_name] = int(number)
+            args_dict[param_name] = number
         elif param_name.endswith("False"):
             args_dict[param_name.replace("False", "")] = False
         else:

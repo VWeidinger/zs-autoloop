@@ -360,9 +360,9 @@ if __name__ == "__main__":
         # TrainingServers.NODE09,
     ]
     sockets = [0, 1]
-    out_file_id_offset = 1
+    out_file_id_offset = 0
     num_parallel_screens = len(sockets)
-    num_parallel_jobs_dgx = 8
+    num_parallel_jobs_dgx = 30
     num_parallel_tasks_per_job_dgx = 1
     run_exp_pin = False
 
@@ -430,32 +430,43 @@ if __name__ == "__main__":
             MambaFullWIdxCor2,
             # MambaFullWIdxCor2Log,
         ]:
-            for ohem_slice_by in ["file", "dataset", "none"]:
-                model_configs.extend(
-                    [
-                        parameterized_config(
-                            model_type,
-                            wandb_group="relu",
-                            layer_norm=True,
-                            include_scan_only_hint_workloads_stratified=True,
-                            include_hint_workloads=True,
-                            include_hint_idx_workloads=True,
-                            include_complex_workloads=True,
-                            featurization=featurization,
-                            # use_dcn=True,
-                            # apply_layer_norm_before_dcn=True,
-                            # scaler_type="minmax",
-                            filter_condense_operators=True,
-                            epochs=75,
-                            batch_size=256,
-                            online_hard_example_mining=True,
-                            ohem_slice_by=ohem_slice_by,
-                            **model_specific_args,
-                        )
-                        if model_type.startswith("mamba")
-                        else None,
-                    ]
-                )
+            for ohem_slice_by in [
+                # "file",
+                "dataset",
+                "none",
+            ]:
+                for ohem_ratio in [0.1, 0.3, 0.5, 0.7, 0.9]:
+                    model_configs.extend(
+                        [
+                            parameterized_config(
+                                model_type,
+                                wandb_group="relu",
+                                layer_norm=True,
+                                include_pg_opt_workloads=True,
+                                include_hint_workloads=True,
+                                include_hint_idx_workloads=True,
+                                include_gt30_hints=True,
+                                include_scan_only_hint_workloads_stratified=True,
+                                include_complex_workloads=True,
+                                include_complex_ranking_workloads=True,
+                                include_complex_many_joins_workloads=True,
+                                featurization=featurization,
+                                limit_plans_per_file=5000,
+                                # use_dcn=True,
+                                # apply_layer_norm_before_dcn=True,
+                                # scaler_type="minmax",
+                                filter_condense_operators=True,
+                                epochs=75,
+                                batch_size=256,
+                                online_hard_example_mining=True,
+                                ohem_slice_by=ohem_slice_by,
+                                ohem_ratio=ohem_ratio,
+                                **model_specific_args,
+                            )
+                            if model_type.startswith("mamba")
+                            else None,
+                        ]
+                    )
 
     model_configs = [model for model in model_configs if model is not None]
 
