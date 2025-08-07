@@ -1,4 +1,5 @@
 import time
+from collections import defaultdict
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Tuple
 
@@ -56,15 +57,7 @@ def validate_model(
         labels = []
         preds = []
         probs = []
-        sample_idxs = []
-        all_sql = []
-        all_hints = []
-        all_selectivity = []
-        all_scan_op = []
-        all_join_op = []
-        all_num_tables = []
-        all_plan_depths = []
-        all_col_correlations = []
+        query_stats_dict = defaultdict(list)
 
         if (
             hasattr(model_config, "subplan_monotonicity_loss")
@@ -93,18 +86,9 @@ def validate_model(
             (
                 input_model,
                 label,
-                sample_idxs_batch,
-                sql,
-                hints,
-                selectivity,
-                scan_op,
-                join_op,
-                num_tables,
-                plan_depths,
-                col_correlations,
+                query_stats,
             ) = custom_batch_to(batch, model.device, model.label_norm)
 
-            sample_idxs += sample_idxs_batch
             if isinstance(model, PostgresZeroShotModelVAE):
                 output = model.predict(input_model, model_config.num_samples)
             else:
@@ -144,15 +128,9 @@ def validate_model(
             preds.append(curr_pred.reshape(-1))
             labels.append(curr_label.reshape(-1))
 
-            # collect hints and sql statements and ...
-            all_hints.extend(hints)
-            all_sql.extend(sql)
-            all_selectivity.extend(selectivity)
-            all_scan_op.extend(scan_op)
-            all_join_op.extend(join_op)
-            all_num_tables.extend(num_tables)
-            all_plan_depths.extend(plan_depths)
-            all_col_correlations.extend(col_correlations)
+            # add all info to query stats dict
+            for key, value in query_stats.items():
+                query_stats_dict[key].extend(value)
 
         labels = np.concatenate(labels, axis=0)
         preds = np.concatenate(preds, axis=0)
@@ -219,17 +197,11 @@ def validate_model(
             epoch_stats[f"{log_prefix}_{key}"] = value
 
         predictions = to_rows(
-            indexes=[int(idx) for idx in sample_idxs],
-            labels=[float(f) for f in labels],
-            predictions=[float(f) for f in preds],
-            sqls=all_sql,
-            hints=all_hints,
-            selectivitys=all_selectivity,
-            scan_ops=all_scan_op,
-            join_ops=all_join_op,
-            num_tables=all_num_tables,
-            plan_depths=all_plan_depths,
-            col_correlations=all_col_correlations,
+            dict(
+                label=[float(f) for f in labels],
+                prediction=[float(f) for f in preds],
+                **query_stats_dict,
+            )
         )
 
         if wandb_plots_dict is not None:
@@ -305,75 +277,31 @@ def validate_model(
     return any_best_metric, predictions
 
 
-def to_rows(
-    indexes,
-    labels,
-    predictions,
-    sqls,
-    hints,
-    selectivitys,
-    scan_ops,
-    join_ops,
-    num_tables,
-    plan_depths,
-    col_correlations,
-):
-    """Write down test-set predictions to file and to wandb"""
-    assert (
-        len(indexes)
-        == len(labels)
-        == len(predictions)
-        == len(sqls)
-        == len(hints)
-        == len(selectivitys)
-        == len(scan_ops)
-        == len(join_ops)
-        == len(num_tables)
-        == len(plan_depths)
-        == len(col_correlations)
-    ), (
-        f"len(indexes): {len(indexes)} len(labels): {len(labels)} len(predictions): {len(predictions)} len(sqls): {len(sqls)} len(hints): {len(hints)} len(selectivitys): {len(selectivitys)} len(scan_ops): {len(scan_ops)} len(join_ops): {len(join_ops)} len(num_tables): {len(num_tables)} len(plan_depths): {len(plan_depths)} len(col_correlations): {len(col_correlations)}"
-    )
+def to_rows(data: dict) -> list:
+    """
+    Converts a dict of lists (where each key is a column and each value is a list of values)
+    into a list of dicts (rows), adding qerror for each row if 'label' and 'prediction' are present.
+    """
+    # Ensure all lists are of the same length
+    lengths = [len(v) for v in data.values()]
+    assert len(set(lengths)) == 1, f"Input lists have different lengths: {lengths}"
 
+    num_rows = lengths[0]
     rows = []
-    for (
-        index,
-        label,
-        prediction,
-        sql,
-        hint,
-        selectivity,
-        scan_op,
-        join_op,
-        num_t,
-        depth,
-        col_correlation,
-    ) in zip(
-        indexes,
-        labels,
-        predictions,
-        sqls,
-        hints,
-        selectivitys,
-        scan_ops,
-        join_ops,
-        num_tables,
-        plan_depths,
-        col_correlations,
-    ):
-        entry = dict(
-            query_index=index,
-            label=label,
-            prediction=prediction,
-            sql=sql,
-            hint=hint,
-            selectivity=selectivity,
-            scan_op=scan_op,
-            join_op=join_op,
-            num_tables=num_t,
-            plan_depth=depth,
-            col_correlation=col_correlation,
-        )
-        entry.update(qerror=QError().evaluate_metric(label, prediction))
+    keys = list(data.keys())
+    for i in range(num_rows):
+        entry = {k: data[k][i] for k in keys}
+        if "label" in entry and "prediction" in entry:
+            entry["qerror"] = QError().evaluate_metric(
+                entry["label"], entry["prediction"]
+            )
+
+        for key, value in entry.items():
+            assert not isinstance(value, list), (
+                f"Value for key '{key}' is a list, expected a single value: {value}"
+            )
+            assert not isinstance(key, list), (
+                f"Key '{key}' is a list, expected a single value: {key}"
+            )
         rows.append(entry)
     return rows

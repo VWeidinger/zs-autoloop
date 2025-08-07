@@ -224,19 +224,30 @@ class MambaModelEncoder(torch.nn.Module):
 
         # create node type encoders
         model_config.node_type_kwargs.update(output_dim=model_config.hidden_dim)
-        self.scan_encoder = NodeTypeEncoder(
-            scan_features,
-            feature_statistics,
-            apply_dcn=model_config.use_dcn,
-            apply_layer_norm_before_dcn=model_config.apply_layer_norm_before_dcn,
+
+        nte_config = {
+            "feature_statistics": feature_statistics,
+            "apply_dcn": model_config.use_dcn,
+            "apply_layer_norm_before_dcn": model_config.apply_layer_norm_before_dcn,
             **model_config.node_type_kwargs,
+        }
+        scan_nte_config = {
+            "features": scan_features,
+            **nte_config,
+        }
+        join_nte_config = {
+            "features": featurization.JOIN_FEATURES,
+            **nte_config,
+        }
+
+        if model_config.scan_nte_relu:
+            scan_nte_config["activation_class_name"] = "ReLU"
+
+        self.scan_encoder = NodeTypeEncoder(
+            **scan_nte_config,
         )
         self.join_encoder = NodeTypeEncoder(
-            featurization.JOIN_FEATURES,
-            feature_statistics,
-            apply_dcn=model_config.use_dcn,
-            apply_layer_norm_before_dcn=model_config.apply_layer_norm_before_dcn,
-            **model_config.node_type_kwargs,
+            **join_nte_config,
         )
 
         self.dag_network = DAGLayerwiseNetworkBatched(

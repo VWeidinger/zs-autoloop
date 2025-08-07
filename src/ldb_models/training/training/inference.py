@@ -15,17 +15,9 @@ def inference(
     model.eval()
 
     for batch in tqdm(dataloader, desc="Inference: "):
-        (
-            input_model,
-            label,
-            sample_idxs_batch,
-            sql,
-            hints,
-            selectivity,
-            scan_op,
-            join_op,
-            *kwargs,
-        ) = batch_to(batch, model.device, model.label_norm)
+        (input_model, label, query_stats) = batch_to(
+            batch, model.device, model.label_norm
+        )
 
         with torch.no_grad():
             output = model(input_model)

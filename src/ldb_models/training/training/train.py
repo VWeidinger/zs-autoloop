@@ -68,7 +68,7 @@ def train_epoch(
             and batch_idx * model_config.batch_size > max_epoch_tuples
         ):
             break
-        input_model, label, sample_idxs, _, _, _, _, _, _, _, _ = custom_batch_to(
+        input_model, label, query_stats = custom_batch_to(
             batch, model.device, model.label_norm
         )
 

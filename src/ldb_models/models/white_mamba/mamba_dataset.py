@@ -5,6 +5,7 @@ from typing import Dict, List, Tuple
 import numpy as np
 import torch
 from models.white_mamba.col_info_extractor import get_col_stats_for_idx_name
+from models.white_mamba.extract_card_error_utils import extract_card_error_from_plan
 from models.zeroshot.postgres_plan_batching import (
     apply_feature_scalers,
     assign_additional_plan_info,
@@ -118,40 +119,17 @@ def mamba_plan_collator(
     # node features
     join_features = []  # node features for joins
     scan_features = []  # node features for scans
-
-    # plan information
     labels = []
-    sql_statements = []
-    hints = []
 
     # other test information
-    selectivity_list = []
-    col_correlation_list = []  # correlation of columns in the plan
-    scan_op_list = []
-    join_op_list = []
-    num_tables_list = []
-    graph_depth_list = []
-    sample_idxs = []
-
-    # augment feature_statistics
-    # augment_feature_stats_for_mamba(feature_statistics)
-
-    # # prepare robust encoder for the numerical fields
-    # add_numerical_scalers(feature_statistics, scaler_type=scaler_type)
+    query_stats_dict = defaultdict(list)
 
     for plan_id, plan in plans:
-        sample_idxs.append(plan_id)  # store the sample index
+        # store plan runtime
         labels.append(plan["plan_runtime_ms"])
-        sql_statements.append(plan["sql"])
-        hints.append(plan["hint"])
-        num_tables_list.append(plan["num_tables"])
 
         # annotate additional info
         assign_additional_plan_info(plan, db_statistics, db_schema_info)
-        selectivity_list += plan["selectivity"]
-        col_correlation_list += plan["col_correlation"]
-        scan_op_list += plan["scan_op"]
-        join_op_list += plan["join_op"]
 
         num_join_nodes_before = len(join_features)
         num_scan_nodes_before = len(scan_features)
@@ -208,7 +186,29 @@ def mamba_plan_collator(
             f"Plan ids length {len(plan_ids)} does not match node depths length {len(node_depths)}"
         )
 
-        graph_depth_list.append(max(node_depths[plan_depth_start_idx:], default=0))
+        # store query stat information
+        query_stats_dict["sample_idxs"].append(plan_id)  # store the sample index
+        query_stats_dict["num_tables"].append(plan["num_tables"])
+        assert not isinstance(plan["selectivity"], list), (
+            f"Selectivity should not be a list, but got {plan['selectivity']}"
+        )
+        query_stats_dict["selectivity"].append(plan["selectivity"])
+        query_stats_dict["col_correlation"].append(plan["col_correlation"])
+        query_stats_dict["scan_op"].append(plan["scan_op"])
+        query_stats_dict["join_op"].append(plan["join_op"])
+        query_stats_dict["graph_depth"].append(
+            max(node_depths[plan_depth_start_idx:], default=0)
+        )
+        query_stats_dict["sql"].append(plan["sql"])
+        query_stats_dict["hint"].append(plan["hint"])
+
+        mse, qerror = extract_card_error_from_plan(plan, mode="root")
+        mse_avg, qerror_avg = extract_card_error_from_plan(plan, mode="avg")
+
+        query_stats_dict["card_error_root_mse"].append(mse)
+        query_stats_dict["card_error_root_qerror"].append(qerror)
+        query_stats_dict["card_error_avg_mse"].append(mse_avg)
+        query_stats_dict["card_error_avg_qerror"].append(qerror_avg)
 
     # apply feature scaling
     if len(join_features) > 0:
@@ -258,7 +258,7 @@ def mamba_plan_collator(
     if output_tensors:
         # create tensors
         labels = torch.as_tensor(labels, dtype=torch.float32)
-        sample_idxs = torch.arange(len(labels), dtype=torch.int32)
+        query_stats_dict["sample_idxs"] = torch.arange(len(labels), dtype=torch.int32)
 
     return (
         edge_ids,
@@ -270,15 +270,7 @@ def mamba_plan_collator(
         join_features,
         scan_features,
         labels,
-        sample_idxs,
-        sql_statements,
-        hints,
-        selectivity_list,
-        scan_op_list,
-        join_op_list,
-        num_tables_list,
-        graph_depth_list,
-        col_correlation_list,
+        query_stats_dict,
     )
 
 

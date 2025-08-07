@@ -2,11 +2,6 @@ from models.white_mamba.col_info_extractor import get_col_stats_for_idx_name
 
 
 def assign_additional_plan_info(plan: dict, db_statistics: dict, db_schema_info: dict):
-    selectivity_list = []
-    scan_op_list = []
-    join_op_list = []
-    col_correlation_list = []
-
     # extract additional info
     if plan["num_tables"] == 1:
         # compute selectivity
@@ -48,23 +43,23 @@ def assign_additional_plan_info(plan: dict, db_statistics: dict, db_schema_info:
                 plan["database_id"],
                 db_statistics,
             )
-            col_correlation_list.append(col_stats["correlation"])
+            col_correlation = col_stats["correlation"]
         else:
             assert scan_op == "Seq Scan", (
                 f"Expected scan_op to be 'Seq Scan' or 'Index Scan', but got {scan_op}"
             )
-            col_correlation_list.append(None)
+            col_correlation = None
 
         # compute selectivity
-        selectivity_list.append(out_card / base_table_size)
-        scan_op_list.append(scan_op)
-        join_op_list.append(None)
+        selectivity = out_card / base_table_size
+        scan_op = scan_op
+        join_op = None
 
     elif plan["num_tables"] == 2:
         # compute join info
-        selectivity_list.append(None)
-        scan_op_list.append(None)
-        col_correlation_list.append(None)
+        selectivity = None
+        scan_op = None
+        col_correlation = None
 
         def get_top_join_node(p):
             if len(p["children"]) == 2:
@@ -75,16 +70,16 @@ def assign_additional_plan_info(plan: dict, db_statistics: dict, db_schema_info:
                 raise ValueError("Invalid plan structure")
 
         join_node = get_top_join_node(plan)
-        join_op_list.append(join_node["plan_parameters"]["op_name"])
+        join_op = join_node["plan_parameters"]["op_name"]
 
     else:
-        selectivity_list.append(None)
-        scan_op_list.append(None)
-        join_op_list.append(None)
-        col_correlation_list.append(None)
+        selectivity = None
+        scan_op = None
+        join_op = None
+        col_correlation = None
 
-    plan["selectivity"] = selectivity_list
-    plan["scan_op"] = scan_op_list
-    plan["join_op"] = join_op_list
-    plan["col_correlation"] = col_correlation_list
+    plan["selectivity"] = selectivity
+    plan["scan_op"] = scan_op
+    plan["join_op"] = join_op
+    plan["col_correlation"] = col_correlation
     return

@@ -567,6 +567,7 @@ class MambaModelConfig(ModelConfig):
 
     subplan_monotonicity_loss: bool = False  # add a loss term that enforces the subplan runtime to be monotonically increasing
     subplan_monotonicity_loss_fn: str = "lt_loss"  # loss function for the subplan monotonicity loss - either lt_loss or relative_lt_loss
+    scan_nte_relu: bool = False  # use ReLU activation in the scan node-type-encoder (join nte will not be affected by this setting)
 
 
 @attrs.define(frozen=True, slots=False)

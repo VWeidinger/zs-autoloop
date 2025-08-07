@@ -629,18 +629,8 @@ def postgres_plan_collator(
     column_idx = dict()
     table_idx = dict()
 
-    # In case of test mode, we need sql_statements and hints to match corresponding queries that belong
-    # to the same plan
-    sql_statements = []
-    hints = []
-
-    # other test information
-    selectivity_list = []
-    scan_op_list = []
-    join_op_list = []
-    num_tables_list = []
-    graph_depth_list = []
-    col_correlation_list = []
+    # query stats
+    query_stats_dict = collections.defaultdict(list)
 
     # prepare robust encoder for the numerical fields
     add_numerical_scalers(feature_statistics, scaler_type=scaler_type)
@@ -650,14 +640,9 @@ def postgres_plan_collator(
     for sample_idx, p in plans:
         sample_idxs.append(sample_idx)
         labels.append(p["plan_runtime_ms"])
-        num_tables_list.append(p["num_tables"])
-        sql_statements.append(p["sql"])
-        hints.append(p["hint"])
+
+        # annotate additional info
         assign_additional_plan_info(p, db_statistics, db_schema_info)
-        selectivity_list += p["selectivity"]
-        scan_op_list += p["scan_op"]
-        join_op_list += p["join_op"]
-        col_correlation_list += p["col_correlation"]
 
         if enforce_aggregation_node_at_root:
             # check if plan has aggregation node at root
@@ -760,7 +745,17 @@ def postgres_plan_collator(
             annotate_base_table_card_to_scan_op=annotate_base_table_card_to_scan_op,
         )
 
-        graph_depth_list.append(max(plan_depths[plan_depth_start_idx:], default=0))
+        # store the query stats
+        query_stats_dict["num_tables"].append(p["num_tables"])
+        query_stats_dict["sql"].append(p["sql"])
+        query_stats_dict["hints"].append(p["hint"])
+        query_stats_dict["selectivity"].extend(p["selectivity"])
+        query_stats_dict["scan_op"].extend(p["scan_op"])
+        query_stats_dict["join_op"].extend(p["join_op"])
+        query_stats_dict["col_correlation"].extend(p["col_correlation"])
+        query_stats_dict["graph_depth"].append(
+            max(plan_depths[plan_depth_start_idx:], default=0)
+        )
 
     assert len(labels) == len(plans)
     assert len(plan_depths) == len(plan_features)
@@ -916,15 +911,7 @@ def postgres_plan_collator(
         graph,
         features,
         labels,
-        sample_idxs,
-        sql_statements,
-        hints,
-        selectivity_list,
-        scan_op_list,
-        join_op_list,
-        num_tables_list,
-        graph_depth_list,
-        col_correlation_list,
+        {"sample_idxs": sample_idxs, **query_stats_dict},
     )
 
 

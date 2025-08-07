@@ -10,15 +10,7 @@ def dace_batch_to(batch, device, label_norm):
         loss_masks,
         run_times,
         labels,
-        sample_idxs,
-        sqls,
-        hints,
-        selectivity,
-        scan_op,
-        join_op,
-        num_tables,
-        plan_depths,
-        col_correlations,
+        query_stats,
     ) = batch
     recursive_to(seq_encodings, device)
     recursive_to(attention_masks, device)
@@ -28,51 +20,19 @@ def dace_batch_to(batch, device, label_norm):
     return (
         (seq_encodings, attention_masks, loss_masks, run_times),
         labels,
-        sample_idxs,
-        sqls,
-        hints,
-        selectivity,
-        scan_op,
-        join_op,
-        num_tables,
-        plan_depths,
-        col_correlations,
+        query_stats,
     )
 
 
 def simple_batch_to(batch, device, label_norm):
-    (
-        query_plans,
-        labels,
-        sample_idxs,
-        sqls,
-        hints,
-        selectivity,
-        scan_op,
-        join_op,
-        num_tables,
-        plan_depths,
-        col_correlations,
-    ) = batch
+    (query_plans, labels, query_stats) = batch
     if label_norm is not None:
         labels = label_norm.transform(np.asarray(labels.reshape(-1, 1)))
         labels = labels.reshape(-1)
     labels = torch.as_tensor(labels, device=device, dtype=torch.float)
     recursive_to(query_plans, device)
     recursive_to(labels, device)
-    return (
-        query_plans,
-        labels,
-        sample_idxs,
-        sqls,
-        hints,
-        selectivity,
-        scan_op,
-        join_op,
-        num_tables,
-        plan_depths,
-        col_correlations,
-    )
+    return (query_plans, labels, query_stats)
 
 
 def zs_batch_to(batch, device, label_norm):
@@ -80,15 +40,7 @@ def zs_batch_to(batch, device, label_norm):
         graph,
         features,
         label,
-        sample_idxs,
-        sqls,
-        hints,
-        selectivity,
-        scan_op,
-        join_op,
-        num_tables,
-        plan_depths,
-        col_correlations,
+        query_stats,
     ) = batch
 
     # normalize the labels for training
@@ -104,15 +56,7 @@ def zs_batch_to(batch, device, label_norm):
     return (
         (graph, features),
         label_tensor,
-        sample_idxs,
-        sqls,
-        hints,
-        selectivity,
-        scan_op,
-        join_op,
-        num_tables,
-        plan_depths,
-        col_correlations,
+        query_stats,
     )
 
 
@@ -123,15 +67,7 @@ def neo_batch_to(batch, device, label_norm):
         trees,
         indexes,
         labels,
-        sample_idxs,
-        sqls,
-        hints,
-        selectivity,
-        scan_op,
-        join_op,
-        num_tables,
-        plan_depths,
-        col_correlations,
+        query_stats,
     ) = batch
 
     # Normalize the labels for training
@@ -145,19 +81,7 @@ def neo_batch_to(batch, device, label_norm):
     recursive_to(query_encodings, device)
     recursive_to(indexes, device)
     recursive_to(labels, device)
-    return (
-        (query_encodings, trees, indexes),
-        labels,
-        sample_idxs,
-        sqls,
-        hints,
-        selectivity,
-        scan_op,
-        join_op,
-        num_tables,
-        plan_depths,
-        col_correlations,
-    )
+    return ((query_encodings, trees, indexes), labels, query_stats)
 
 
 def mamba_batch_to(batch, device, label_norm):
@@ -171,15 +95,7 @@ def mamba_batch_to(batch, device, label_norm):
         join_features,
         scan_features,
         labels,
-        sample_idxs,
-        sql_statements,
-        hints,
-        selectivity,
-        scan_op,
-        join_op,
-        num_tables,
-        plan_depths,
-        col_correlations,
+        query_stats,
     ) = batch
 
     # normalize the labels for training
@@ -202,16 +118,4 @@ def mamba_batch_to(batch, device, label_norm):
     )
     data = recursive_to(data, device)
 
-    return (
-        data,
-        labels,
-        sample_idxs,
-        sql_statements,
-        hints,
-        selectivity,
-        scan_op,
-        join_op,
-        num_tables,
-        plan_depths,
-        col_correlations,
-    )
+    return (data, labels, query_stats)
