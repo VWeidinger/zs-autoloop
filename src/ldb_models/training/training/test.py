@@ -112,15 +112,21 @@ def test_model(
                         [test_stats], str(test_path) + f"_test_stats{file_suffix}.csv"
                     )
 
-                if "join_order" in filename or "JOBExtended" in filename:
+                if (
+                    "join_order" in filename
+                    or "job_" in filename
+                    or "JOBExtended" in filename
+                ):
                     if filename == "join_order":
                         wl_name = "job_light"  # job_light
-                    elif filename.startswith(
-                        "join_order_job"
-                    ):  # could also be 'join_order_job_all_valid'
+                    elif filename in [
+                        "join_order_job",
+                        "join_order_job_w_idxs_combined",
+                        "job_w_optimal_w_idxs",
+                    ]:
                         wl_name = "job"
-                    elif "JOBExtended" in filename:
-                        wl_name = "job_extended"
+                    elif "JOBExtended" in filename or "job_complex" in filename:
+                        wl_name = "job_complex"
                     else:
                         raise ValueError(f"Unknown workload name: {filename}")
                     rt, slowdown = evaluate_join_order(
@@ -137,9 +143,9 @@ def test_model(
                     elif wl_name == "job_light":
                         joblight_total_selected_runtime = rt
                         joblight_total_slowdown = slowdown
-                    elif wl_name == "job_extended":
-                        jobextended_total_selected_runtime = rt
-                        jobextended_total_slowdown = slowdown
+                    elif wl_name == "job_complex":
+                        jobcomplex_total_selected_runtime = rt
+                        jobcomplex_total_slowdown = slowdown
                     else:
                         raise ValueError(f"Unknown workload name: {wl_name}")
 

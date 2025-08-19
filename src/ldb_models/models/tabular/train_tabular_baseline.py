@@ -4,39 +4,41 @@ import os
 import pickle
 import time
 from pathlib import Path
-from typing import Optional, List, Tuple
+from typing import List, Optional, Tuple
 
 import joblib
 import lightgbm as lgb
 import numpy as np
 import torch
-from ldb_schema.load_schema import load_json
-from sklearn.linear_model import LinearRegression
-from wandb.apis.public import Run
-
 from classes.classes import (
+    AnalyticalActCardModelConfig,
+    AnalyticalEstCardModelConfig,
+    DataLoaderOptions,
     FlatModelConfig,
     ModelConfig,
     ScaledPostgresModelConfig,
-    AnalyticalEstCardModelConfig,
-    AnalyticalActCardModelConfig,
-    DataLoaderOptions,
-    T3ModelConfig,
-    T3FlatModelConfig,
-    T3TreeModelConfig,
     SPNModelConfig,
+    T3FlatModelConfig,
+    T3ModelConfig,
+    T3TreeModelConfig,
 )
 from classes.workload_runs import WorkloadRuns
-from models.t3.model import T3Model, TreeModel, FlatTreeModel, PerTupleTreeModel
+from ldb_schema.load_schema import load_json
+from models.t3.model import FlatTreeModel, PerTupleTreeModel, T3Model, TreeModel
 from models.t3.t3_dataloader import gen_t3_dataset
 from models.tabular.slice_train_val import slice_train_val
 from models.zeroshot.postgres_plan_batching import assign_additional_plan_info
+from sklearn.linear_model import LinearRegression
+from spn.algorithms.LearningWrappers import learn_parametric
+from spn.algorithms.MPE import mpe
+from spn.structure.Base import Context
+from spn.structure.leaves.parametric.Parametric import Gaussian
 from training.bound_predictions_with_history import PredictionBounder
 from training.dataset.dataset_creation import read_workload_runs
 from training.evaluate_query_optimization import (
+    evaluate_access_path_selection,
     evaluate_join_order,
     evaluate_physical_plan_selection,
-    evaluate_access_path_selection,
 )
 from training.featurizations import Featurization
 from training.training.checkpoint import save_csv
@@ -44,10 +46,7 @@ from training.training.metrics import init_metrics
 from training.training.utils import prefix_dict
 from training.training.validate import to_rows
 
-from spn.algorithms.LearningWrappers import learn_parametric
-from spn.structure.Base import Context
-from spn.structure.leaves.parametric.Parametric import Gaussian
-from spn.algorithms.MPE import mpe
+from wandb.apis.public import Run
 
 
 def train_tabular_model(
@@ -440,13 +439,21 @@ def predict_tabular_model(
                 prefix_dict(test_stats, f"{test_file_name}.json/test_")
             )
 
-        if "join_order" in str(test_path) or "JOBExtended" in test_file_name:
+        if (
+            "join_order" in str(test_path)
+            or "job_" in str(test_path)
+            or "JOBExtended" in test_file_name
+        ):
             if test_file_name == "join_order":
                 wl_name = "job_light"  # job_light
-            elif test_file_name in ["join_order_job", "join_order_job_w_idxs_combined"]:
+            elif test_file_name in [
+                "join_order_job",
+                "join_order_job_w_idxs_combined",
+                "job_w_optimal_w_idxs",
+            ]:
                 wl_name = "job"
-            elif "JOBExtended" in test_file_name:
-                wl_name = "job_extended"
+            elif "JOBExtended" in test_file_name or "job_complex" in test_file_name:
+                wl_name = "job_complex"
             else:
                 raise ValueError(f"Unknown workload name: {test_file_name}")
             rt, slowdown = evaluate_join_order(
@@ -458,9 +465,9 @@ def predict_tabular_model(
             elif wl_name == "job_light":
                 joblight_total_selected_runtime = rt
                 joblight_total_slowdown = slowdown
-            elif wl_name == "job_extended":
-                jobextended_total_selected_runtime = rt
-                jobextended_total_slowdown = slowdown
+            elif wl_name == "job_complex":
+                jobcomplex_total_selected_runtime = rt
+                jobcomplex_total_slowdown = slowdown
             else:
                 raise ValueError(f"Unknown workload name: {wl_name}")
 
