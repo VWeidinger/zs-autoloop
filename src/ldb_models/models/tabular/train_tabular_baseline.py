@@ -587,28 +587,15 @@ def gen_flattened_dataset(
         if db_name != "unknown"
     )
 
-    feature_vecs, labels, selectivities, join_ops, scan_ops, num_tables, plan_depths = (
-        [],
-        [],
-        [],
-        [],
-        [],
-        [],
-        [],
-    )
+    feature_vecs = []
+    labels = []
 
-    sqls, hints = [], []  # Required to later evaluate against query optimization
-    for plan in plans:
-        sqls.append(plan["sql"])
-        hints.append(plan["hint"])
+    query_stats_dict = defaultdict(list)
+
+    for i, plan in enumerate(plans):
         assign_additional_plan_info(
             plan=plan, db_statistics=database_statistics, db_schema_info=db_schema_info
         )
-        selectivities.append(plan["selectivity"])
-        join_ops.append(plan["join_op"])
-        scan_ops.append(plan["scan_op"])
-        num_tables.append(plan["num_tables"])
-        plan_depths.append(0)
 
         # number an operator occurs
         feature_num_vec = np.zeros(no_ops)
@@ -640,19 +627,17 @@ def gen_flattened_dataset(
         # append to all feature vectors and runtime labels
         feature_vecs.append(np.concatenate((feature_num_vec, feature_row_vec)))
         labels.append(plan["plan_runtime_ms"] / 1000)
+
+        # extract query stats
+        extract_query_stats_for_plan(
+            query_stats_dict,
+            plan,
+            i,
+        )
+
     X_train, X_val, Y_train, Y_val = slice_train_val(
         cap_training_samples, feature_vecs, labels, plans, val_ratio, shuffle=shuffle
     )
-
-    query_stats_dict = {
-        "sql": sqls,
-        "hint": hints,
-        "selectivity": selectivities,
-        "scan_op": scan_ops,
-        "join_op": join_ops,
-        "num_tables": num_tables,
-        "plan_depth": plan_depths,
-    }
 
     return (X_train, X_val, Y_train, Y_val, query_stats_dict)
 
