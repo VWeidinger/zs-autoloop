@@ -349,6 +349,16 @@ def test_model(
     cutoff_x = np.percentile(df["Runtime Q-Error"], 99)
     cutoff_y = np.percentile(df["Cardinality Q-Error"], 99)
 
+    if not np.isfinite(cutoff_x):
+        # set to max entry
+        cutoff_x = df["Runtime Q-Error"][np.isfinite(df["Runtime Q-Error"])].max()
+
+    if not np.isfinite(cutoff_y):
+        # set to max entry
+        cutoff_y = df["Cardinality Q-Error"][
+            np.isfinite(df["Cardinality Q-Error"])
+        ].max()
+
     # add logscale
     # jp.ax_joint.set_xscale("log")
     # jp.ax_joint.set_yscale("log")

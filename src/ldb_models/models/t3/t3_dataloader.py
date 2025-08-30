@@ -1,18 +1,20 @@
+from collections import defaultdict
 from pathlib import Path
-from typing import List, Dict, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import lightgbm as lgb
 import numpy as np
-
-from classes.classes import T3ModelConfig, T3TreeModelConfig, T3FlatModelConfig
+from classes.classes import T3FlatModelConfig, T3ModelConfig, T3TreeModelConfig
+from ldb_schema.load_schema import get_json_schema
 from models.t3.benchmarked_query import BenchmarkedQuery
 from models.t3.features import FeatureMapper
 from models.t3.query_plan import QueryPlan
 from models.tabular.slice_train_val import slice_train_val
+from models.white_mamba.extract_query_stats import extract_query_stats_for_plan
 from models.zeroshot.postgres_plan_batching import assign_additional_plan_info
 from training.dataset.dataset_creation import (
-    read_workload_runs,
     check_plan_runtime_validity,
+    read_workload_runs,
 )
 from training.featurizations import Featurization
 
@@ -523,28 +525,41 @@ def gen_t3_dataset(
         assert isinstance(stats, Dict), f"Expected dict, got {type(stats)}"
         add_table_stats_dict(stats)
 
+    # extract database schema information
+    db_names = dict(
+        (db_id, value["database_name"]) for db_id, value in db_statistics.items()
+    )
+    db_schema_info = dict(
+        (db_id, get_json_schema(db_name))
+        for db_id, db_name in db_names.items()
+        if db_name != "unknown"
+    )
+
     # create dataset info
     benchmark_queries = []
     labels = []
-    selectivities = []
-    join_ops = []
-    scan_ops = []
-    num_tables = []
-    plan_depths = []
-
-    sqls, hints = [], []  # Required to later evaluate against query optimization
+    query_stats_dict = defaultdict(list)
 
     filtered_plans = []
 
     skip_plan_inconsistent_runtimes_ctr = 0
-    for plan in plans:
+    for i, plan in enumerate(plans):
         if not check_plan_runtime_validity(
             plan, parent_runtime=plan["plan_runtime_ms"]
         ):
             skip_plan_inconsistent_runtimes_ctr += 1
             continue
 
-        assign_additional_plan_info(plan=plan, db_statistics=db_statistics)
+        assign_additional_plan_info(
+            plan=plan, db_statistics=db_statistics, db_schema_info=db_schema_info
+        )
+
+        # extract query stats
+        extract_query_stats_for_plan(
+            query_stats_dict,
+            plan,
+            i,
+        )
 
         # reorder hashjoin children (hash first child)
         try:
@@ -552,14 +567,6 @@ def gen_t3_dataset(
         except UnsupportedOperatorException as e:
             print(f"Unsupported Operator: {e}")
             continue
-
-        sqls.append(plan["sql"])
-        hints.append(plan["hint"])
-        selectivities += plan["selectivity"]
-        join_ops += plan["join_op"]
-        scan_ops += plan["scan_op"]
-        num_tables.append(plan["num_tables"])
-        plan_depths.append(0)
 
         # assign unique IDs to each operator in the plan
         annotate_op_id(plan)
@@ -602,12 +609,6 @@ def gen_t3_dataset(
 
     assert len(labels) == len(filtered_plans)
     assert len(labels) == len(benchmark_queries)
-    assert len(labels) == len(sqls)
-    assert len(labels) == len(hints)
-    assert len(labels) == len(selectivities)
-    assert len(labels) == len(join_ops)
-    assert len(labels) == len(scan_ops)
-    assert len(labels) == len(num_tables)
 
     if return_dataset:
         # assemble x, y
@@ -640,30 +641,6 @@ def gen_t3_dataset(
                 X_val, label=Y_val, reference=train_data, params=param
             )
 
-        return (
-            train_data,
-            val_data,
-            Y_train,
-            Y_val,
-            sqls,
-            hints,
-            selectivities,
-            scan_ops,
-            join_ops,
-            num_tables,
-            plan_depths,
-        )
+        return (train_data, val_data, Y_train, Y_val, query_stats_dict)
     else:
-        return (
-            benchmark_queries,
-            None,
-            labels,
-            None,
-            sqls,
-            hints,
-            selectivities,
-            scan_ops,
-            join_ops,
-            num_tables,
-            plan_depths,
-        )
+        return (benchmark_queries, None, labels, None, query_stats_dict)

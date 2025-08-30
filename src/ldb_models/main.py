@@ -327,6 +327,7 @@ def use_model(
         # Move model to device
         print(f"Model device: {model.device}", flush=True)
         model = model.to(model.device)
+        print(f"Model is now on device: {next(model.parameters()).device}", flush=True)
 
         # Init optimizer
         if config.optimizer_class_name == "AdamWScheduleFree":

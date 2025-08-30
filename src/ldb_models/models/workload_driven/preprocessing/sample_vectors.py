@@ -1,12 +1,21 @@
+import argparse
+import concurrent.futures
 import json
 import os
+import sys
+from typing import Any, Dict
 
 import pandas as pd
-import argparse
+from ldb_schema.load_schema import get_json_schema, load_json
 
-from ldb_schema.load_schema import load_json, get_json_schema
-from tqdm import tqdm
+sys.path.append(
+    os.path.dirname(
+        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    )
+)
+
 from models.workload_driven.preprocessing.sentence_creation import dumper
+from tqdm import tqdm
 
 
 def get_col_stats(column_stats: list, column_name: str):
@@ -61,7 +70,7 @@ def construct_filter_sample(
             # replace wildcards to obtain valid regex
             regex = literal
             for esc_char in [".", "(", ")", "?"]:
-                regex = regex.replace(esc_char, f"{esc_char}")
+                regex = regex.replace(esc_char, f"\{esc_char}")
             regex = regex.replace("%", ".*?")
             regex = f"^{regex}$"
             # sample_vec = base_sample.str.contains(regex)
@@ -125,6 +134,28 @@ def augment_sample(table_samples: dict, col_stats: list, p_node: dict):
             augment_sample(table_samples, col_stats, c)
 
 
+def get_sample_for_table(
+    table: str, columns: Dict[str, Any], data_dir: str, no_samples: int
+):
+    table_dir = os.path.join(data_dir, f"{table}.csv")
+    assert os.path.exists(data_dir), f"Could not find table csv {table_dir}"
+
+    dtype_mapping = {}
+    for column, data in columns.items():
+        if data["type"] == "integer":
+            dtype_mapping[column] = "Int64"
+        elif data["type"] == "float":
+            dtype_mapping[column] = float
+        elif data["type"].startswith("varchar"):
+            dtype_mapping[column] = str
+
+    df_sample = pd.read_csv(table_dir, na_values=["<!NULL-?>"], dtype=dtype_mapping)
+    if len(df_sample) > no_samples:
+        df_sample = df_sample.sample(random_state=0, n=no_samples)
+
+    return df_sample
+
+
 def augment_sample_vectors(
     dataset: str,
     data_dir: str,
@@ -134,48 +165,66 @@ def augment_sample_vectors(
     no_samples: int = 1000,
 ):
     # Check first that all workload paths exist
+    print("Checking existence of all workloads", flush=True)
     for workload in workloads:
         source_path = os.path.join(plan_path, f"{workload}.json")
         if not os.path.exists(source_path):
             raise FileNotFoundError(f"Could not find workload file {source_path}")
 
+    # create output directory
+    os.makedirs(target_path, exist_ok=True)
+
     # load first run to get column statistics
+    print("Load first run to retrieve column stats", flush=True)
     source_path = os.path.join(plan_path, f"{workloads[0]}.json")
     run = load_json(source_path)
     col_stats = run["database_stats"]["column_stats"]
 
     # create sample per table
+    print("Retrieve schema of dataset...")
     schema = get_json_schema(dataset)
 
     # read individual table csvs and derive statistics
     table_samples = dict()
-    for table, columns in schema["table_col_info"].items():
-        table_dir = os.path.join(data_dir, f"{table}.csv")
-        assert os.path.exists(data_dir), f"Could not find table csv {table_dir}"
-        print(f"Generating sample for {table}")
 
-        dtype_mapping = {}
-        for column, data in columns.items():
-            if data["type"] == "integer":
-                dtype_mapping[column] = "Int64"
-            elif data["type"] == "float":
-                dtype_mapping[column] = float
-            elif data["type"].startswith("varchar"):
-                dtype_mapping[column] = str
+    parallelize = True
+    if parallelize:
+        print("Starting parallel processing for table samples")
+        with concurrent.futures.ProcessPoolExecutor() as executor:
+            future_to_table = {
+                executor.submit(
+                    get_sample_for_table, table, columns, data_dir, no_samples
+                ): table
+                for table, columns in schema["table_col_info"].items()
+            }
+            for future in tqdm(
+                concurrent.futures.as_completed(future_to_table),
+                total=len(future_to_table),
+                desc="Creating samples for each table",
+            ):
+                table = future_to_table[future]
+                try:
+                    data = future.result()
+                    table_samples[table] = data
+                except Exception as exc:
+                    print(f"{table} generated an exception: {exc}")
 
-        df_sample = pd.read_csv(table_dir, na_values=["<!NULL-?>"], dtype=dtype_mapping)
-        if len(df_sample) > no_samples:
-            df_sample = df_sample.sample(random_state=0, n=no_samples)
-        table_samples[table] = df_sample
+    else:
+        for table, columns in tqdm(
+            schema["table_col_info"].items(), desc="Creating samples for each table"
+        ):
+            df = get_sample_for_table(table, columns)
+            table_samples[table] = df
 
     for workload in workloads:
         source_path = os.path.join(plan_path, f"{workload}.json")
-        run = load_json(source_path)
-        print(f"Augment Sample Vectors for {source_path}")
-
         out_path = os.path.join(target_path, f"{workload}.json")
         if os.path.exists(out_path):
-            print(f"Skip for {out_path}")
+            print(f"{out_path} already exists, skipping augmentation")
+            continue
+
+        run = load_json(source_path)
+        print(f"Augment Sample Vectors for {source_path}")
 
         for p in tqdm(run["parsed_plans"]):
             augment_sample(table_samples=table_samples, col_stats=col_stats, p_node=p)

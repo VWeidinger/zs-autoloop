@@ -28,7 +28,7 @@ col_stats_cache = dict()
 
 def get_col_stats_for_idx_name(
     idx_name: str,
-    plan_params: dict,
+    table_name: str,
     db_schema_info: Dict,
     database_id: int,
     db_statistics: Dict,
@@ -41,10 +41,8 @@ def get_col_stats_for_idx_name(
 
     if idx_name.endswith("_pkey"):
         # special case for primary key index
-        col_name = find_pk_for_table(
-            plan_params["table_name"], db_schema_info, database_id
-        )
-        idx_col = f"{plan_params['table_name']}_{col_name}"
+        col_name = find_pk_for_table(table_name, db_schema_info, database_id)
+        idx_col = f"{table_name}_{col_name}"
     else:
         assert idx_name.startswith("idx_"), (
             f"Index name {idx_name} does not start with 'idx_'."

@@ -1,10 +1,13 @@
+from collections import defaultdict
+from typing import Dict
+
 import dgl
 import numpy as np
-
+from models.white_mamba.extract_query_stats import extract_query_stats_for_plan
 from models.workload_driven.dataset.plan_tree_batching import (
-    extract_dimensions,
-    encode_predicate,
     encode_one_hot,
+    encode_predicate,
+    extract_dimensions,
     tensorize_feats,
 )
 from models.zeroshot.postgres_plan_batching import assign_additional_plan_info
@@ -174,6 +177,7 @@ def mscn_plan_collator(
     dim_word_hash=None,
     dim_word_emdb=None,
     dim_bitmaps=None,
+    db_schema_info: Dict = None,
 ):
     """
     Combines physical plans into a large graph that can be fed into ML models.
@@ -198,25 +202,19 @@ def mscn_plan_collator(
     sql_statements = []
     hints = []
 
-    # other test information
-    selectivity_list = []
-    scan_op_list = []
-    join_op_list = []
-    num_tables_list = []
-    graph_depth_list = []
+    query_stats_dict = defaultdict(list)
 
     sample_idxs = []
     for plan_id, (sample_idx, p) in enumerate(plans):
-        sample_idxs.append(sample_idx)
         labels.append(p["plan_runtime_ms"])
-        num_tables_list.append(p["num_tables"])
-        sql_statements.append(p["sql"])
-        hints.append(p["hint"])
-        assign_additional_plan_info(p, db_statistics)
-        selectivity_list += p["selectivity"]
-        scan_op_list += p["scan_op"]
-        join_op_list += p["join_op"]
-        graph_depth_list.append(0)  # ToDo, port this from Zeroshot code
+        assign_additional_plan_info(p, db_statistics, db_schema_info=db_schema_info)
+
+        # extract query stats
+        extract_query_stats_for_plan(
+            query_stats_dict,
+            p,
+            sample_idx,
+        )
 
         curr_table_feats, curr_pred_feats = extract_set_features(
             p,
@@ -287,19 +285,7 @@ def mscn_plan_collator(
     labels = np.array(labels, dtype=np.float32)
     labels /= 1000
 
-    return (
-        graph,
-        features,
-        labels,
-        sample_idxs,
-        sql_statements,
-        hints,
-        selectivity_list,
-        scan_op_list,
-        join_op_list,
-        num_tables_list,
-        graph_depth_list,
-    )
+    return (graph, features, labels, query_stats_dict)
 
 
 def extract_joins_aggregations(

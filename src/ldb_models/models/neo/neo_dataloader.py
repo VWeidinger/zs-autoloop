@@ -1,9 +1,10 @@
 import re
-from typing import Tuple
+from collections import defaultdict
+from typing import Dict, Tuple
 
 import numpy as np
 import torch
-
+from models.white_mamba.extract_query_stats import extract_query_stats_for_plan
 from models.zeroshot.postgres_plan_batching import (
     assign_additional_plan_info,
     postprocess_labels,
@@ -369,13 +370,13 @@ def init_table_ids(table_stats):
 
 def neo_collator(
     batch: Tuple,
-    db_statistics: dict,
-    column_statistics: dict,
-    feature_statistics: dict,
+    db_statistics: Dict,
+    column_statistics: Dict,
+    feature_statistics: Dict,
+    db_schema_info: Dict,
     max_depth=35,
 ):
     # Get plan encodings
-    sample_idxs = []
     labels = []
     all_trees = []
     all_query_encodings = []
@@ -383,26 +384,15 @@ def neo_collator(
 
     # In case of test mode, we need sql_statements and hints to match corresponding queries that belong
     # to the same plan
-    sql_statements = []
-    hints = []
-    selectivity_list = []
-    scan_op_list = []
-    join_op_list = []
-    num_tables_list = []
+    query_stats_dict = defaultdict(list)
 
     column_statistics = db_statistics[0]["column_stats"]
     table_stats = db_statistics[0]["table_stats"]
 
     for sample_idx, p in batch:
-        sample_idxs.append(sample_idx)
-        sql_statements.append(p["sql"])
-        hints.append(p["hint"])
         labels.append(p["plan_runtime_ms"])
-        assign_additional_plan_info(p, db_statistics)
-        selectivity_list += p["selectivity"]
-        scan_op_list += p["scan_op"]
-        join_op_list += p["join_op"]
-        num_tables_list.append(p["num_tables"])
+
+        assign_additional_plan_info(p, db_statistics, db_schema_info=db_schema_info)
 
         # Do first query level encoding, consisting out of join graph and predicate encodings
         join_encoding = extract_join_matrix(plan=p, table_statistics=table_stats)
@@ -433,24 +423,17 @@ def neo_collator(
         trees = _featurize_tree(plan=p, maximum_depth=max_depth)
         all_trees.append(trees)
 
+        # extract query stats
+        extract_query_stats_for_plan(
+            query_stats_dict,
+            p,
+            sample_idx,
+        )
+
     all_query_encodings = torch.from_numpy(np.array(all_query_encodings)).float()
     all_trees = torch.from_numpy(np.array(all_trees)).float()
     all_indexes = torch.from_numpy(pad_indexes(all_indexes)).long()
     labels = postprocess_labels(labels)
     labels = torch.from_numpy(np.array(labels))
 
-    graph_depth = [0] * len(batch)  # ToDo: Implement later
-    return (
-        all_query_encodings,
-        all_trees,
-        all_indexes,
-        labels,
-        sample_idxs,
-        sql_statements,
-        hints,
-        selectivity_list,
-        scan_op_list,
-        join_op_list,
-        num_tables_list,
-        graph_depth,
-    )
+    return (all_query_encodings, all_trees, all_indexes, labels, query_stats_dict)

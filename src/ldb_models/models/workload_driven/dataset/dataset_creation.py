@@ -1,22 +1,21 @@
 import functools
 from pathlib import Path
-
-from gensim.models import KeyedVectors
-from ldb_schema.load_schema import load_json
-from torch.utils.data import DataLoader
+from typing import Tuple
 
 from classes.classes import (
-    ModelConfig,
     DataLoaderOptions,
-    TPoolModelConfig,
-    TlstmModelConfig,
-    TestSumModelConfig,
-    MSCNModelConfig,
-    QueryFormerModelConfig,
-    NeoModelConfig,
     E2EModelConfig,
+    ModelConfig,
+    MSCNModelConfig,
+    NeoModelConfig,
+    QueryFormerModelConfig,
+    TestSumModelConfig,
+    TlstmModelConfig,
+    TPoolModelConfig,
 )
 from classes.workload_runs import WorkloadRuns
+from gensim.models import KeyedVectors
+from ldb_schema.load_schema import load_json
 from models.neo.neo_dataloader import neo_collator
 from models.query_former.dataloader import query_former_plan_collator
 from models.workload_driven.dataset.mscn_batching import mscn_plan_collator
@@ -24,6 +23,7 @@ from models.workload_driven.dataset.plan_tree_batching import (
     baseline_plan_collator,
     extract_dimensions,
 )
+from torch.utils.data import DataLoader
 from training.dataset.dataset_creation import create_datasets
 
 
@@ -173,19 +173,26 @@ def get_collate_func(
     dim_word_hash: int,
     dim_word_emdb: int,
     dim_bitmaps: int,
+    database_schema_info: dict,
 ):
+    collate_kwargs = {
+        "db_statistics": database_statistics,
+        "feature_statistics": feature_statistics,
+        "column_statistics": column_statistics,
+        "db_schema_info": database_schema_info,
+    }
+
     if isinstance(
         model_config,
         (E2EModelConfig, TPoolModelConfig, TlstmModelConfig, TestSumModelConfig),
     ):
-        collate_kwargs = dict(
-            db_statistics=database_statistics,
-            feature_statistics=feature_statistics,
-            column_statistics=column_statistics,
-            word_embeddings=word_embeddings,
-            dim_word_hash=dim_word_hash,
-            dim_word_emdb=dim_word_emdb,
-            dim_bitmaps=dim_bitmaps,
+        collate_kwargs.update(
+            dict(
+                word_embeddings=word_embeddings,
+                dim_word_hash=dim_word_hash,
+                dim_word_emdb=dim_word_emdb,
+                dim_bitmaps=dim_bitmaps,
+            )
         )
         plan_collator_func = baseline_plan_collator
         input_dims: InputDims = PlanModelInputDims(
@@ -193,14 +200,13 @@ def get_collate_func(
         )
 
     elif isinstance(model_config, MSCNModelConfig):
-        collate_kwargs = dict(
-            db_statistics=database_statistics,
-            feature_statistics=feature_statistics,
-            column_statistics=column_statistics,
-            word_embeddings=word_embeddings,
-            dim_word_hash=dim_word_hash,
-            dim_word_emdb=dim_word_emdb,
-            dim_bitmaps=dim_bitmaps,
+        collate_kwargs.update(
+            dict(
+                word_embeddings=word_embeddings,
+                dim_word_hash=dim_word_hash,
+                dim_word_emdb=dim_word_emdb,
+                dim_bitmaps=dim_bitmaps,
+            )
         )
         plan_collator_func = mscn_plan_collator
         input_dims: InputDims = MSCNInputDims(
@@ -208,16 +214,15 @@ def get_collate_func(
         )
 
     elif isinstance(model_config, QueryFormerModelConfig):
-        collate_kwargs = dict(
-            db_statistics=database_statistics,
-            feature_statistics=feature_statistics,
-            column_statistics=column_statistics,
-            word_embeddings=word_embeddings,
-            dim_word_hash=dim_word_hash,
-            dim_word_embedding=dim_word_emdb,
-            histogram_bin_size=model_config.histogram_bin_number,
-            max_num_filters=model_config.max_num_filters,
-            dim_bitmaps=dim_bitmaps,
+        collate_kwargs.update(
+            dict(
+                word_embeddings=word_embeddings,
+                dim_word_hash=dim_word_hash,
+                dim_word_embedding=dim_word_emdb,
+                histogram_bin_size=model_config.histogram_bin_number,
+                max_num_filters=model_config.max_num_filters,
+                dim_bitmaps=dim_bitmaps,
+            )
         )
         plan_collator_func = query_former_plan_collator
         input_dims: InputDims = PlanModelInputDims(
@@ -225,11 +230,6 @@ def get_collate_func(
         )
 
     elif isinstance(model_config, NeoModelConfig):
-        collate_kwargs = dict(
-            db_statistics=database_statistics,
-            feature_statistics=feature_statistics,
-            column_statistics=column_statistics,
-        )
         plan_collator_func = neo_collator
         input_dims: InputDims = NeoInputDims(
             feature_statistics, dim_word_emdb, dim_word_hash, dim_bitmaps
@@ -249,7 +249,7 @@ def create_baseline_dataloader(
     word_embeddings,
     model_config: ModelConfig,
     data_loader_options: DataLoaderOptions,
-) -> (dict, DataLoader, DataLoader, DataLoader, InputDims):
+) -> Tuple[dict, DataLoader, DataLoader, DataLoader, InputDims]:
     train_loader, val_loader, test_loaders = None, None, None
 
     dim_bitmaps = 1000
@@ -277,12 +277,14 @@ def create_baseline_dataloader(
         #                                                "workload driven models")
         print("Create dataloader for training, validation and test data")
 
-        label_norm, train_dataset, val_dataset, database_statistics = create_datasets(
-            workload_run_paths=workload_runs.train_workload_runs,
-            model_config=model_config,
-            val_ratio=data_loader_options.val_ratio,
-            stratify_dataset=data_loader_options.stratify_dataset,
-            stratify_per_wl_file=data_loader_options.stratify_per_wl_file,
+        label_norm, train_dataset, val_dataset, database_statistics, db_schema_info = (
+            create_datasets(
+                workload_run_paths=workload_runs.train_workload_runs,
+                model_config=model_config,
+                val_ratio=data_loader_options.val_ratio,
+                stratify_dataset=data_loader_options.stratify_dataset,
+                stratify_per_wl_file=data_loader_options.stratify_per_wl_file,
+            )
         )
 
         test_dataset, val_dataset = val_dataset.split(0.5)
@@ -315,6 +317,7 @@ def create_baseline_dataloader(
             dim_word_hash=dim_word_hash,
             dim_word_emdb=dim_word_emdb,
             dim_bitmaps=dim_bitmaps,
+            database_schema_info=db_schema_info,
         )
         dataloader_args.update(collate_fn=train_collate_fn)
         train_loader = DataLoader(train_dataset, **dataloader_args)
@@ -324,7 +327,7 @@ def create_baseline_dataloader(
     if workload_runs.test_workload_runs:
         test_loaders = []
         for test_workload in workload_runs.test_workload_runs:
-            _, _, test_dataset, database_statistics = create_datasets(
+            _, _, test_dataset, database_statistics, db_schema_info = create_datasets(
                 workload_run_paths=[test_workload],
                 model_config=model_config,
                 val_ratio=1.0,
@@ -346,6 +349,7 @@ def create_baseline_dataloader(
                 dim_word_hash=dim_word_hash,
                 dim_word_emdb=dim_word_emdb,
                 dim_bitmaps=dim_bitmaps,
+                database_schema_info=db_schema_info,
             )
 
             dataloader_args.update(collate_fn=test_collate_fn)

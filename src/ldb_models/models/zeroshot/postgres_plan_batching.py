@@ -4,6 +4,7 @@ from typing import Dict, List, Tuple
 import dgl
 import numpy as np
 import torch
+from models.white_mamba.extract_query_stats import extract_query_stats_for_plan
 from models.zeroshot.annotate_additional_plan_info import assign_additional_plan_info
 from sklearn.preprocessing import MinMaxScaler, RobustScaler
 from training.dataset.cmp_operator import Operator
@@ -745,16 +746,12 @@ def postgres_plan_collator(
             annotate_base_table_card_to_scan_op=annotate_base_table_card_to_scan_op,
         )
 
-        # store the query stats
-        query_stats_dict["num_tables"].append(p["num_tables"])
-        query_stats_dict["sql"].append(p["sql"])
-        query_stats_dict["hints"].append(p["hint"])
-        query_stats_dict["selectivity"].extend(p["selectivity"])
-        query_stats_dict["scan_op"].extend(p["scan_op"])
-        query_stats_dict["join_op"].extend(p["join_op"])
-        query_stats_dict["col_correlation"].extend(p["col_correlation"])
-        query_stats_dict["graph_depth"].append(
-            max(plan_depths[plan_depth_start_idx:], default=0)
+        # extract query stats
+        extract_query_stats_for_plan(
+            query_stats_dict,
+            p,
+            sample_idx,
+            node_depth=max(plan_depths[plan_depth_start_idx:], default=0),
         )
 
     assert len(labels) == len(plans)

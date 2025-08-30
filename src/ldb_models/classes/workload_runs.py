@@ -4,7 +4,6 @@ from typing import List, Optional
 
 import attrs as attrs
 from attr import field
-
 from classes.classes import ModelConfig, ModelType
 
 
@@ -56,7 +55,7 @@ class WorkloadRuns:
                 workload_name = set()
                 for workload in self.train_workload_runs:
                     workload_name.add(os.path.dirname(workload))
-                assert len(workload_name) == 1, (
+                assert len(workload_name) <= 1, (
                     "All training workloads should be from the same database"
                 )
                 # assert len(self.test_workload_runs) == 0, "No test workload runs are allowed for workload driven models, as the test workload is the same as the training workload"

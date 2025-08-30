@@ -3,6 +3,7 @@ import math
 import os
 import pickle
 import time
+from collections import defaultdict
 from pathlib import Path
 from typing import List, Optional, Tuple
 
@@ -23,10 +24,11 @@ from classes.classes import (
     T3TreeModelConfig,
 )
 from classes.workload_runs import WorkloadRuns
-from ldb_schema.load_schema import load_json
+from ldb_schema.load_schema import get_json_schema, load_json
 from models.t3.model import FlatTreeModel, PerTupleTreeModel, T3Model, TreeModel
 from models.t3.t3_dataloader import gen_t3_dataset
 from models.tabular.slice_train_val import slice_train_val
+from models.white_mamba.extract_query_stats import extract_query_stats_for_plan
 from models.zeroshot.postgres_plan_batching import assign_additional_plan_info
 from sklearn.linear_model import LinearRegression
 from spn.algorithms.LearningWrappers import learn_parametric
@@ -116,13 +118,7 @@ def train_tabular_model(
             x_test,
             y_train,
             y_test,
-            sqls,
-            hints,
-            selectivities,
-            scan_op,
-            join_op,
-            num_tables,
-            plan_depths,
+            query_stats_dict,
         ) = gen_dataset_func(
             workload_runs=workload_runs.train_workload_runs,
             statistics_file=statistics_file,
@@ -322,13 +318,7 @@ def predict_tabular_model(
             _,
             y_test,
             _,
-            test_sqls,
-            test_hints,
-            test_selectivities,
-            test_scan_op_list,
-            test_join_op_list,
-            test_num_tables,
-            test_plan_depths,
+            query_stats_dict,
         ) = gen_dataset_func(
             workload_runs=[test_wl],
             statistics_file=statistics_file,
@@ -339,19 +329,7 @@ def predict_tabular_model(
             model_config=config,
             is_test=True,
         )
-        test_datasets.append(
-            (
-                x_test,
-                y_test,
-                test_sqls,
-                test_hints,
-                test_selectivities,
-                test_scan_op_list,
-                test_join_op_list,
-                test_num_tables,
-                test_plan_depths,
-            )
-        )
+        test_datasets.append((x_test, y_test, query_stats_dict))
 
     # retrieve metrics similar to the ones used for QLoss
     metrics = init_metrics("QLoss")
@@ -370,17 +348,9 @@ def predict_tabular_model(
     accesspath_total_selected_runtime = -1
     accesspath_total_slowdown = None
 
-    for (
-        x_test,
-        y_test,
-        sqls,
-        hints,
-        selectivities,
-        scan_ops,
-        join_ops,
-        num_tables,
-        plan_depths,
-    ), test_path in zip(test_datasets, workload_runs.target_test_csv_paths):
+    for (x_test, y_test, query_stats_dict), test_path in zip(
+        test_datasets, workload_runs.target_test_csv_paths
+    ):
         print(f"Starting validation for {test_path}")
         test_stats = dict()
         start_t = time.perf_counter()
@@ -415,16 +385,11 @@ def predict_tabular_model(
 
         # Logging all queries
         rows = to_rows(
-            indexes=[int(i) for i in range(0, len(y_test))],
-            labels=[float(f) for f in y_test],
-            predictions=[float(f) for f in pred_runtimes],
-            sqls=sqls,
-            hints=hints,
-            selectivitys=selectivities,
-            scan_ops=scan_ops,
-            join_ops=join_ops,
-            num_tables=num_tables,
-            plan_depths=plan_depths,
+            dict(
+                label=[float(f) for f in y_test],
+                prediction=[float(f) for f in pred_runtimes],
+                **query_stats_dict,
+            )
         )
         if log_all_queries:
             save_csv(rows, target_csv_path=str(test_path) + "_test_pred.csv")
@@ -549,41 +514,44 @@ def gen_postgres_cost_dataset(
         augment_with_subplans=model_config.train_on_subplans and not is_test,
         remove_join_cond_from_plan=model_config.remove_join_cond_from_plan,
     )
+
+    # extract database schema information
+    db_names = dict(
+        (db_id, value["database_name"]) for db_id, value in database_statistics.items()
+    )
+    db_schema_info = dict(
+        (db_id, get_json_schema(db_name))
+        for db_id, db_name in db_names.items()
+        if db_name != "unknown"
+    )
+
     feature_vecs = []
     labels = []
-    sqls, hints = [], []  # Required to later evaluate against join order
-    selectivities, join_ops, scan_ops, num_tables, plan_depths = [], [], [], [], []
-    for plan in plans:
+
+    query_stats_dict = defaultdict(list)
+
+    for sample_idx, plan in enumerate(plans):
         # append to all feature vectors and runtime labels
         feature_vecs.append([plan["plan_parameters"]["pg_cost"]])
         assert plan["plan_runtime_ms"] is not None, f"Plan runtime is None for {plan}"
         labels.append(plan["plan_runtime_ms"] / 1000)
-        sqls.append(plan["sql"])
-        hints.append(plan["hint"])
-        assign_additional_plan_info(plan=plan, db_statistics=database_statistics)
-        selectivities += plan["selectivity"]
-        join_ops += plan["join_op"]
-        scan_ops += plan["scan_op"]
-        num_tables.append(plan["num_tables"])
-        plan_depths.append(0)
+
+        assign_additional_plan_info(
+            plan=plan, db_statistics=database_statistics, db_schema_info=db_schema_info
+        )
+
+        # extract query stats
+        extract_query_stats_for_plan(
+            query_stats_dict,
+            plan,
+            sample_idx,
+        )
 
     X_train, X_val, Y_train, Y_val = slice_train_val(
         cap_training_samples, feature_vecs, labels, plans, val_ratio, shuffle
     )
 
-    return (
-        X_train,
-        X_val,
-        Y_train,
-        Y_val,
-        sqls,
-        hints,
-        selectivities,
-        scan_ops,
-        join_ops,
-        num_tables,
-        plan_depths,
-    )
+    return (X_train, X_val, Y_train, Y_val, query_stats_dict)
 
 
 def gen_flattened_dataset(
@@ -608,6 +576,17 @@ def gen_flattened_dataset(
         merge_nlj_and_inlj_to_same_op=model_config.merge_nlj_and_inlj_to_same_op,
         remove_join_cond_from_plan=model_config.remove_join_cond_from_plan,
     )
+
+    # extract database schema information
+    db_names = dict(
+        (db_id, value["database_name"]) for db_id, value in database_statistics.items()
+    )
+    db_schema_info = dict(
+        (db_id, get_json_schema(db_name))
+        for db_id, db_name in db_names.items()
+        if db_name != "unknown"
+    )
+
     feature_vecs, labels, selectivities, join_ops, scan_ops, num_tables, plan_depths = (
         [],
         [],
@@ -622,10 +601,12 @@ def gen_flattened_dataset(
     for plan in plans:
         sqls.append(plan["sql"])
         hints.append(plan["hint"])
-        assign_additional_plan_info(plan=plan, db_statistics=database_statistics)
-        selectivities += plan["selectivity"]
-        join_ops += plan["join_op"]
-        scan_ops += plan["scan_op"]
+        assign_additional_plan_info(
+            plan=plan, db_statistics=database_statistics, db_schema_info=db_schema_info
+        )
+        selectivities.append(plan["selectivity"])
+        join_ops.append(plan["join_op"])
+        scan_ops.append(plan["scan_op"])
         num_tables.append(plan["num_tables"])
         plan_depths.append(0)
 
@@ -662,19 +643,18 @@ def gen_flattened_dataset(
     X_train, X_val, Y_train, Y_val = slice_train_val(
         cap_training_samples, feature_vecs, labels, plans, val_ratio, shuffle=shuffle
     )
-    return (
-        X_train,
-        X_val,
-        Y_train,
-        Y_val,
-        sqls,
-        hints,
-        selectivities,
-        scan_ops,
-        join_ops,
-        num_tables,
-        plan_depths,
-    )
+
+    query_stats_dict = {
+        "sql": sqls,
+        "hint": hints,
+        "selectivity": selectivities,
+        "scan_op": scan_ops,
+        "join_op": join_ops,
+        "num_tables": num_tables,
+        "plan_depth": plan_depths,
+    }
+
+    return (X_train, X_val, Y_train, Y_val, query_stats_dict)
 
 
 def extract_card(p, act_card):

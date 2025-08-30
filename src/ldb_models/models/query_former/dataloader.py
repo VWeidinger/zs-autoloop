@@ -1,22 +1,22 @@
-from collections import deque
+from ast import Dict
+from collections import defaultdict, deque
 from types import SimpleNamespace
 from typing import List, Tuple
 
 import numpy as np
 import torch
-
 from models.query_former.utils import (
     TreeNode,
-    pad_attn_bias_unsqueeze,
     floyd_warshall_transform,
     pad_1d_unsqueeze,
-    pad_rel_pos_unsqueeze,
     pad_2d_unsqueeze,
+    pad_attn_bias_unsqueeze,
+    pad_rel_pos_unsqueeze,
 )
+from models.white_mamba.extract_query_stats import extract_query_stats_for_plan
 from models.workload_driven.dataset.mscn_batching import get_all_join_conds
 from models.zeroshot.postgres_plan_batching import assign_additional_plan_info
 from training.dataset.cmp_operator import LogicalOperator
-from training.training.utils import recursive_to
 
 
 def calculate_node_heights(adjacency_matrix: List[Tuple[int, int]], tree_size: int):
@@ -378,9 +378,10 @@ def encode_query_plan(
 
 def query_former_plan_collator(
     plans: List[SimpleNamespace],
-    feature_statistics: dict = None,
-    db_statistics: dict = None,
-    column_statistics: dict = None,
+    feature_statistics: Dict = None,
+    db_statistics: Dict = None,
+    db_schema_info: Dict = None,
+    column_statistics: Dict = None,
     word_embeddings=None,
     dim_word_hash=None,
     dim_word_embedding=None,
@@ -396,26 +397,16 @@ def query_former_plan_collator(
     all_node_heights = []
     sample_idxs = []
 
-    # Additional information
-    sql_statements = []
-    hints = []
-
-    # other test information
-    selectivity_list = []
-    scan_op_list = []
-    join_op_list = []
-    num_tables_list = []
-    graph_depth_list = []
+    query_stats_dict = defaultdict(list)
 
     for plan_index, p in plans:
-        num_tables_list.append(p["num_tables"])
-        sql_statements.append(p["sql"])
-        hints.append(p["hint"])
-        assign_additional_plan_info(p, db_statistics)
-        selectivity_list += p["selectivity"]
-        scan_op_list += p["scan_op"]
-        join_op_list += p["join_op"]
-        graph_depth_list += [0]  # ToDo
+        assign_additional_plan_info(p, db_statistics, db_schema_info=db_schema_info)
+        # extract query stats
+        extract_query_stats_for_plan(
+            query_stats_dict,
+            p,
+            plan_index,
+        )
 
         features, join_ids, attention_bias, rel_pos, node_heights = encode_query_plan(
             query_index=plan_index,
@@ -447,49 +438,5 @@ def query_former_plan_collator(
     return (
         (all_features, all_join_ids, all_attention_bias, all_rel_pos, all_node_heights),
         torch.Tensor(labels),
-        sample_idxs,
-        sql_statements,
-        hints,
-        selectivity_list,
-        scan_op_list,
-        join_op_list,
-        num_tables_list,
-        graph_depth_list,
-    )
-
-
-def query_former_batch_to(batch, device, label_norm):
-    (
-        (features, join_ids, attention_bias, rel_pos, node_heights),
-        label,
-        sample_idxs,
-        sql_statements,
-        hints,
-        selectivity_list,
-        scan_op_list,
-        join_op_list,
-        num_tables_list,
-        graph_depth_list,
-    ) = batch
-    if label_norm is not None:
-        label = label_norm.transform(np.asarray(label).reshape(-1, 1))
-        label = label.reshape(-1)
-
-    label = torch.as_tensor(label, device=device, dtype=torch.float)
-    recursive_to(features, device)
-    recursive_to(join_ids, device)
-    recursive_to(attention_bias, device)
-    recursive_to(rel_pos, device)
-    recursive_to(node_heights, device)
-    return (
-        (features, join_ids, attention_bias, rel_pos, node_heights),
-        label,
-        sample_idxs,
-        sql_statements,
-        hints,
-        selectivity_list,
-        scan_op_list,
-        join_op_list,
-        num_tables_list,
-        graph_depth_list,
+        query_stats_dict,
     )

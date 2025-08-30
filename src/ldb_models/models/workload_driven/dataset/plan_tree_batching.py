@@ -3,10 +3,9 @@ import collections
 import dgl
 import numpy as np
 import torch
-
+from models.white_mamba.extract_query_stats import extract_query_stats_for_plan
 from models.zeroshot.postgres_plan_batching import assign_additional_plan_info
 from training.dataset.cmp_operator import LogicalOperator
-from training.training.utils import recursive_to
 
 
 class WorkloadDrivenGraph:
@@ -268,6 +267,7 @@ def baseline_plan_collator(
     plans,
     feature_statistics=None,
     db_statistics=None,
+    db_schema_info=None,
     column_statistics=None,
     word_embeddings=None,
     dim_word_hash=None,
@@ -281,29 +281,17 @@ def baseline_plan_collator(
 
     wl_graph = WorkloadDrivenGraph()
 
-    sql_statements = []
-    hints = []
-
-    # other test information
-    selectivity_list = []
-    scan_op_list = []
-    join_op_list = []
-    num_tables_list = []
-    graph_depth_list = []
-
-    # iterate over plans and create lists of edges and features per node
-    sample_idxs = []
+    query_stats_dict = collections.defaultdict(list)
     for sample_idx, p in plans:
-        sample_idxs.append(sample_idx)
         wl_graph.labels.append(p["plan_runtime_ms"])
-        num_tables_list.append(p["num_tables"])
-        sql_statements.append(p["sql"])
-        hints.append(p["hint"])
-        assign_additional_plan_info(p, db_statistics)
-        selectivity_list += p["selectivity"]
-        scan_op_list += p["scan_op"]
-        join_op_list += p["join_op"]
-        graph_depth_list += [0]  # TODO: compute real graph depths
+        assign_additional_plan_info(p, db_statistics, db_schema_info=db_schema_info)
+
+        # extract query stats
+        extract_query_stats_for_plan(
+            query_stats_dict,
+            p,
+            sample_idx,
+        )
 
         plan_to_graphs(
             column_statistics,
@@ -346,14 +334,7 @@ def baseline_plan_collator(
         features,
         pred_graph,
         plan_pred_mapping,
-        sample_idxs,
-        sql_statements,
-        hints,
-        selectivity_list,
-        scan_op_list,
-        join_op_list,
-        num_tables_list,
-        graph_depth_list,
+        query_stats_dict,
     )
 
 
@@ -465,46 +446,6 @@ def predicate_graph(wl_graph):
     graph = dgl.heterograph(data_dict, num_nodes_dict=num_nodes_dict)
     graph.max_depth = max_pred_depth
     return graph, plan_pred_ids, plan_pred_ops, pred_feats
-
-
-def plan_batch_to(batch, device, label_norm):
-    # label, plan_graph, features, pred_graph, plan_pred_mapping, sample_plan_idxs = batch
-    (
-        labels,
-        plan_graph,
-        features,
-        pred_graph,
-        plan_pred_mapping,
-        sample_idxs,
-        sql_statements,
-        hints,
-        selectivity_list,
-        scan_op_list,
-        join_op_list,
-        num_tables_list,
-        graph_depth_list,
-    ) = batch
-    # graph, features, label = batch
-    recursive_to(features, device)
-    recursive_to(labels, device)
-    recursive_to(plan_pred_mapping, device)
-
-    # recursive_to(graph, device)
-    plan_graph = plan_graph.to(device)
-    pred_graph = pred_graph.to(device)
-
-    return (
-        (plan_graph, features, pred_graph, plan_pred_mapping),
-        labels,
-        sample_idxs,
-        sql_statements,
-        hints,
-        selectivity_list,
-        scan_op_list,
-        join_op_list,
-        num_tables_list,
-        graph_depth_list,
-    )
 
 
 def pred_node_type(pred_op):

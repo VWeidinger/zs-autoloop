@@ -3,32 +3,6 @@ import hashlib
 import json
 import os
 
-import dgl
-import torch
-from dgl import DGLHeteroGraph
-
-from training.training.operator_tree import OperatorTree
-
-
-def recursive_to(obj, device):
-    if isinstance(obj, (dgl.DGLGraph, DGLHeteroGraph)):
-        return obj.to(device, non_blocking=True)
-    elif isinstance(obj, torch.Tensor):
-        return obj.to(device, non_blocking=True)
-    elif isinstance(obj, collections.abc.Mapping):
-        return type(obj)({k: recursive_to(v, device) for k, v in obj.items()})
-    elif isinstance(obj, OperatorTree):
-        obj.encoded_features = obj.encoded_features.to(device, non_blocking=True)
-        for c in obj.children:
-            recursive_to(c, device)
-        return obj
-    elif isinstance(obj, list):
-        return [recursive_to(v, device) for v in obj]
-    elif isinstance(obj, tuple):
-        return tuple(recursive_to(v, device) for v in obj)
-    else:
-        return obj
-
 
 def flatten_dict(d, parent_key="", sep="_"):
     """

@@ -142,7 +142,11 @@ def read_workload_runs(
                 print(f"No plans in {path}, skipping", flush=True)
                 db_name = "unknown"
             else:
-                db_name = file_plans[0]["database_name"]
+                parent_dir = Path(path).parent.name
+                assert "_scaled" in parent_dir, (
+                    f"parent dir {parent_dir} does not contain _scaled"
+                )
+                db_name = parent_dir.split("_scaled")[0]
         else:
             raise ValueError(f"Input format {input_format} not supported")
 
@@ -468,7 +472,7 @@ def create_datasets(
     include_zero_card_queries: bool = False,
     assemble_graphs: bool = False,
     plan_collate_fn=None,
-) -> (Pipeline, PlanDataset, PlanDataset, PlanDataset, dict):
+) -> Tuple[Pipeline, PlanDataset, PlanDataset, PlanDataset, Dict]:
     # check if we need to apply OHEM
     apply_ohem = (
         model_config.online_hard_example_mining and not is_test_dataset

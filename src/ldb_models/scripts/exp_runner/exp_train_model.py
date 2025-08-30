@@ -2,6 +2,7 @@ import os
 
 # add to python path
 import sys
+from functools import lru_cache
 from typing import List
 
 from ldb_schema.datasets import Dataset
@@ -24,6 +25,14 @@ from classes.classes import ModelConfig, shorten_model_name
 from classes.model_config_helper import parameterized_config
 from scripts.exp_runner.exp_runner import ExpRunner, TrainingServers
 from training.featurizations import MambaFullWIdxCor
+
+
+@lru_cache(maxsize=None)
+def get_wandb_api_runs(wandb_project: str):
+    # retrieve wandb run id
+    api = wandb.Api()
+    runs = api.runs(f"{wandb_project}", per_page=1000)
+    return runs
 
 
 def generate_training_commands(
@@ -205,14 +214,13 @@ def generate_training_commands(
                     else:
                         tmp_name = wandb_name
 
-                    # retrieve wandb run id
-                    api = wandb.Api()
-                    runs = api.runs(f"{wandb_project}", per_page=1000)
+                    runs = get_wandb_api_runs(wandb_project)
+
                     runs = [run for run in runs if run.name == tmp_name]
                     run_keys = [r.id for r in runs]
 
                     assert len(run_keys) == 1, (
-                        f"Found {len(run_keys)} runs with name {wandb_name}. Expected 1. Please make sure only one run with this name exists."
+                        f"Found {len(run_keys)} runs with name {tmp_name}. Expected 1. Please make sure only one run with this name exists."
                     )
                     wandb_resume_id = run_keys[0]
                 else:
@@ -347,20 +355,22 @@ if __name__ == "__main__":
         Dataset("fhnk", scale=2),
     ]
 
-    seeds = [3]
+    seeds = [
+        4
+    ]  # 3=parsed_plans2, 4=fixed card-annotation of optimal plans in JOB & -Complex and improved logging/plotting
     nodes = [
         # TrainingServers.NODE01,
         # TrainingServers.NODE02,
-        TrainingServers.NODE03,
+        # TrainingServers.NODE03,
         # TrainingServers.NODE05,
         # TrainingServers.NODE04,
-        # TrainingServers.NODE00,
+        TrainingServers.NODE00,
         # TrainingServers.NODE09,
     ]
     sockets = [0, 1]
-    out_file_id_offset = 0
+    out_file_id_offset = 1
     num_parallel_screens = len(sockets)
-    num_parallel_jobs_dgx = 2
+    num_parallel_jobs_dgx = 6
     num_parallel_tasks_per_job_dgx = 1
     run_exp_pin = False
 
@@ -396,105 +406,47 @@ if __name__ == "__main__":
     # generate model configs
     model_configs = []
     for model_type in [
-        # 'postgres',
-        # 'zeroshot',
-        # 'zeroshot_low_min',
-        # 'zeroshot_xl',
-        # 'zeroshot_timeout',
-        # 'dace',
-        # 'flat',
-        # 't3',
-        # 'zeroshot_vae',
-        # 'neo',
-        # 'qppnet',
-        # 'mscn',
-        # 'e2e',
-        # 'query_former'
-        "mamba",
-        # "mamba_tanh",
-        # "mamba_relu",
-        #'query_former'
-        #'spn',
+        # "postgres",
+        # "zeroshot",
+        # # 'zeroshot_low_min',
+        # # 'zeroshot_xl',
+        # # 'zeroshot_timeout',
+        # "dace",
+        # "flat",
+        # "t3",
+        "zeroshot_vae",
+        # "neo",
+        # "qppnet",
+        # "mscn",
+        # "e2e",
+        # "query_former",
+        # "mamba",
+        # # "mamba_tanh",
+        # # "mamba_relu",
+        # "spn",
     ]:
         if model_type == "dace":
             model_specific_args = {"pad_length": 60}
+        elif model_type == "mamba":
+            model_specific_args = {
+                "featurization": MambaFullWIdxCor,
+                "scan_nte_relu": True,
+                "filter_condense_operators": True,
+                "layer_norm": True,
+            }
         else:
             model_specific_args = {}
 
-        for featurization in [
-            # MambaFull,
-            # MambaFullWIdx,
-            MambaFullWIdxCor,
-            # MambaFullWIdxCor2,
-            # MambaFullWIdxCor2Log,
-        ]:
-            # model_configs.append(
-            #     parameterized_config(
-            #         model_type,
-            #         include_pg_opt_workloads=True,
-            #         layer_norm=True,
-            #         # include_hint_workloads=True,
-            #         include_hint_idx_workloads=True,
-            #         # include_gt30_hints=True,
-            #         # include_scan_only_hint_workloads_stratified=True,
-            #         # include_complex_workloads=True,
-            #         # include_complex_ranking_workloads=True,
-            #         include_complex_many_joins_workloads=True,
-            #         featurization=featurization,
-            #         # limit_plans_per_file=10000,
-            #         # filter_condense_operators=True,
-            #         # epochs=75,
-            #         # scan_nte_relu=True,
-            #         residual_connection=True,
-            #         **model_specific_args,
-            #     )
-            # )
-            for ohem_slice_by in [
-                # "file",
-                "dataset",
-                # "none",
-            ]:
-                for ohem_ratio in [
-                    0,
-                    0.1,
-                    # 0.3,
-                    # 0.5,
-                    # 0.7,
-                    # 0.9,
-                ]:
-                    model_configs.extend(
-                        [
-                            parameterized_config(
-                                model_type,
-                                wandb_group="ohem",
-                                layer_norm=True,
-                                include_pg_opt_workloads=True,
-                                include_hint_workloads=True,
-                                # include_hint_idx_workloads=True,
-                                # include_gt30_hints=True,
-                                include_scan_only_hint_workloads_stratified=True,
-                                # include_complex_workloads=True,
-                                # include_complex_ranking_workloads=True,
-                                include_complex_many_joins_workloads=True,
-                                featurization=featurization,
-                                limit_plans_per_file=5000,
-                                # use_dcn=True,
-                                # apply_layer_norm_before_dcn=True,
-                                # scaler_type="minmax",
-                                filter_condense_operators=True,
-                                epochs=75,
-                                online_hard_example_mining=True,
-                                ohem_slice_by=ohem_slice_by,
-                                ohem_ratio=ohem_ratio,
-                                ohem_resort_after_num_epochs=5,
-                                scan_nte_relu=True,
-                                optimizer_class_name="SGD",  # no momentum for ohem
-                                **model_specific_args,
-                            )
-                            if model_type.startswith("mamba")
-                            else None,
-                        ]
-                    )
+        model_configs.extend(
+            [
+                parameterized_config(
+                    model_type,
+                    wandb_group="baselines",
+                    include_pg_opt_workloads=True,
+                    **model_specific_args,
+                )
+            ]
+        )
 
     model_configs = [model for model in model_configs if model is not None]
 

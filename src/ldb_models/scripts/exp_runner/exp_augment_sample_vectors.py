@@ -1,0 +1,58 @@
+import os
+import sys
+
+from ldb_schema.datasets import dataset_list_dict
+from ldb_schema.paths import ClusterPaths
+from octopus.step import KillAllScreens, RsyncCurrentRepo, SetupRYEVenv, SetupVenv
+
+sys.path.append(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+)
+from scripts.exp_runner.exp_runner import ExpRunner, TrainingServers
+
+if __name__ == "__main__":
+    install_venv = False
+    install_rye = True
+
+    setup_steps = [RsyncCurrentRepo(gitignore_path=".gitignore")]
+
+    if install_venv:
+        setup_steps.append(
+            SetupVenv(
+                use_requirements_txt=True,
+                requirements_txt_filename=f"{ClusterPaths().Models.src}/requirements.txt",
+                force=False,
+            )
+        )
+    if install_rye:
+        setup_steps.append(SetupRYEVenv(no_lock=False))
+
+    purge_steps = [KillAllScreens()]
+
+    node = TrainingServers.NODE09
+
+    runner = ExpRunner(
+        replicate=False,
+        node_names=[node["hostname"]],
+        python_version="rye",
+        available_sockets=[0, 1],
+        num_parallel_screens_or_jobs=1,
+    )
+
+    # for dataset in datasets:
+
+    datasets = dataset_list_dict["zs"]
+    datasets = [d for d in datasets if d.db_name in {"imdb"}]
+
+    exp_commands = [
+        f"python models/workload_driven/preprocessing/sample_vectors.py --dataset {dataset.db_name} --data_dir {ClusterPaths().Data.datasets}/{dataset.data_folder} --plan_path {ClusterPaths().Data.parsed_plans2}/{dataset.data_folder} --target_path {ClusterPaths().Data.augmented_plans}/{dataset.data_folder} --workloads workload_200k_s1 complex_workload_200k_s1 join_order access_path_selection access_path_selection_with_aggregate physical_operator physical_operator_w_idx job_w_optimal_w_idxs job_complex_w_optimal_w_idxs"
+        for dataset in datasets
+    ]
+
+    runner.run_exp(
+        commands=exp_commands,
+        set_up_steps=setup_steps,
+        purge_steps=purge_steps,
+        pickup_steps=[],
+        offset=0,
+    )

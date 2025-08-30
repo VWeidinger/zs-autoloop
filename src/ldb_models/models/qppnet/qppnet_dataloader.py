@@ -1,20 +1,22 @@
 import functools
+from collections import defaultdict
 from pathlib import Path
 from typing import List, Optional
 
 import numpy as np
-from ldb_schema.load_schema import load_json
+from classes.classes import DataLoaderOptions, ModelConfig, QPPNetModelConfig
+from classes.workload_runs import WorkloadRuns
+from ldb_schema.load_schema import get_json_schema, load_json
+from models.white_mamba.extract_card_error_utils import extract_card_error_from_plan
+from models.zeroshot.annotate_additional_plan_info import assign_additional_plan_info
 from sklearn.pipeline import Pipeline
 from torch.utils.data import DataLoader
-
-from classes.classes import DataLoaderOptions, QPPNetModelConfig, ModelConfig
-from classes.workload_runs import WorkloadRuns
 from training.dataset.dataset_creation import (
-    read_workload_runs,
     derive_label_normalizer,
+    read_workload_runs,
 )
 from training.dataset.plan_dataset import PlanDataset
-from training.training.operator_tree import operator_tree_from_json, OperatorTree
+from training.training.operator_tree import OperatorTree, operator_tree_from_json
 
 
 def create_qppnet_dataloader(
@@ -53,12 +55,14 @@ def create_qppnet_dataloader(
     if workload_runs.train_workload_runs:
         print("Create dataloader for training, validation and test data")
 
-        label_norm, train_dataset, val_dataset, database_statistics = create_datasets(
-            workload_run_paths=workload_runs.train_workload_runs,
-            model_config=model_config,
-            val_ratio=data_loader_options.val_ratio,
-            stratify_dataset=data_loader_options.stratify_dataset,
-            stratify_per_wl_file=data_loader_options.stratify_per_wl_file,
+        label_norm, train_dataset, val_dataset, database_statistics, db_schema_info = (
+            create_datasets(
+                workload_run_paths=workload_runs.train_workload_runs,
+                model_config=model_config,
+                val_ratio=data_loader_options.val_ratio,
+                stratify_dataset=data_loader_options.stratify_dataset,
+                stratify_per_wl_file=data_loader_options.stratify_per_wl_file,
+            )
         )
 
         test_dataset, val_dataset = val_dataset.split(0.5)
@@ -75,6 +79,7 @@ def create_qppnet_dataloader(
         train_collate_fn = functools.partial(
             plan_collator,
             db_statistics=database_statistics,
+            db_schema_info=db_schema_info,
             feature_statistics=feature_statistics,
             column_statistics=column_statistics,
             plan_featurization=model_config.featurization,
@@ -89,7 +94,7 @@ def create_qppnet_dataloader(
         test_loaders = []
         for test_workload in workload_runs.test_workload_runs:
             print(f"Create dataloader for test data: {test_workload}")
-            _, _, test_dataset, database_statistics = create_datasets(
+            _, _, test_dataset, database_statistics, db_schema_info = create_datasets(
                 workload_run_paths=[test_workload],
                 model_config=model_config,
                 val_ratio=1.0,
@@ -104,6 +109,7 @@ def create_qppnet_dataloader(
                 feature_statistics=feature_statistics,
                 column_statistics=column_statistics,
                 plan_featurization=model_config.featurization,
+                db_schema_info=db_schema_info,
             )
 
             dataloader_args.update(collate_fn=train_collate_fn)
@@ -163,44 +169,63 @@ def create_datasets(
     )  # ToDo: Average over different plans, where else we do this?
     label_norm = derive_label_normalizer(model_config.loss_class_name, runtimes)
 
-    return label_norm, train_dataset, val_dataset, database_statistics
+    # extract database schema information
+    db_names = dict(
+        (db_id, value["database_name"]) for db_id, value in database_statistics.items()
+    )
+    db_schema_info = dict(
+        (db_id, get_json_schema(db_name))
+        for db_id, db_name in db_names.items()
+        if db_name != "unknown"
+    )
+
+    return label_norm, train_dataset, val_dataset, database_statistics, db_schema_info
 
 
 def qppnet_collator(
     plans,
     feature_statistics: dict = None,
     db_statistics: dict = None,
+    db_schema_info: dict = None,
     column_statistics: dict = None,
     plan_featurization=None,
 ):
     labels = []
     query_plans = []
-    sqls = []
-    hints = []
+    errors = []
 
     # iterate over plans and create lists of edges and features per node
-    sample_idxs = []
-    errors = []
-    selectivity = []
-    scan_op = []
-    join_op = []
-    num_tables_list = []
-    graph_depths = []
+    query_stats_dict = defaultdict(list)
 
     for sample_idx, p in plans:
-        sqls.append(p["sql"])
-        hints.append(p["hint"])
-        # assign_additional_plan_info(plan=p, db_statistics=db_statistics) # ToDo: This needs to ported back somehow to JSON plans
-        # selectivity.append(p["selectivity"])
-        # scan_op.append(p["scan_op"])
-        # join_op.append(p["join_op"])
+        query_stats_dict["sample_idxs"].append(sample_idx)
+        query_stats_dict["sql"].append(p["sql"])
+        query_stats_dict["hint"].append(p["hint"])
+        assign_additional_plan_info(
+            plan=p,
+            db_statistics=db_statistics,
+            db_schema_info=db_schema_info,
+            is_parsed_plan=False,
+        )
 
         # Replacing with dummy values to make program work
-        selectivity.append(0)
-        scan_op.append("Index Scan")
-        join_op.append("Hash Join")
-        num_tables_list.append(5)
-        graph_depths.append(10)
+        query_stats_dict["selectivity"].append(p["selectivity"])
+        query_stats_dict["scan_op"].append(p["scan_op"])
+        query_stats_dict["join_op"].append(p["join_op"])
+        query_stats_dict["num_tables"].append(p["num_tables"])
+        query_stats_dict["plan_depth"].append(None)
+
+        # Extract cardinality errors
+        mse, qerror = extract_card_error_from_plan(p, mode="root", is_parsed_plan=False)
+        mse_avg, qerror_avg = extract_card_error_from_plan(
+            p, mode="avg", is_parsed_plan=False
+        )
+
+        query_stats_dict["card_error_root_mse"].append(mse)
+        query_stats_dict["card_error_root_qerror"].append(qerror)
+        query_stats_dict["card_error_avg_mse"].append(mse_avg)
+        query_stats_dict["card_error_avg_qerror"].append(qerror_avg)
+
         analyze_plan = p["analyze_plans"][0]
 
         # Process and parse the plan
@@ -209,7 +234,6 @@ def qppnet_collator(
             query_plan.encode_recursively(
                 column_statistics, feature_statistics, plan_featurization
             )
-            sample_idxs.append(sample_idx)
             labels.append(query_plan.runtime)
             query_plans.append(query_plan)
         except ValueError as e:
@@ -217,15 +241,5 @@ def qppnet_collator(
 
     if errors:
         print(errors)
-    return (
-        query_plans,
-        labels,
-        sample_idxs,
-        sqls,
-        hints,
-        selectivity,
-        scan_op,
-        join_op,
-        num_tables_list,
-        graph_depths,
-    )
+
+    return (query_plans, labels, query_stats_dict)

@@ -5,20 +5,18 @@ import attrs as attrs
 from attr import field
 from ldb_schema.datasets import Dataset
 from ldb_schema.paths import ClusterPaths, Paths
-from models.query_former.dataloader import query_former_batch_to
 from models.t3.query_plan import CardType
 from models.white_mamba.mamba_dataset import mamba_plan_collator
 from models.workload_driven.dataset.mscn_batching import mscn_plan_collator
-from models.workload_driven.dataset.plan_tree_batching import (
-    baseline_plan_collator,
-    plan_batch_to,
-)
+from models.workload_driven.dataset.plan_tree_batching import baseline_plan_collator
 from models.zeroshot.postgres_plan_batching import postgres_plan_collator
 from training.batch_to_funcs import (
     dace_batch_to,
     mamba_batch_to,
     neo_batch_to,
+    query_former_batch_to,
     simple_batch_to,
+    wl_driven_batch_to,
     zs_batch_to,
 )
 from training.featurizations import (
@@ -326,7 +324,7 @@ class ModelConfig:
                         romans_runs=romans_runs,
                     )
                     / f"{target_dataset.db_name}_scaled{target_dataset.scale}"
-                    / f"{wl}.json.gz"
+                    / f"{wl}.json"
                 )
                 training_workloads.append(path.as_posix())
             assert len(training_workloads) > 0, (
@@ -341,7 +339,9 @@ class ModelConfig:
         stratified_workloads: bool = True,
         romans_runs: bool = False,
     ) -> str:
-        return f"{self.get_data_base_dir(stratified_workloads=stratified_workloads, romans_runs=romans_runs).as_posix()}/{target_db.db_name}_scaled{target_db.scale}/{wl_name}.json.gz"
+        path = f"{self.get_data_base_dir(stratified_workloads=stratified_workloads, romans_runs=romans_runs).as_posix()}/{target_db.db_name}_scaled{target_db.scale}/{wl_name}.json"
+
+        return path
 
     def get_test_workloads(self, target_db: Dataset, romans_runs: bool) -> str:
         test_paths = []
@@ -486,7 +486,7 @@ class E2EModelConfig(ModelConfig):
     type: ModelType = ModelType.WL_DRIVEN
     hidden_dim_plan: int = 256
     hidden_dim_pred: int = 256
-    batch_to_func: Callable = plan_batch_to
+    batch_to_func: Callable = wl_driven_batch_to
     collator_func: Callable = baseline_plan_collator
     input_format: str = InputFormats.baseline_parsed
     column_statistics: bool = True

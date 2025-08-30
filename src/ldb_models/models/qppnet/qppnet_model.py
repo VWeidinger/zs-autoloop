@@ -2,7 +2,6 @@ from typing import Tuple
 
 import torch
 import torch.nn as nn
-
 from classes.classes import QPPNetModelConfig
 from classes.workload_runs import WorkloadRuns
 from models.zeroshot.postgres_plan_batching import add_numerical_scalers
@@ -145,7 +144,7 @@ class QPPNet(nn.Module):
         self.label_norm = None
 
         # Prepare robust encoder for the numerical fields
-        add_numerical_scalers(self.feature_statistics)
+        add_numerical_scalers(self.feature_statistics, scaler_type="robust")
 
     def check_for_nan(self):
         for name, param in self.named_parameters():

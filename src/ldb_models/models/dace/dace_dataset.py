@@ -1,18 +1,19 @@
 import functools
+from collections import defaultdict
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Tuple, Optional, List
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import torch
-from ldb_schema.load_schema import load_json
+from classes.classes import DACEModelConfig, DataLoaderOptions
+from classes.workload_runs import WorkloadRuns
+from ldb_schema.load_schema import get_json_schema, load_json
+from models.white_mamba.extract_query_stats import extract_query_stats_for_plan
+from models.zeroshot.postgres_plan_batching import assign_additional_plan_info
 from sklearn.preprocessing import RobustScaler
 from torch.nn.functional import pad
 from torch.utils.data import DataLoader
-
-from classes.classes import DACEModelConfig, DataLoaderOptions
-from classes.workload_runs import WorkloadRuns
-from models.zeroshot.postgres_plan_batching import assign_additional_plan_info
 from training.dataset.dataset_creation import read_workload_runs
 from training.dataset.plan_dataset import PlanDataset
 from training.preprocessing.feature_statistics import FeatureType
@@ -41,10 +42,12 @@ def create_dace_dataloader(
     )
 
     if workload_runs.train_workload_runs:
-        train_dataset, val_dataset, db_statistics = create_dace_datasets(
-            workload_run_paths=workload_runs.train_workload_runs,
-            model_config=model_config,
-            val_ratio=dataloader_options.val_ratio,
+        train_dataset, val_dataset, db_statistics, db_schema_info = (
+            create_dace_datasets(
+                workload_run_paths=workload_runs.train_workload_runs,
+                model_config=model_config,
+                val_ratio=dataloader_options.val_ratio,
+            )
         )
 
         dataloader_args.update(
@@ -53,6 +56,7 @@ def create_dace_dataloader(
                 feature_statistics=feature_statistics,
                 config=model_config,
                 db_statistics=db_statistics,
+                db_schema_info=db_schema_info,
             )
         )
 
@@ -69,7 +73,7 @@ def create_dace_dataloader(
         print("Creating dataloader for test data")
         test_loaders = []
         for test_path in workload_runs.test_workload_runs:
-            test_dataset, _, db_statistics = create_dace_datasets(
+            test_dataset, _, db_statistics, db_schema_info = create_dace_datasets(
                 [test_path],
                 model_config=model_config,
                 shuffle_before_split=False,
@@ -82,6 +86,7 @@ def create_dace_dataloader(
                     feature_statistics=feature_statistics,
                     config=model_config,
                     db_statistics=db_statistics,
+                    db_schema_info=db_schema_info,
                 )
             )
             test_loader = DataLoader(test_dataset, **dataloader_args)
@@ -96,7 +101,7 @@ def create_dace_datasets(
     val_ratio=0.15,
     shuffle_before_split=True,
     is_test: bool = False,
-) -> (PlanDataset, PlanDataset):
+) -> Tuple[PlanDataset, PlanDataset]:
     plans, db_statistics = read_workload_runs(
         workload_run_paths=workload_run_paths,
         input_format=model_config.input_format,
@@ -106,6 +111,16 @@ def create_dace_datasets(
         merge_nlj_and_inlj_to_same_op=model_config.merge_nlj_and_inlj_to_same_op,
         remove_join_cond_from_plan=model_config.remove_join_cond_from_plan,
         augment_with_subplans=model_config.train_on_subplans and not is_test,
+    )
+
+    # extract database schema information
+    db_names = dict(
+        (db_id, value["database_name"]) for db_id, value in db_statistics.items()
+    )
+    db_schema_info = dict(
+        (db_id, get_json_schema(db_name))
+        for db_id, db_name in db_names.items()
+        if db_name != "unknown"
     )
 
     no_plans = len(plans)
@@ -131,11 +146,15 @@ def create_dace_datasets(
         val_indexes = plan_indexes[split_train:]
         val_dataset = PlanDataset([plans[i] for i in val_indexes], val_indexes)
 
-    return train_dataset, val_dataset, db_statistics
+    return train_dataset, val_dataset, db_statistics, db_schema_info
 
 
 def dace_collator(
-    batch: Tuple, feature_statistics: dict, config: DACEModelConfig, db_statistics: dict
+    batch: Tuple,
+    feature_statistics: Dict,
+    config: DACEModelConfig,
+    db_statistics: Dict,
+    db_schema_info: Dict,
 ):
     # Get plan encodings
     add_numerical_scalers(feature_statistics)
@@ -151,27 +170,13 @@ def dace_collator(
         [],
         [],
     )
-    (
-        all_sqls,
-        all_hints,
-        all_selectivities,
-        all_scan_ops,
-        all_join_ops,
-        all_num_tables,
-        all_plan_depths,
-    ) = [], [], [], [], [], [], []
+
+    query_stats_dict = defaultdict(list)
 
     for sample_idx, p in batch:
-        sample_idxs.append(sample_idx)
-
-        all_sqls.append(p["sql"])
-        all_hints.append(p["hint"])
-        assign_additional_plan_info(p, db_statistics=db_statistics)
-        all_selectivities += p["selectivity"]
-        all_scan_ops += p["scan_op"]
-        all_join_ops += p["join_op"]
-        all_num_tables.append(p["num_tables"])
-        all_plan_depths.append(0)
+        assign_additional_plan_info(
+            p, db_statistics=db_statistics, db_schema_info=db_schema_info
+        )
 
         try:
             seq_encoding, attention_mask, loss_mask, run_times = get_plan_encoding(
@@ -192,6 +197,13 @@ def dace_collator(
         attention_masks.append(attention_mask)
         loss_masks.append(loss_mask)
 
+        # extract query stats
+        extract_query_stats_for_plan(
+            query_stats_dict,
+            p,
+            sample_idx,
+        )
+
     labels = torch.stack(labels)
     all_runtimes = torch.stack(all_runtimes)
     seq_encodings = torch.stack(seq_encodings)
@@ -204,14 +216,7 @@ def dace_collator(
         loss_masks,
         all_runtimes,
         labels,
-        sample_idxs,
-        all_sqls,
-        all_hints,
-        all_selectivities,
-        all_scan_ops,
-        all_join_ops,
-        all_num_tables,
-        all_plan_depths,
+        query_stats_dict,
     )
 
 

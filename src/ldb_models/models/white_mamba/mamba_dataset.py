@@ -5,7 +5,7 @@ from typing import Dict, List, Tuple
 import numpy as np
 import torch
 from models.white_mamba.col_info_extractor import get_col_stats_for_idx_name
-from models.white_mamba.extract_card_error_utils import extract_card_error_from_plan
+from models.white_mamba.extract_query_stats import extract_query_stats_for_plan
 from models.zeroshot.postgres_plan_batching import (
     apply_feature_scalers,
     assign_additional_plan_info,
@@ -186,29 +186,13 @@ def mamba_plan_collator(
             f"Plan ids length {len(plan_ids)} does not match node depths length {len(node_depths)}"
         )
 
-        # store query stat information
-        query_stats_dict["sample_idxs"].append(plan_id)  # store the sample index
-        query_stats_dict["num_tables"].append(plan["num_tables"])
-        assert not isinstance(plan["selectivity"], list), (
-            f"Selectivity should not be a list, but got {plan['selectivity']}"
+        # extract query stats
+        extract_query_stats_for_plan(
+            query_stats_dict,
+            plan,
+            plan_id,
+            max(node_depths[plan_depth_start_idx:], default=0),
         )
-        query_stats_dict["selectivity"].append(plan["selectivity"])
-        query_stats_dict["col_correlation"].append(plan["col_correlation"])
-        query_stats_dict["scan_op"].append(plan["scan_op"])
-        query_stats_dict["join_op"].append(plan["join_op"])
-        query_stats_dict["graph_depth"].append(
-            max(node_depths[plan_depth_start_idx:], default=0)
-        )
-        query_stats_dict["sql"].append(plan["sql"])
-        query_stats_dict["hint"].append(plan["hint"])
-
-        mse, qerror = extract_card_error_from_plan(plan, mode="root")
-        mse_avg, qerror_avg = extract_card_error_from_plan(plan, mode="avg")
-
-        query_stats_dict["card_error_root_mse"].append(mse)
-        query_stats_dict["card_error_root_qerror"].append(qerror)
-        query_stats_dict["card_error_avg_mse"].append(mse_avg)
-        query_stats_dict["card_error_avg_qerror"].append(qerror_avg)
 
     # apply feature scaling
     if len(join_features) > 0:
@@ -258,7 +242,6 @@ def mamba_plan_collator(
     if output_tensors:
         # create tensors
         labels = torch.as_tensor(labels, dtype=torch.float32)
-        query_stats_dict["sample_idxs"] = torch.arange(len(labels), dtype=torch.int32)
 
     return (
         edge_ids,
@@ -469,7 +452,7 @@ def process_node_features(
                     )
                     idx_col_stats = get_col_stats_for_idx_name(
                         idx_name,
-                        plan_params,
+                        plan_params["table_name"],
                         db_schema_info,
                         database_id,
                         db_statistics,
