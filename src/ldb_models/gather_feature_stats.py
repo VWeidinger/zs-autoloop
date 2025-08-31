@@ -39,7 +39,11 @@ if __name__ == "__main__":
                     f"{args.runs_dir}/{mode}/{database}/{workload}"
                 )
 
-        target_path = f"{args.target_folder}/{mode}_{args.file_name}.json"
+        assert len(json_files) > 0, "No json files found"
+
+        mode_str = f"{mode}" if mode != InputFormats.parsed else "parsed_plans2"
+
+        target_path = f"{args.target_folder}/{mode_str}_{args.file_name}.json"
         print(
             f"Saving feature statistics for {json_files} workload files to {target_path}"
         )

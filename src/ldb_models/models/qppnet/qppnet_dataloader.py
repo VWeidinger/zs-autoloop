@@ -7,7 +7,7 @@ import numpy as np
 from classes.classes import DataLoaderOptions, ModelConfig, QPPNetModelConfig
 from classes.workload_runs import WorkloadRuns
 from ldb_schema.load_schema import get_json_schema, load_json
-from models.white_mamba.extract_card_error_utils import extract_card_error_from_plan
+from models.white_mamba.extract_query_stats import extract_query_stats_for_plan
 from models.zeroshot.annotate_additional_plan_info import assign_additional_plan_info
 from sklearn.pipeline import Pipeline
 from torch.utils.data import DataLoader
@@ -198,9 +198,6 @@ def qppnet_collator(
     query_stats_dict = defaultdict(list)
 
     for sample_idx, p in plans:
-        query_stats_dict["sample_idxs"].append(sample_idx)
-        query_stats_dict["sql"].append(p["sql"])
-        query_stats_dict["hint"].append(p["hint"])
         assign_additional_plan_info(
             plan=p,
             db_statistics=db_statistics,
@@ -208,23 +205,13 @@ def qppnet_collator(
             is_parsed_plan=False,
         )
 
-        # Replacing with dummy values to make program work
-        query_stats_dict["selectivity"].append(p["selectivity"])
-        query_stats_dict["scan_op"].append(p["scan_op"])
-        query_stats_dict["join_op"].append(p["join_op"])
-        query_stats_dict["num_tables"].append(p["num_tables"])
-        query_stats_dict["plan_depth"].append(None)
-
-        # Extract cardinality errors
-        mse, qerror = extract_card_error_from_plan(p, mode="root", is_parsed_plan=False)
-        mse_avg, qerror_avg = extract_card_error_from_plan(
-            p, mode="avg", is_parsed_plan=False
+        # extract query stats
+        extract_query_stats_for_plan(
+            query_stats_dict,
+            p,
+            sample_idx,
+            is_parsed_plan=False,
         )
-
-        query_stats_dict["card_error_root_mse"].append(mse)
-        query_stats_dict["card_error_root_qerror"].append(qerror)
-        query_stats_dict["card_error_avg_mse"].append(mse_avg)
-        query_stats_dict["card_error_avg_qerror"].append(qerror_avg)
 
         analyze_plan = p["analyze_plans"][0]
 

@@ -254,7 +254,9 @@ def create_baseline_dataloader(
 
     dim_bitmaps = 1000
     feature_statistics = load_json(str(statistics_file), namespace=False)
-    assert feature_statistics != {}, "Feature statistics file is empty!"
+    assert feature_statistics != {}, (
+        f"Feature statistics file is empty! / {statistics_file}"
+    )
     dataloader_args = dict(
         batch_size=model_config.batch_size,
         shuffle=data_loader_options.shuffle,

@@ -203,7 +203,11 @@ class ModelConfig:
         return source_path.Data.evaluation / model_name / database.db_name
 
     def get_statistics(
-        self, source_path: Paths, dataset: Dataset, format: InputFormats
+        self,
+        source_path: Paths,
+        dataset: Dataset,
+        format: InputFormats,
+        suffix: str = "",
     ) -> Path:
         if format == InputFormats.baseline_parsed:
             format = InputFormats.parsed
@@ -211,13 +215,13 @@ class ModelConfig:
             return (
                 source_path.Data.root
                 / "feature_statistics"
-                / f"{format}_feature_statistics_{dataset.db_name}.json"
+                / f"{format}_feature_statistics{suffix}_{dataset.db_name}.json"
             )
         elif self.type == ModelType.WL_AGNOSTIC:
             return (
                 source_path.Data.root
                 / "feature_statistics"
-                / f"{format}_feature_statistics.json"
+                / f"{format}_feature_statistics{suffix}.json"
             )
 
     def get_column_stats(self, dataset: Dataset) -> Optional[Path]:

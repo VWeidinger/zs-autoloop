@@ -55,6 +55,7 @@ def generate_training_commands(
     is_pretrained: bool = False,
     update_wandb_summary: bool = False,
     assemble_data_up_front: bool = False,
+    feature_stats_suffix: str = "",
 ) -> List[str]:
     if update_wandb_summary:
         assert is_pretrained, "update_wandb_summary only works with pretrained models"
@@ -148,6 +149,7 @@ def generate_training_commands(
                     source_path=ClusterPaths(),
                     dataset=target_dataset,
                     format=target_model.input_format,
+                    suffix=feature_stats_suffix,
                 ).as_posix()
 
             # model name
@@ -368,9 +370,9 @@ if __name__ == "__main__":
         # TrainingServers.NODE09,
     ]
     sockets = [0, 1]
-    out_file_id_offset = 1
+    out_file_id_offset = 0
     num_parallel_screens = len(sockets)
-    num_parallel_jobs_dgx = 6
+    num_parallel_jobs_dgx = 3
     num_parallel_tasks_per_job_dgx = 1
     run_exp_pin = False
 
@@ -398,6 +400,9 @@ if __name__ == "__main__":
     use_romans_runs = False
     assemble_data_up_front = False  # run data / graph assemble up front i.e. during dataset creation instead of collate / training time
 
+    # feature statistics version
+    feature_stats_suffix = "_v250831"
+
     # =================== (pretrained / wandb reuse configs)
     is_pretrained = False  # if True, assumes that the model is pretrained and does not train it # noqa: E501
     update_wandb_summary = False  # (works only together with pretrained) if True, it will update the wandb summaries of the first run with this layout # noqa: E501
@@ -414,12 +419,12 @@ if __name__ == "__main__":
         # "dace",
         # "flat",
         # "t3",
-        "zeroshot_vae",
+        # "zeroshot_vae",
         # "neo",
-        # "qppnet",
-        # "mscn",
+        "qppnet",
+        "mscn",
         # "e2e",
-        # "query_former",
+        "query_former",
         # "mamba",
         # # "mamba_tanh",
         # # "mamba_relu",
@@ -483,6 +488,7 @@ if __name__ == "__main__":
         is_pretrained=is_pretrained,
         update_wandb_summary=update_wandb_summary,
         assemble_data_up_front=assemble_data_up_front,
+        feature_stats_suffix=feature_stats_suffix,
     )
 
     runner.run_exp(

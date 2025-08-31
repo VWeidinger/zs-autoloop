@@ -4,7 +4,11 @@ from models.white_mamba.extract_card_error_utils import extract_card_error_from_
 
 
 def extract_query_stats_for_plan(
-    query_stats_dict: Dict[str, List], plan: Dict, plan_id: int, node_depth: int = None
+    query_stats_dict: Dict[str, List],
+    plan: Dict,
+    plan_id: int,
+    node_depth: int = None,
+    is_parsed_plan: bool = True,
 ):
     # store query stat information
     query_stats_dict["sample_idxs"].append(plan_id)  # store the sample index
@@ -21,8 +25,12 @@ def extract_query_stats_for_plan(
     query_stats_dict["hint"].append(plan["hint"])
 
     # add card error
-    mse, qerror = extract_card_error_from_plan(plan, mode="root")
-    mse_avg, qerror_avg = extract_card_error_from_plan(plan, mode="avg")
+    mse, qerror = extract_card_error_from_plan(
+        plan, mode="root", is_parsed_plan=is_parsed_plan
+    )
+    mse_avg, qerror_avg = extract_card_error_from_plan(
+        plan, mode="avg", is_parsed_plan=is_parsed_plan
+    )
 
     query_stats_dict["card_error_root_mse"].append(mse)
     query_stats_dict["card_error_root_qerror"].append(qerror)
