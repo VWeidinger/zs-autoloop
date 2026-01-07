@@ -3,7 +3,7 @@ import sys
 
 from ldb_schema.datasets import dataset_list_dict
 from ldb_schema.paths import ClusterPaths
-from octopus.step import KillAllScreens, RsyncCurrentRepo, SetupRYEVenv, SetupVenv
+from octopus.step import KillAllScreens, RsyncCurrentRepo, SetupUVVenv, SetupVenv
 
 sys.path.append(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -14,7 +14,8 @@ if __name__ == "__main__":
     install_venv = False
     install_rye = True
 
-    setup_steps = [RsyncCurrentRepo(gitignore_path=".gitignore")]
+    setup_steps = []
+    setup_steps.append(RsyncCurrentRepo(gitignore_path=".gitignore"))
 
     if install_venv:
         setup_steps.append(
@@ -25,7 +26,7 @@ if __name__ == "__main__":
             )
         )
     if install_rye:
-        setup_steps.append(SetupRYEVenv())
+        setup_steps.append(SetupUVVenv(no_lock=False, no_dev=False))
 
     purge_steps = [KillAllScreens()]
 
@@ -34,7 +35,7 @@ if __name__ == "__main__":
     runner = ExpRunner(
         replicate=False,
         node_names=[node["hostname"]],
-        python_version="rye",
+        python_version="uv",
         available_sockets=[0, 1],
         num_parallel_screens_or_jobs=8,
     )
@@ -48,7 +49,7 @@ if __name__ == "__main__":
     target_folder = f"{ClusterPaths().Data.root}/feature_statistics"
 
     # First generate generic feature statistics over all workloads
-    suffix = "_v250831"
+    suffix = "_v20260107"
     eval_commands = [
         f"python3 gather_feature_stats.py "
         f"--database {' '.join([d.data_folder for d in datasets])} "

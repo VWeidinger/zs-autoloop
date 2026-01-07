@@ -32,16 +32,16 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     for mode in [InputFormats.json, InputFormats.parsed]:
+        mode_str = f"{mode}" if mode != InputFormats.parsed else "parsed_plans2"
+
         json_files = []
         for workload in args.workload:
             for database in args.database:
                 json_files += get_all_json_files(
-                    f"{args.runs_dir}/{mode}/{database}/{workload}"
+                    f"{args.runs_dir}/{mode_str}/{database}/{workload}"
                 )
 
         assert len(json_files) > 0, "No json files found"
-
-        mode_str = f"{mode}" if mode != InputFormats.parsed else "parsed_plans2"
 
         target_path = f"{args.target_folder}/{mode_str}_{args.file_name}.json"
         print(

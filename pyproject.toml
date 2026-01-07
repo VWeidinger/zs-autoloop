@@ -46,23 +46,25 @@ requires-python = ">= 3.12"
 jupyter = [
     "notebook>=7.2.2",
 ]
+dev = [
+    "octopus @ git+https://github.com/DataManagementLab/octopus.git",
+]
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 
-[tool.rye]
-managed = true
-dev-dependencies = [
-    "octopus @ git+https://github.com/DataManagementLab/octopus.git",
-#    "dgl @ https://data.dgl.ai/wheels/dgl-2.2.1-cp312-cp312-win_amd64.whl",
-]
+# [tool.rye]
+# managed = true
+# dev-dependencies = [   
+# #    "dgl @ https://data.dgl.ai/wheels/dgl-2.2.1-cp312-cp312-win_amd64.whl",
+# ]
 
-[[tool.rye.sources]]
-name = 'dgl'
-url = 'https://data.dgl.ai/wheels/repo.html'
-type = "find-links"
+# [[tool.rye.sources]]
+# name = 'dgl'
+# url = 'https://data.dgl.ai/wheels/repo.html'
+# type = "find-links"
 
 [tool.hatch.metadata]
 allow-direct-references = true

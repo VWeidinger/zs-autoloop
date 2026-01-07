@@ -107,6 +107,13 @@ def generate_training_commands(
                     stratified_workloads=False,
                     romans_runs=use_romans_runs,
                 )
+                # addition for experiment for Mihail [Johannes]
+                # test_runs += " " + target_model.assemble_wl_path(
+                #     Dataset("imdb"),
+                #     "job_light_subplans",
+                #     stratified_workloads=False,
+                #     romans_runs=use_romans_runs,
+                # )
 
             if (
                 eval_access_path
@@ -358,8 +365,8 @@ if __name__ == "__main__":
     ]
 
     seeds = [
-        4
-    ]  # 3=parsed_plans2, 4=fixed card-annotation of optimal plans in JOB & -Complex and improved logging/plotting
+        5
+    ]  # 3=parsed_plans2, 4=fixed card-annotation of optimal plans in JOB & -Complex and improved logging/plotting, 5=fixed parser error (new feature statistics) 10/2025)
     nodes = [
         # TrainingServers.NODE01,
         # TrainingServers.NODE02,
@@ -401,7 +408,7 @@ if __name__ == "__main__":
     assemble_data_up_front = False  # run data / graph assemble up front i.e. during dataset creation instead of collate / training time
 
     # feature statistics version
-    feature_stats_suffix = "_v250831"
+    feature_stats_suffix = "_v20260107"
 
     # =================== (pretrained / wandb reuse configs)
     is_pretrained = False  # if True, assumes that the model is pretrained and does not train it # noqa: E501
@@ -412,19 +419,21 @@ if __name__ == "__main__":
     model_configs = []
     for model_type in [
         # "postgres",
-        # "zeroshot",
+        "zeroshot",
+        # "zeroshot_act_card",
         # # 'zeroshot_low_min',
         # # 'zeroshot_xl',
         # # 'zeroshot_timeout',
         # "dace",
         # "flat",
         # "t3",
+        # "t3_act",
         # "zeroshot_vae",
         # "neo",
-        "qppnet",
-        "mscn",
+        # "qppnet",
+        # "mscn",
         # "e2e",
-        "query_former",
+        # "query_former",
         # "mamba",
         # # "mamba_tanh",
         # # "mamba_relu",
@@ -446,7 +455,7 @@ if __name__ == "__main__":
             [
                 parameterized_config(
                     model_type,
-                    wandb_group="baselines",
+                    wandb_group="baseline",
                     include_pg_opt_workloads=True,
                     **model_specific_args,
                 )

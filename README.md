@@ -1,6 +1,11 @@
 # LDB: Model Repository
 This repository contains different cost model architectures and baselines.
 
+## Setup deps
+```
+uv sync --extra dev
+```
+
 ## Train a model
 To train a model remotely, please configure the script and run it with the following command:
 ```

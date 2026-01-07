@@ -128,26 +128,29 @@ def test_model(
                     elif "JOBExtended" in filename or "job_complex" in filename:
                         wl_name = "job_complex"
                     else:
-                        raise ValueError(f"Unknown workload name: {filename}")
-                    rt, slowdown = evaluate_join_order(
-                        predictions=predictions_dict,
-                        is_per_epoch=is_per_epoch,
-                        epoch=epoch,
-                        wandb_run=wandb_run,
-                        wl_name=wl_name,
-                    )
+                        wl_name = None
+                        print(f"Unknown workload name: {filename}")
 
-                    if wl_name == "job":
-                        job_total_selected_runtime = rt
-                        job_total_slowdown = slowdown
-                    elif wl_name == "job_light":
-                        joblight_total_selected_runtime = rt
-                        joblight_total_slowdown = slowdown
-                    elif wl_name == "job_complex":
-                        jobcomplex_total_selected_runtime = rt
-                        jobcomplex_total_slowdown = slowdown
-                    else:
-                        raise ValueError(f"Unknown workload name: {wl_name}")
+                    if wl_name is not None:
+                        rt, slowdown = evaluate_join_order(
+                            predictions=predictions_dict,
+                            is_per_epoch=is_per_epoch,
+                            epoch=epoch,
+                            wandb_run=wandb_run,
+                            wl_name=wl_name,
+                        )
+
+                        if wl_name == "job":
+                            job_total_selected_runtime = rt
+                            job_total_slowdown = slowdown
+                        elif wl_name == "job_light":
+                            joblight_total_selected_runtime = rt
+                            joblight_total_slowdown = slowdown
+                        elif wl_name == "job_complex":
+                            jobcomplex_total_selected_runtime = rt
+                            jobcomplex_total_slowdown = slowdown
+                        else:
+                            raise ValueError(f"Unknown workload name: {wl_name}")
 
                 if "physical_operator" in str(test_path):
                     with_idxs = "_w_idx" in str(test_path)

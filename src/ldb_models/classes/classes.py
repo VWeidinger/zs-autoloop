@@ -211,17 +211,20 @@ class ModelConfig:
     ) -> Path:
         if format == InputFormats.baseline_parsed:
             format = InputFormats.parsed
+
+        format_str = f"{format}" if format != InputFormats.parsed else "parsed_plans2"
+
         if self.type == ModelType.WL_DRIVEN:
             return (
                 source_path.Data.root
                 / "feature_statistics"
-                / f"{format}_feature_statistics{suffix}_{dataset.db_name}.json"
+                / f"{format_str}_feature_statistics{suffix}_{dataset.db_name}.json"
             )
         elif self.type == ModelType.WL_AGNOSTIC:
             return (
                 source_path.Data.root
                 / "feature_statistics"
-                / f"{format}_feature_statistics{suffix}.json"
+                / f"{format_str}_feature_statistics{suffix}.json"
             )
 
     def get_column_stats(self, dataset: Dataset) -> Optional[Path]:
