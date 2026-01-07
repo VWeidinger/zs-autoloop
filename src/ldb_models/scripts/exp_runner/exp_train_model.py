@@ -377,9 +377,9 @@ if __name__ == "__main__":
         # TrainingServers.NODE09,
     ]
     sockets = [0, 1]
-    out_file_id_offset = 0
+    out_file_id_offset = 1
     num_parallel_screens = len(sockets)
-    num_parallel_jobs_dgx = 3
+    num_parallel_jobs_dgx = 1
     num_parallel_tasks_per_job_dgx = 1
     run_exp_pin = False
 
@@ -418,8 +418,8 @@ if __name__ == "__main__":
     # generate model configs
     model_configs = []
     for model_type in [
-        # "postgres",
-        "zeroshot",
+        "postgres",
+        # "zeroshot",
         # "zeroshot_act_card",
         # # 'zeroshot_low_min',
         # # 'zeroshot_xl',
