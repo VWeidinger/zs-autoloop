@@ -1,3 +1,4 @@
+import tempfile
 from pathlib import Path
 from typing import List, Optional
 
@@ -390,47 +391,61 @@ def test_model(
 
     # create a boxplot for runtime and cardinality q-error
     plt.close()  # Close the plot to free memory
-    fig, axes = plt.subplots(1, 2, figsize=(8, 3))
+    fig, axes = plt.subplots(1, 2, figsize=(8, 3), constrained_layout=True)
 
     # Boxplot: Runtime Q-Error
     sns.boxplot(
-        hue=df["Dataset"],
-        y=df["Runtime Q-Error"],
+        data=df,
+        x="Dataset",
+        y="Runtime Q-Error",
         palette=color_map,
         ax=axes[0],
         legend=False,
     )
     axes[0].set_ylabel("Runtime Q-Error (log$_{10}$ scale)")
-    axes[0].set_xlabel("Dataset")
     axes[0].set_title("Runtime Q-Error Boxplot")
-    axes[0].tick_params(axis="x", rotation=45)
+    axes[0].set_xticklabels([])
+    axes[0].set_xlabel("")
 
     # Boxplot: Cardinality Q-Error
     sns.boxplot(
-        hue=df["Dataset"],
-        y=df["Cardinality Q-Error"],
+        data=df,
+        x="Dataset",
+        y="Cardinality Q-Error",
         palette=color_map,
         ax=axes[1],
         legend=True,
     )
-    # Move legend below the plot
-    axes[1].legend(
-        loc="upper center", bbox_to_anchor=(-0.1, -0.15), ncol=2, frameon=False
-    )
     axes[1].set_ylabel("Cardinality Q-Error (log$_{10}$ scale)")
-    axes[1].set_xlabel("Dataset")
     axes[1].set_title("Cardinality Q-Error Boxplot")
-    axes[1].tick_params(axis="x", rotation=45)
+    axes[1].set_xticklabels([])
+    axes[1].set_xlabel("")
 
-    # plt.tight_layout()
-    plt.show()
+    # # Add shared legend below both plots
+    handles = [plt.Rectangle((0, 0), 1, 1, facecolor=color_map[ds]) for ds in color_map]
+    fig.legend(
+        handles=handles,
+        labels=list(color_map.keys()),
+        loc="lower center",
+        bbox_to_anchor=(0.5, -0.35),
+        ncol=2,
+        frameon=False,
+    )
 
-    # log to wandb if available
-    if wandb_run is not None:
-        if is_per_epoch:
-            wandb_run.log(
-                {"runtime_cardinality_boxplot": wandb.Image(fig)},
-                step=epoch,
-            )
-        else:
-            wandb_run.log({"runtime_cardinality_boxplot": wandb.Image(fig)})
+    # create tempfile
+    with tempfile.NamedTemporaryFile(suffix=".png", delete=True) as filename:
+        plt.savefig(filename.name, bbox_inches="tight", dpi=300)
+
+        # log to wandb if available
+        if wandb_run is not None:
+            if is_per_epoch:
+                wandb_run.log(
+                    {"runtime_cardinality_boxplot": wandb.Image(filename.name)},
+                    step=epoch,
+                )
+            else:
+                wandb_run.log(
+                    {"runtime_cardinality_boxplot": wandb.Image(filename.name)}
+                )
+
+        plt.close()  # Close the plot to free memory

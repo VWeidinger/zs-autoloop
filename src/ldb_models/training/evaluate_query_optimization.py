@@ -160,9 +160,20 @@ def evaluate_join_order(
                 aggregated_results["spearman_corr"]
             )
             wandb_run.summary[f"{prefix}/num_plans"] = len(predictions)
+
+            # main table stores many duplicate sql strings - create separate sql table and use ids in main table
+            # reduces size significantly
+            # problem: hints can be very long (act card lists) -> still large table
+            reduced_prediction_dataframe, sql_table = reduce_pred_table_size(
+                prediction_dataframe
+            )
+
             wandb_run.log(
                 {
-                    f"{prefix}_pred_table": wandb.Table(dataframe=prediction_dataframe),
+                    f"{prefix}_pred_table": wandb.Table(
+                        dataframe=reduced_prediction_dataframe
+                    ),
+                    f"{prefix}_sql_table": wandb.Table(dataframe=sql_table),
                     f"{prefix}_plot": wandb.plot.line_series(
                         xs=range(len(optimal_runtimes)),
                         ys=[
@@ -178,6 +189,22 @@ def evaluate_join_order(
 
     # return absolute runtime selection and relative slowdown
     return total_selected_runtime, total_selected_runtime / total_optimal_runtime
+
+
+def reduce_pred_table_size(prediction_dataframe: pd.DataFrame):
+    # main table stores many duplicate sql strings - create separate sql table and use ids in main table
+    # reduces size significantly
+    # problem: hints can be very long (act card lists) -> still large table
+    sql_to_id_dict = {
+        sql: idx for idx, sql in enumerate(prediction_dataframe["sql"].unique())
+    }
+    prediction_dataframe["sql_id"] = prediction_dataframe["sql"].map(sql_to_id_dict)
+    reduced_prediction_dataframe = prediction_dataframe.drop(columns=["sql"])
+
+    # create sql table
+    sql_table = pd.DataFrame(list(sql_to_id_dict.items()), columns=["sql", "sql_id"])
+
+    return reduced_prediction_dataframe, sql_table
 
 
 def evaluate_physical_plan_selection(
@@ -272,6 +299,11 @@ def evaluate_physical_plan_selection(
                 step=epoch,
             )
         else:
+            # reduce prediction dataframe size by removing sql column
+            reduced_prediction_dataframe, sql_table = reduce_pred_table_size(
+                prediction_dataframe
+            )
+
             wandb_run.summary[f"{log_prefix}/total_selected_runtime"] = (
                 total_selected_runtime
             )
@@ -282,8 +314,9 @@ def evaluate_physical_plan_selection(
             wandb_run.log(
                 {
                     f"{log_prefix}_pred_table": wandb.Table(
-                        dataframe=prediction_dataframe
-                    )
+                        dataframe=reduced_prediction_dataframe
+                    ),
+                    f"{log_prefix}_sql_table": wandb.Table(dataframe=sql_table),
                 }
             )
 
@@ -326,7 +359,8 @@ def evaluate_physical_plan_selection(
     if wandb_run:
         if is_per_epoch:
             wandb_run.log(
-                {f"{log_prefix}/join_op_distribution": wandb.Image(plt)}, step=epoch
+                {f"{log_prefix}/join_op_distribution": wandb.Image(plt)},
+                step=epoch,
             )
         else:
             wandb_run.log({f"{log_prefix}/join_op_distribution": wandb.Image(plt)})
@@ -343,7 +377,8 @@ def evaluate_physical_plan_selection(
     if wandb_run:
         if is_per_epoch:
             wandb_run.log(
-                {f"{log_prefix}/join_op_confusion": wandb.Image(plt)}, step=epoch
+                {f"{log_prefix}/join_op_confusion": wandb.Image(plt)},
+                step=epoch,
             )
         else:
             wandb_run.log({f"{log_prefix}/join_op_confusion": wandb.Image(plt)})
@@ -389,21 +424,28 @@ def evaluate_access_path_selection(
     }
     aggregated_results = {key: [] for key in metrics}
 
+    # counter for queries that do not have exactly two plans
+    non_two_plan_queries = 0
+    num_plans_list = []
+
     # Group dataframe by SQL and iterate over each group
     for sql, group_df in prediction_dataframe.groupby("sql"):
         preds = group_df["prediction"]
         labels = group_df["label"]
 
         if len(group_df) != 2:
-            print(
-                f"Access path selection requires exactly two different query plans per SQL statement. Got: {len(group_df)}"
-            )
+            non_two_plan_queries += 1
+            num_plans_list.append(len(group_df))
             continue
 
         for key, metric in metrics.items():
             aggregated_results[key].append(
                 metric.evaluate_metric(preds=preds, labels=labels)
             )
+
+    print(
+        f"Access path selection requires exactly two different query plans per SQL statement. Number of queries without exactly two plans: {non_two_plan_queries}. Plan counts: {num_plans_list}"
+    )
 
     total_selected_runtime = np.sum(aggregated_results["selected_runtime"])
     total_optimal_runtime = np.sum(aggregated_results["optimal_runtime"])
@@ -432,13 +474,23 @@ def evaluate_access_path_selection(
                 commit=False,
             )
         else:
+            # reduce prediction dataframe size by removing sql column
+            reduced_prediction_dataframe, sql_table = reduce_pred_table_size(
+                prediction_dataframe
+            )
+
             wandb_run.summary[f"{prefix}/total_selected_runtime"] = (
                 total_selected_runtime
             )
             wandb_run.summary[f"{prefix}/total_optimal_runtime"] = total_optimal_runtime
             wandb_run.summary[f"{prefix}/avg_pick_rate"] = total_pick_rate
             wandb_run.log(
-                {f"{prefix}_pred_table": wandb.Table(dataframe=prediction_dataframe)}
+                {
+                    f"{prefix}_pred_table": wandb.Table(
+                        dataframe=reduced_prediction_dataframe
+                    ),
+                    f"{prefix}_sql_table": wandb.Table(dataframe=sql_table),
+                }
             )
 
     def extract_table_col(sql):
@@ -545,11 +597,13 @@ def evaluate_access_path_selection(
         if wandb_run:
             # log to wandb
             if is_per_epoch:
-                wandb_run.log(
-                    {f"{prefix}/col_plots/{table_name}.{col_name}": wandb.Image(plt)},
-                    step=epoch,
-                    commit=False,
-                )
+                # do not log per epoch - takes too much storage
+                pass
+                # wandb_run.log(
+                #     {f"{prefix}/col_plots/{table_name}.{col_name}": wandb.Image(plt, file_type="jpg")},
+                #     step=epoch,
+                #     commit=False,
+                # )
             else:
                 wandb_run.log(
                     {f"{prefix}/col_plots/{table_name}.{col_name}": wandb.Image(plt)}
@@ -676,7 +730,10 @@ def evaluate_access_path_selection(
 
     if wandb_run:
         if is_per_epoch:
-            wandb_run.log({f"{prefix}/seq_scan_ratio": wandb.Image(plt)}, step=epoch)
+            wandb_run.log(
+                {f"{prefix}/seq_scan_ratio": wandb.Image(plt)},
+                step=epoch,
+            )
         else:
             print("Logging seq_scan_ratio to wandb summary", flush=True)
             wandb_run.log({f"{prefix}/seq_scan_ratio": wandb.Image(plt)})
@@ -692,7 +749,10 @@ def evaluate_access_path_selection(
     # log to wandb
     if wandb_run:
         if is_per_epoch:
-            wandb_run.log({f"{prefix}/scan_op_confusion": wandb.Image(plt)}, step=epoch)
+            wandb_run.log(
+                {f"{prefix}/scan_op_confusion": wandb.Image(plt)},
+                step=epoch,
+            )
         else:
             wandb_run.log({f"{prefix}/scan_op_confusion": wandb.Image(plt)})
 
