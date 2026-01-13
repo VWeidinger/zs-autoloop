@@ -1,7 +1,7 @@
 import functools
 from collections import defaultdict
 from pathlib import Path
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 import numpy as np
 from classes.classes import DataLoaderOptions, ModelConfig, QPPNetModelConfig
@@ -171,11 +171,12 @@ def create_datasets(
 
     # extract database schema information
     db_names = dict(
-        (db_id, value["database_name"]) for db_id, value in database_statistics.items()
+        (run_file_id, value["database_name"])
+        for run_file_id, value in database_statistics.items()
     )
     db_schema_info = dict(
-        (db_id, get_json_schema(db_name))
-        for db_id, db_name in db_names.items()
+        (run_file_id, get_json_schema(db_name))
+        for run_file_id, db_name in db_names.items()
         if db_name != "unknown"
     )
 
@@ -184,10 +185,10 @@ def create_datasets(
 
 def qppnet_collator(
     plans,
-    feature_statistics: dict = None,
-    db_statistics: dict = None,
-    db_schema_info: dict = None,
-    column_statistics: dict = None,
+    feature_statistics: Dict = None,
+    db_statistics: Dict = None,
+    db_schema_info: Dict = None,
+    column_statistics: Dict = None,
     plan_featurization=None,
 ):
     labels = []

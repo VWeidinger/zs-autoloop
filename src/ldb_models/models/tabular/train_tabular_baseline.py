@@ -5,7 +5,7 @@ import pickle
 import time
 from collections import defaultdict
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import joblib
 import lightgbm as lgb
@@ -496,14 +496,14 @@ def gen_postgres_cost_dataset(
     workload_runs: List[Path],
     cap_training_samples: Optional[bool],
     statistics_file: Path,
-    featurization: Optional,
+    featurization: Optional[Featurization],
     shuffle: bool,
     model_config: ModelConfig,
     val_ratio: float = 0.15,
     stratify_dataset: bool = False,
     stratify_per_wl_file: bool = False,
     is_test: bool = False,
-) -> Tuple[np.ndarray]:
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, Dict]:
     plans, database_statistics = read_workload_runs(
         workload_runs,
         include_timeout_queries=model_config.include_timeout_queries and not is_test,
@@ -517,11 +517,12 @@ def gen_postgres_cost_dataset(
 
     # extract database schema information
     db_names = dict(
-        (db_id, value["database_name"]) for db_id, value in database_statistics.items()
+        (run_file_id, value["database_name"])
+        for run_file_id, value in database_statistics.items()
     )
     db_schema_info = dict(
-        (db_id, get_json_schema(db_name))
-        for db_id, db_name in db_names.items()
+        (run_file_id, get_json_schema(db_name))
+        for run_file_id, db_name in db_names.items()
         if db_name != "unknown"
     )
 
@@ -579,11 +580,12 @@ def gen_flattened_dataset(
 
     # extract database schema information
     db_names = dict(
-        (db_id, value["database_name"]) for db_id, value in database_statistics.items()
+        (run_file_id, value["database_name"])
+        for run_file_id, value in database_statistics.items()
     )
     db_schema_info = dict(
-        (db_id, get_json_schema(db_name))
-        for db_id, db_name in db_names.items()
+        (run_file_id, get_json_schema(db_name))
+        for run_file_id, db_name in db_names.items()
         if db_name != "unknown"
     )
 

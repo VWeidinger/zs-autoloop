@@ -1,10 +1,10 @@
 import unittest
 
 from training.dataset.pushdown_projections import (
-    extract_cols_from_join,
-    extract_cols_from_filter,
-    extract_cols_from_aggr,
     apply_projection_pushdown,
+    extract_cols_from_aggr,
+    extract_cols_from_filter,
+    extract_cols_from_join,
 )
 
 
@@ -1782,7 +1782,7 @@ class ProjectionPushdownTest(unittest.TestCase):
             "zero_card": False,
             "timeout": False,
             "timeout_threshold": 180000,
-            "database_id": 0,
+            "run_file_id": 0,
         }
         self.assertEqual(
             plan3,
@@ -1827,7 +1827,7 @@ class ProjectionPushdownTest(unittest.TestCase):
             "zero_card": False,
             "timeout": False,
             "timeout_threshold": 180000,
-            "database_id": 0,
+            "run_file_id": 0,
         }
 
         expected_plan4 = {
@@ -1884,7 +1884,7 @@ class ProjectionPushdownTest(unittest.TestCase):
             "zero_card": False,
             "timeout": False,
             "timeout_threshold": 180000,
-            "database_id": 0,
+            "run_file_id": 0,
         }
         self.assertEqual(
             expected_plan4,

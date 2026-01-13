@@ -1,8 +1,10 @@
 import collections
+from typing import Dict, Tuple
 
 import dgl
 import numpy as np
 import torch
+from models.utils import get_general_table_col_to_ids_dict
 from models.white_mamba.extract_query_stats import extract_query_stats_for_plan
 from models.zeroshot.postgres_plan_batching import assign_additional_plan_info
 from training.dataset.cmp_operator import LogicalOperator
@@ -27,10 +29,11 @@ class WorkloadDrivenGraph:
 def plan_to_graphs(
     column_statistics,
     word_embeddings,
-    db_statistics,
     feature_statistics,
     node,
     wl_graph,
+    table_to_id_dict: Dict[str, int],
+    col_id_dict: Dict[Tuple[str, str], int],
     depth=0,
     parent_node_id=None,
     dim_word_hash=None,
@@ -49,20 +52,23 @@ def plan_to_graphs(
     )
 
     # metadata (used tables)
-    dim_cols, _, dim_tables, _ = extract_dimensions(feature_statistics)
+    dim_cols = len(col_id_dict)
+    dim_tables = len(table_to_id_dict)
 
     col_vec = np.zeros(dim_cols)
     if "output_columns" in plan_params.keys():
         output_columns = plan_params["output_columns"]
         for output_column in output_columns:
             for c_idx in output_column["columns"]:
-                col_vec[c_idx["col_id"]] = 1
+                table_name = c_idx["table_name"]
+                col_name = c_idx["col_name"]
+                col_vec[col_id_dict[(table_name, col_name)]] = 1
 
     # metadata (used columns)
     tab_vec = np.zeros(dim_tables)
 
     if "table_id" in plan_params.keys():
-        table_id = plan_params["table_id"]
+        table_id = table_to_id_dict[plan_params["table_name"]]
         tab_vec[int(table_id)] = 1
 
     # parse predicates into predicate graph and fill sample vector
@@ -75,14 +81,13 @@ def plan_to_graphs(
 
         sample_bitmap[: len(plan_sample_vec)] = plan_sample_vec
         # check if node already exists in the graph
-        # filter_node_id = fitler_node_idx.get((filter_column.operator, filter_column.column, database_id))
         predicate_idx = parse_baseline_predicates(
             column_statistics,
             word_embeddings,
-            db_statistics,
-            feature_statistics,
-            filter_column,
-            wl_graph,
+            feature_statistics=feature_statistics,
+            filter_column=filter_column,
+            wl_graph=wl_graph,
+            col_id_dict=col_id_dict,
             dim_word_hash=dim_word_hash,
             dim_word_emdb=dim_word_emdb,
         )
@@ -103,10 +108,11 @@ def plan_to_graphs(
             plan_to_graphs(
                 column_statistics,
                 word_embeddings,
-                db_statistics,
-                feature_statistics,
-                c,
-                wl_graph,
+                feature_statistics=feature_statistics,
+                node=c,
+                wl_graph=wl_graph,
+                table_to_id_dict=table_to_id_dict,
+                col_id_dict=col_id_dict,
                 depth=depth + 1,
                 parent_node_id=plan_node_id,
                 dim_word_hash=dim_word_hash,
@@ -115,23 +121,24 @@ def plan_to_graphs(
             )
 
 
-def extract_dimensions(feature_statistics, extended=False):
+def extract_dimensions(feature_statistics: Dict, extended=False):
+    assert isinstance(feature_statistics, Dict), (
+        f"Feature statistics is not a dict: {feature_statistics}"
+    )
+    assert "operator" in feature_statistics, (
+        f"Feature statistics does not contain operator info: {feature_statistics}"
+    )
+    assert isinstance(feature_statistics["operator"], Dict), (
+        f"Feature statistics operator info is not a dict: {feature_statistics['operator']}"
+    )
     dim_pred_op = feature_statistics["operator"]["no_vals"]
     dim_ops = feature_statistics["op_name"]["no_vals"]
-    dim_cols = (
-        max(
-            int(feature_statistics["col_id"]["max"]),
-            int(feature_statistics["col_id"]["max"]),
-        )
-        + 1
-    )
-    dim_tables = int(feature_statistics["table_id"]["max"]) + 1
     if extended:
         dim_joins = feature_statistics["join"]["no_vals"]
         dim_aggs = feature_statistics["aggregation"]["no_vals"]
-        return dim_cols, dim_ops, dim_tables, dim_pred_op, dim_joins, dim_aggs
+        return dim_ops, dim_pred_op, dim_joins, dim_aggs
 
-    return dim_cols, dim_ops, dim_tables, dim_pred_op
+    return dim_ops, dim_pred_op
 
 
 def encode_one_hot(feature_name, feature_statistics, v):
@@ -145,10 +152,10 @@ def encode_one_hot(feature_name, feature_statistics, v):
 def parse_baseline_predicates(
     column_statistics,
     word_embeddings,
-    db_statistics,
-    feature_statistics,
+    feature_statistics: Dict,
     filter_column,
     wl_graph,
+    col_id_dict: Dict[Tuple[str, str], int],
     depth=0,
     parent_predicate=None,
     dim_word_hash=None,
@@ -169,12 +176,12 @@ def parse_baseline_predicates(
     else:
         pred_feat_vec = encode_predicate(
             column_statistics,
-            db_statistics,
             dim_word_emdb,
             dim_word_hash,
             feature_statistics,
             filter_column,
             word_embeddings,
+            col_id_dict,
         )
         wl_graph.predicate_features.append(pred_feat_vec)
 
@@ -189,10 +196,10 @@ def parse_baseline_predicates(
             parse_baseline_predicates(
                 column_statistics,
                 word_embeddings,
-                db_statistics,
                 feature_statistics,
                 c,
                 wl_graph,
+                col_id_dict=col_id_dict,
                 depth=depth + 1,
                 parent_predicate=filter_node_id,
                 dim_word_hash=dim_word_hash,
@@ -204,22 +211,29 @@ def parse_baseline_predicates(
 
 def encode_predicate(
     column_statistics,
-    db_statistics,
     dim_word_emdb,
     dim_word_hash,
-    feature_statistics,
+    feature_statistics: Dict,
     filter_column,
     word_embeddings,
+    col_id_dict: Dict[Tuple[str, str], int],
 ):
-    dim_cols, _, _, dim_pred_op = extract_dimensions(feature_statistics)
-    col_vec = np.zeros(dim_cols)
-    col_vec[filter_column["col_id"]] = 1
+    _, dim_pred_op = extract_dimensions(feature_statistics)
+    col_vec = np.zeros(len(col_id_dict))
+
+    col_name = filter_column["col_name"]
+    table_name = filter_column["table_name"]
+
+    assert (table_name, col_name) in col_id_dict, (
+        f"Column {(table_name, col_name)} not in col_id_dict {col_id_dict.keys()}"
+    )
+    col_id = col_id_dict[(table_name, col_name)]
+    col_vec[col_id] = 1
     operation_vec = encode_one_hot(
         "operator", feature_statistics, filter_column["operator"]
     )
     # find out how to encode the column
-    col_name = db_statistics["column_stats"][filter_column["col_id"]]["attname"]
-    table_name = db_statistics["column_stats"][filter_column["col_id"]]["tablename"]
+
     col_stats = column_statistics[table_name][col_name]
     literal_vec = np.zeros(dim_word_emdb + dim_word_hash)
     if filter_column["operator"] not in {"IS NULL", "IS NOT NULL"}:
@@ -232,7 +246,14 @@ def encode_predicate(
                 filter_column["literal"] = int(float(filter_column["literal"]))
             else:
                 raise ValueError(f"Unknown column type {col_stats['data_type']}")
-            val_enc = filter_column["literal"] - col_stats["min"]
+            try:
+                val_enc = filter_column["literal"] - col_stats["min"]
+            except Exception as e:
+                print(
+                    f"Error encoding value {filter_column['literal']} for column {col_name} with stats {col_stats}",
+                    flush=True,
+                )
+                raise e
             if col_stats["max"] - col_stats["min"] > 0:
                 val_enc /= col_stats["max"] - col_stats["min"]
             literal_vec[0] = val_enc
@@ -265,9 +286,13 @@ def encode_predicate(
 
 def baseline_plan_collator(
     plans,
-    feature_statistics=None,
-    db_statistics=None,
-    db_schema_info=None,
+    feature_statistics,
+    db_statistics,
+    table_id_dict: Dict[str, int],  # not used but kept for interface consistency
+    col_id_dict: Dict[
+        Tuple[str, str], int
+    ],  # not used but kept for interface consistency
+    db_schema_info,
     column_statistics=None,
     word_embeddings=None,
     dim_word_hash=None,
@@ -280,6 +305,11 @@ def baseline_plan_collator(
     """
 
     wl_graph = WorkloadDrivenGraph()
+
+    # get table and column id mappings
+    table_name_to_id_dict, col_name_to_id_dict = get_general_table_col_to_ids_dict(
+        db_statistics
+    )
 
     query_stats_dict = collections.defaultdict(list)
     for sample_idx, p in plans:
@@ -296,10 +326,11 @@ def baseline_plan_collator(
         plan_to_graphs(
             column_statistics,
             word_embeddings,
-            db_statistics[0],
-            feature_statistics,
-            p,
-            wl_graph,
+            feature_statistics=feature_statistics,
+            node=p,
+            wl_graph=wl_graph,
+            table_to_id_dict=table_name_to_id_dict,
+            col_id_dict=col_name_to_id_dict,
             dim_word_hash=dim_word_hash,
             dim_word_emdb=dim_word_emdb,
             dim_bitmaps=dim_bitmaps,

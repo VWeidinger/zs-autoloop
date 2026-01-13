@@ -101,7 +101,7 @@ def create_dace_datasets(
     val_ratio=0.15,
     shuffle_before_split=True,
     is_test: bool = False,
-) -> Tuple[PlanDataset, PlanDataset]:
+) -> Tuple[PlanDataset, Optional[PlanDataset], Dict, Dict]:
     plans, db_statistics = read_workload_runs(
         workload_run_paths=workload_run_paths,
         input_format=model_config.input_format,
@@ -115,11 +115,12 @@ def create_dace_datasets(
 
     # extract database schema information
     db_names = dict(
-        (db_id, value["database_name"]) for db_id, value in db_statistics.items()
+        (run_file_id, value["database_name"])
+        for run_file_id, value in db_statistics.items()
     )
     db_schema_info = dict(
-        (db_id, get_json_schema(db_name))
-        for db_id, db_name in db_names.items()
+        (run_file_id, get_json_schema(db_name))
+        for run_file_id, db_name in db_names.items()
         if db_name != "unknown"
     )
 
@@ -348,12 +349,11 @@ def get_plan_sequence(
     """
     plan:           a plan read from json file
     pad_length:     int, the length of the padded seqs (the number of nodes in the plan)
-    return:         seq, run_times, adjs, heights, database_id
+    return:         seq, run_times, adjs, heights
     seq:            List, each element is a node's plan_parameters
     run_times:      List, each element is a node's runtime
     adjs:           List, each element is a tuple of (parent, child)
     heights:        List, each element is a node's height
-    database_id: int, the id of the database
     """
     seq = []
     run_times = []
@@ -402,7 +402,7 @@ def get_plan_encoding(
     feature_statistics: dict,
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
     """
-    Obtaining a plan encoding in the form of plan_meta: (seq_encoding, run_times, attention_mask, loss_mask, database_id)
+    Obtaining a plan encoding in the form of plan_meta: (seq_encoding, run_times, attention_mask, loss_mask)
     plan:       a plan read from json file
     pad_length: int, the length of the padded seqs (the number of nodes in the plan)
     """

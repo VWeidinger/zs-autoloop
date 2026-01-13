@@ -204,7 +204,7 @@ def read_workload_runs(
             else:
                 raise ValueError(f"Input format {input_format} not supported")
 
-            plan["database_id"] = path_index
+            plan["run_file_id"] = path_index
 
             if merge_nlj_and_inlj_to_same_op:
                 # replace Index Nested Loop with Nested Loop Join
@@ -381,7 +381,7 @@ def augment_subplans(
             "timeout": plan["timeout"],
             "invalid_hint": plan["invalid_hint"],
             "zero_card": plan["zero_card"],
-            "database_id": plan["database_id"],
+            "run_file_id": plan["run_file_id"],
         }
 
         # extract subplans
@@ -506,11 +506,12 @@ def create_datasets(
 
     # extract database schema information
     db_names = dict(
-        (db_id, value["database_name"]) for db_id, value in database_statistics.items()
+        (run_file_id, value["database_name"])
+        for run_file_id, value in database_statistics.items()
     )
     db_schema_info = dict(
-        (db_id, get_json_schema(db_name))
-        for db_id, db_name in db_names.items()
+        (run_file_id, get_json_schema(db_name))
+        for run_file_id, db_name in db_names.items()
         if db_name != "unknown"
     )
 

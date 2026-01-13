@@ -141,7 +141,7 @@ def mamba_plan_collator(
         # parse the plan
         plan_to_graph(
             plan,
-            database_id=plan["database_id"],
+            run_file_id=plan["run_file_id"],
             depth=0,
             scan_features_list=scan_features,
             join_features_list=join_features,
@@ -423,7 +423,7 @@ def process_node_features(
     plan_featurization,
     db_statistics,
     db_schema_info,
-    database_id,
+    run_file_id,
 ):
     plan_params = node["plan_parameters"]
     phys_op = plan_params["op_name"]
@@ -432,7 +432,7 @@ def process_node_features(
         node_features = []
         for feature_name in plan_featurization.SCAN_FEATURES:
             if feature_name in ["base_table_card", "base_table_card_log"]:
-                base_table_card = db_statistics[database_id]["table_stats"][
+                base_table_card = db_statistics[run_file_id]["table_stats"][
                     plan_params["table_id"]
                 ]["reltuples"]
                 enc_value = encode(
@@ -454,7 +454,7 @@ def process_node_features(
                         idx_name,
                         plan_params["table_name"],
                         db_schema_info,
-                        database_id,
+                        run_file_id,
                         db_statistics,
                     )
 
@@ -524,7 +524,7 @@ def process_node_features(
                 node_features.extend(
                     construct_outcols_flat_vector(
                         plan_params.get("outcols", []),
-                        db_statistics[database_id]["column_stats"],
+                        db_statistics[run_file_id]["column_stats"],
                     )
                 )
             else:
@@ -559,7 +559,7 @@ def process_node_features(
                 node_features.append(enc_value)
             elif feature_name in ["left_is_pk", "right_is_pk"]:
                 is_pk = process_primary_key(
-                    feature_name, plan_params, db_schema_info, database_id
+                    feature_name, plan_params, db_schema_info, run_file_id
                 )
                 node_features.append(1 if is_pk else 0)
             else:
@@ -575,7 +575,7 @@ def process_node_features(
     raise NotImplementedError(f"Physical operator {phys_op} not implemented.")
 
 
-def process_primary_key(feature_name, plan_params, db_schema_info, database_id):
+def process_primary_key(feature_name, plan_params, db_schema_info, run_file_id):
     if (
         "table_name1" not in plan_params["join"]
         or "table_name2" not in plan_params["join"]
@@ -591,14 +591,14 @@ def process_primary_key(feature_name, plan_params, db_schema_info, database_id):
         if feature_name == "left_is_pk"
         else plan_params["join"]["column_name2"]
     )
-    return db_schema_info[database_id]["table_col_info"][join_table][join_col].get(
+    return db_schema_info[run_file_id]["table_col_info"][join_table][join_col].get(
         "pk", False
     )
 
 
 def plan_to_graph(
     node: Dict,
-    database_id: int,
+    run_file_id: int,
     depth: int,
     join_features_list: List[List],
     scan_features_list: List[List],
@@ -635,7 +635,7 @@ def plan_to_graph(
 
         return plan_to_graph(
             child,
-            database_id,
+            run_file_id,
             depth,
             join_features_list,
             scan_features_list,
@@ -658,7 +658,7 @@ def plan_to_graph(
         plan_featurization,
         db_statistics,
         db_schema_info,
-        database_id,
+        run_file_id,
     )
     if node_type == 0:
         type_local_node_id = len(scan_features_list)
@@ -686,7 +686,7 @@ def plan_to_graph(
         # Process left and right children without repeated argument lookups
         plan_to_graph(
             left_child,
-            database_id,
+            run_file_id,
             depth + 1,
             join_features_list,
             scan_features_list,
@@ -705,7 +705,7 @@ def plan_to_graph(
         # process right child
         plan_to_graph(
             right_child,
-            database_id,
+            run_file_id,
             depth + 1,
             join_features_list,
             scan_features_list,

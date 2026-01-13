@@ -18,7 +18,7 @@ def get_first_join_op(plan: Dict) -> Dict:
             raise NoJoinFoundError("No join operation found in the plan.")
 
         assert len(plan["children"]) == 1, (
-            f"Expected at least one child plan. Found: {len(plan['children'])} \n{plan}"
+            f"Expected at least one child plan. Found: {len(plan['children'])} \n\n{[p['plan_parameters']['op_name'] for p in plan['children']]}"
         )
         return get_first_join_op(plan["children"][0])
 
@@ -34,7 +34,7 @@ def get_first_join_op_json_plan(plan: Dict) -> Dict:
             raise NoJoinFoundError("No join operation found in the plan.")
 
         assert len(plan["Plans"]) == 1, (
-            f"Expected at least one child plan. Found: {len(plan['Plans'])} \n{plan}"
+            f"Expected at least one child plan. Found: {len(plan['Plans'])} \n\n{[p['Node Type'] for p in plan['Plans']]} \n {plan}"
         )
         return get_first_join_op_json_plan(plan["Plans"][0])
 
@@ -48,7 +48,7 @@ def get_first_scan_op(plan: Dict) -> Dict:
         # Recursively search in subplans
         assert "children" in plan, f"Expected 'children' key in plan: {plan}"
         assert len(plan["children"]) == 1, (
-            f"Expected at least one child plan. Found: {len(plan['children'])} \n{plan}"
+            f"Expected at least one child plan. Found: {len(plan['children'])} \n{[p['plan_parameters']['op_name'] for p in plan['children']]}"
         )
         return get_first_scan_op(plan["children"][0])
 

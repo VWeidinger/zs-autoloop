@@ -1,9 +1,9 @@
-import re
 from collections import defaultdict
-from typing import Dict, Tuple
+from typing import Dict, List, Tuple
 
 import numpy as np
 import torch
+from models.utils import get_general_table_col_to_ids_dict
 from models.white_mamba.extract_query_stats import extract_query_stats_for_plan
 from models.zeroshot.postgres_plan_batching import (
     assign_additional_plan_info,
@@ -33,7 +33,7 @@ def get_table_id(table_name: str, table_statistics: list) -> int:
 
 
 def extract_join_recursively(
-    sql: str, hint: str, plan: dict, table_statistics: list, join_tables: list
+    sql: str, hint: str, plan: dict, join_tables: list
 ) -> list:
     if is_join(plan):
         join_info = plan["plan_parameters"]["join"]
@@ -68,13 +68,14 @@ def extract_join_recursively(
                 sql=sql,
                 plan=child,
                 hint=hint,
-                table_statistics=table_statistics,
                 join_tables=join_tables,
             )
     return join_tables
 
 
-def extract_join_matrix(plan: dict, table_statistics: list) -> np.ndarray:
+def extract_join_matrix(
+    plan: dict, table_name_to_id_dict: Dict[str, int]
+) -> np.ndarray:
     """
     Extracts the join matrix from a plan, as shown in the paper
     Note that the order of joins is preserved.
@@ -84,25 +85,23 @@ def extract_join_matrix(plan: dict, table_statistics: list) -> np.ndarray:
     :param table_statistics: The table statistics to know the length of tables
     :return: The join matrix as a numpy array.
     """
-    table_ids = init_table_ids(table_statistics)
 
     joins = []
     joins_infos = extract_join_recursively(
         sql=plan["sql"],
         hint=plan["hint"],
         plan=plan,
-        table_statistics=table_statistics,
         join_tables=[],
     )
     for join_info in joins_infos:
         joins.append(sorted([join_info["left_table"], join_info["right_table"]]))
 
     # Create join matrix
-    join_matrix = np.zeros((len(table_statistics), len(table_statistics)))
+    join_matrix = np.zeros((len(table_name_to_id_dict), len(table_name_to_id_dict)))
 
     for pair in joins:
-        left_index = table_ids[pair[0]]
-        right_index = table_ids[pair[1]]
+        left_index = table_name_to_id_dict[pair[0]]
+        right_index = table_name_to_id_dict[pair[1]]
         join_matrix[left_index, right_index] = 1
         join_matrix[left_index, right_index] = 1
 
@@ -120,7 +119,6 @@ def extract_filter_columns_recursively(
     if "col_id" in filter_params:
         predicates.append(
             {
-                "col_id": filter_params["col_id"],
                 "col_name": filter_params["col_name"],
                 "table_name": table_name,
             }
@@ -152,17 +150,23 @@ def extract_predicates_recursively(
 
 
 def extract_predicate_encoding(
-    plan: dict, column_statistics: dict, feature_statistics: dict
+    plan: dict, db_statistics: dict, feature_statistics: dict
 ) -> np.ndarray:
+    run_file_id = plan["run_file_id"]
+    column_statistics = db_statistics[run_file_id]["column_stats"]
+
     # Extracts the predicate encoding from a plan
     predicates = extract_predicates_recursively(
         plan, column_statistics, feature_statistics, predicates=[]
     )
 
+    # translate to column ids
+    _, col_name_to_id_dict = get_general_table_col_to_ids_dict(db_statistics)
+
     # Use only column ids and sort them - we might later implement more sophisticated encoding as written in the paper
     predicate_ids = []
     for p in predicates:
-        predicate_ids.append(int(p["col_id"]))
+        predicate_ids.append(col_name_to_id_dict[(p["table_name"], p["col_name"])])
     predicate_ids = np.array(sorted(predicate_ids))
 
     # Use column ids as indexes in predicate encoding vector
@@ -173,18 +177,17 @@ def extract_predicate_encoding(
 
 
 def extract_plan_encoding_recursively(
-    plan: dict,
-    table_statistics: list,
-    table_ids: list,
-    plan_encodings: list,
+    plan: Dict,
+    table_ids: Dict[str, int],
+    plan_encodings: List,
     depth: int,
     max_depth: int,
-) -> list:
+) -> List:
     assert depth < max_depth, f"Plan depth exceeds maximum limit of {max_depth}"
     # Initialize plan encoding feature vectors for operator type, table access, and index encoding
     operator_vector = np.zeros(2)
-    table_vector = np.zeros(len(table_statistics))
-    index_vector = np.zeros(len(table_statistics))
+    table_vector = np.zeros(len(table_ids))
+    index_vector = np.zeros(len(table_ids))
 
     op_name = plan["plan_parameters"]["op_name"]
 
@@ -217,7 +220,6 @@ def extract_plan_encoding_recursively(
     for child in plan.get("children", []):
         extract_plan_encoding_recursively(
             plan=child,
-            table_statistics=table_statistics,
             plan_encodings=plan_encodings,
             table_ids=table_ids,
             max_depth=max_depth,
@@ -358,20 +360,12 @@ def pad_indexes(data):
     return xs
 
 
-def init_table_ids(table_stats):
-    # We can't use the table IDs from the database statistics, because they contain pg_ and sql_ tables
-    # For this we maintain a separate list of table IDs
-    table_stats = [x for x in table_stats if not re.match(r"^(pg_|sql_)", x["relname"])]
-    table_ids = {}
-    for index, stats in enumerate(table_stats):
-        table_ids[stats["relname"]] = index
-    return table_ids
-
-
 def neo_collator(
     batch: Tuple,
     db_statistics: Dict,
-    column_statistics: Dict,
+    column_statistics: Dict,  # not used but for interface consistency
+    table_id_dict: Dict,  # not used but for interface consistency
+    col_id_dict: Dict,  # not used but for interface consistency
     feature_statistics: Dict,
     db_schema_info: Dict,
     max_depth=35,
@@ -386,8 +380,10 @@ def neo_collator(
     # to the same plan
     query_stats_dict = defaultdict(list)
 
-    column_statistics = db_statistics[0]["column_stats"]
-    table_stats = db_statistics[0]["table_stats"]
+    # get table and column id mappings
+    table_name_to_id_dict, col_name_to_id_dict = get_general_table_col_to_ids_dict(
+        db_statistics
+    )
 
     for sample_idx, p in batch:
         labels.append(p["plan_runtime_ms"])
@@ -395,11 +391,13 @@ def neo_collator(
         assign_additional_plan_info(p, db_statistics, db_schema_info=db_schema_info)
 
         # Do first query level encoding, consisting out of join graph and predicate encodings
-        join_encoding = extract_join_matrix(plan=p, table_statistics=table_stats)
+        join_encoding = extract_join_matrix(
+            plan=p, table_name_to_id_dict=table_name_to_id_dict
+        )
 
         predicate_encoding = extract_predicate_encoding(
             plan=p,
-            column_statistics=column_statistics,
+            db_statistics=db_statistics,
             feature_statistics=feature_statistics,
         )
         query_encoding = np.concatenate([join_encoding, predicate_encoding])
@@ -408,9 +406,8 @@ def neo_collator(
         # Next is plan level encoding. We add first native feature vectors to each node and later combine them
         extract_plan_encoding_recursively(
             plan=p,
-            table_statistics=table_stats,
             plan_encodings=[],
-            table_ids=init_table_ids(table_stats),
+            table_ids=table_name_to_id_dict,
             depth=0,
             max_depth=max_depth,
         )

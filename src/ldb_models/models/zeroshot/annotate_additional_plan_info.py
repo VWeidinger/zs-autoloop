@@ -47,20 +47,20 @@ def _get_add_plan_stats_parsed_plan(
         base_table_name = leaf_node["plan_parameters"]["table_name"]
         base_table_id = leaf_node["plan_parameters"]["table_id"]
 
-        assert "database_id" in plan, f"No database_id in plan: {plan}"
-        assert plan["database_id"] in db_statistics
-        assert "table_stats" in db_statistics[plan["database_id"]]
+        assert "run_file_id" in plan, f"No run_file_id in plan: {plan}"
+        assert plan["run_file_id"] in db_statistics
+        run_file_id = plan["run_file_id"]
+        assert "table_stats" in db_statistics[run_file_id]
 
         assert (
-            "reltuples"
-            in db_statistics[plan["database_id"]]["table_stats"][base_table_id]
+            "reltuples" in db_statistics[run_file_id]["table_stats"][base_table_id]
         ), (
-            f"table_size not in {db_statistics[plan['database_id']]['table_stats'][base_table_id].keys()}"
+            f"table_size not in {db_statistics[run_file_id]['table_stats'][base_table_id].keys()}"
         )
 
-        base_table_size = db_statistics[plan["database_id"]]["table_stats"][
-            base_table_id
-        ]["reltuples"]
+        base_table_size = db_statistics[run_file_id]["table_stats"][base_table_id][
+            "reltuples"
+        ]
 
         if scan_op in ["Index Scan", "Index Only Scan"]:
             assert "index_name" in leaf_node["plan_parameters"], (
@@ -71,7 +71,7 @@ def _get_add_plan_stats_parsed_plan(
                 index_name,
                 base_table_name,
                 db_schema_info,
-                plan["database_id"],
+                run_file_id,
                 db_statistics,
             )
             col_correlation = col_stats["correlation"]
@@ -131,6 +131,9 @@ def _get_add_plan_stats_json_plan(
     join_op = None
     col_correlation = None
 
+    assert "run_file_id" in plan, f"No run_file_id in plan: {plan}"
+    run_file_id = plan["run_file_id"]
+
     if len(leaf_nodes) == 1:
         # this is scan
 
@@ -150,28 +153,22 @@ def _get_add_plan_stats_json_plan(
             base_table_name = leaf_node["Relation Name"]
             base_table_alias = leaf_node["Alias"]
 
-            # set database id to 0 - this should be workload driven (i.e. only one database involved in this run)
-            assert len(db_statistics) == 1, (
-                f"Expected 1 database, but got {len(db_statistics)}"
-            )
-            database_id = 0
-
             base_table_id = None
-            for i, entry in enumerate(db_statistics[database_id]["table_stats"]):
+            for i, entry in enumerate(db_statistics[run_file_id]["table_stats"]):
                 if entry["relname"] == base_table_name:
                     base_table_id = i
                     break
 
-            assert database_id in db_statistics
-            assert "table_stats" in db_statistics[database_id]
+            assert run_file_id in db_statistics
+            assert "table_stats" in db_statistics[run_file_id]
 
             assert (
-                "reltuples" in db_statistics[database_id]["table_stats"][base_table_id]
+                "reltuples" in db_statistics[run_file_id]["table_stats"][base_table_id]
             ), (
-                f"table_size not in {db_statistics[database_id]['table_stats'][base_table_id].keys()}"
+                f"table_size not in {db_statistics[run_file_id]['table_stats'][base_table_id].keys()}"
             )
 
-            base_table_size = db_statistics[database_id]["table_stats"][base_table_id][
+            base_table_size = db_statistics[run_file_id]["table_stats"][base_table_id][
                 "reltuples"
             ]
 
@@ -182,7 +179,7 @@ def _get_add_plan_stats_json_plan(
                     index_name,
                     base_table_name,
                     db_schema_info,
-                    database_id,
+                    run_file_id,
                     db_statistics,
                 )
                 col_correlation = col_stats["correlation"]

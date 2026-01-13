@@ -1,5 +1,5 @@
 from functools import lru_cache
-from typing import Dict, List
+from typing import Dict, List, Optional, Tuple
 
 from ldb_schema.load_schema import get_json_schema
 
@@ -67,15 +67,15 @@ def extract_cols_from_join(join: Dict) -> List[Dict]:
 def apply_projection_pushdown(
     plan: Dict,
     database_statistics: Dict,
-    outcol_list: List[Dict] = None,
-    dataset: str = None,
-    db_id: int = None,
-) -> (Dict, List[str]):
+    outcol_list: Optional[List[Dict]] = None,
+    dataset: Optional[str] = None,
+    run_file_id: Optional[int] = None,
+) -> Tuple[Dict, List[str]]:
     if outcol_list is None:
         is_root = True
         outcol_list = []
         dataset = plan["dataset"]
-        db_id = plan["database_id"]
+        run_file_id = plan["run_file_id"]
     else:
         is_root = False
 
@@ -114,7 +114,7 @@ def apply_projection_pushdown(
                     database_statistics=database_statistics,
                     outcol_list=outcol_list,
                     dataset=dataset,
-                    db_id=db_id,
+                    run_file_id=run_file_id,
                 )[1]
             )
 
@@ -147,7 +147,7 @@ def apply_projection_pushdown(
                 plan["plan_parameters"]["table_name"],
                 database_statistics,
                 dataset=dataset,
-                db_id=db_id,
+                run_file_id=run_file_id,
             )
             cols = [
                 {
@@ -249,12 +249,16 @@ def get_schema_wrapper(dataset: str):
 
 
 def get_pk_col_of_table(
-    plan, table_name, dataset_statistics, dataset: str = None, db_id: int = None
-) -> str:
+    plan,
+    table_name,
+    dataset_statistics,
+    dataset: Optional[str] = None,
+    run_file_id: Optional[int] = None,
+) -> Tuple[str, int]:
     if dataset is None:
         assert "dataset" in plan, f"does not found dataset info in {plan}"
         dataset = plan["dataset"]
-        db_id = plan["database_id"]
+        run_file_id = plan["run_file_id"]
 
     schema = get_schema_wrapper(dataset=dataset)
 
@@ -267,15 +271,15 @@ def get_pk_col_of_table(
     pk_col_name = pk_cols[0]
 
     # lookup pk col id
-    assert "column_stats" in dataset_statistics[db_id], (
-        f"no column stats found in {dataset_statistics[db_id]}"
+    assert "column_stats" in dataset_statistics[run_file_id], (
+        f"no column stats found in {dataset_statistics[run_file_id]}"
     )
     cols = [
         i
-        for i, c in enumerate(dataset_statistics[db_id]["column_stats"])
+        for i, c in enumerate(dataset_statistics[run_file_id]["column_stats"])
         if c["tablename"] == table_name and c["attname"] == pk_col_name
     ]
     assert len(cols) == 1, (
-        f"not exactly one match found. Isntead: {cols} for {dataset_statistics[db_id]['column_stats']}"
+        f"not exactly one match found. Isntead: {cols} for {dataset_statistics[run_file_id]['column_stats']}"
     )
     return pk_cols[0], cols[0]

@@ -1,6 +1,6 @@
 import functools
 from pathlib import Path
-from typing import Tuple
+from typing import Dict, Tuple
 
 from classes.classes import (
     DataLoaderOptions,
@@ -18,6 +18,7 @@ from gensim.models import KeyedVectors
 from ldb_schema.load_schema import load_json
 from models.neo.neo_dataloader import neo_collator
 from models.query_former.dataloader import query_former_plan_collator
+from models.utils import get_general_table_col_to_ids_dict
 from models.workload_driven.dataset.mscn_batching import mscn_plan_collator
 from models.workload_driven.dataset.plan_tree_batching import (
     baseline_plan_collator,
@@ -34,11 +35,16 @@ class InputDims:
 
 class PlanModelInputDims(InputDims):
     def __init__(
-        self, feature_statistics, dim_word_embedding, dim_word_hash, dim_bitmaps
+        self,
+        feature_statistics,
+        dim_word_embedding,
+        dim_word_hash,
+        dim_bitmaps,
+        dim_tables: int,
+        dim_cols: int,
     ):
-        dim_cols, dim_ops, dim_tables, dim_pred_op = extract_dimensions(
-            feature_statistics
-        )
+        dim_ops, dim_pred_op = extract_dimensions(feature_statistics)
+
         self.input_dim_pred = (
             dim_cols + dim_pred_op + dim_word_embedding + dim_word_hash
         )
@@ -47,11 +53,19 @@ class PlanModelInputDims(InputDims):
 
 class MSCNInputDims(InputDims):
     def __init__(
-        self, feature_statistics, dim_word_embedding, dim_word_hash, dim_bitmaps
+        self,
+        feature_statistics,
+        dim_word_embedding,
+        dim_word_hash,
+        dim_bitmaps,
+        dim_tables: int,
+        dim_cols: int,
     ):
-        dim_cols, dim_ops, dim_tables, dim_pred_op, dim_joins, dim_aggs = (
-            extract_dimensions(feature_statistics, extended=True)
+        dim_ops, dim_pred_op, dim_joins, dim_aggs = extract_dimensions(
+            feature_statistics, extended=True
         )
+
+        # set input dimensions
         self.input_dim_table = dim_tables + dim_bitmaps
         self.input_dim_pred = (
             dim_cols + dim_pred_op + dim_word_embedding + dim_word_hash
@@ -62,11 +76,10 @@ class MSCNInputDims(InputDims):
 
 class NeoInputDims(InputDims):
     def __init__(
-        self, feature_statistics, dim_word_embedding, dim_word_hash, dim_bitmaps
+        self,
+        dim_tables: int,
+        dim_cols: int,
     ):
-        dim_cols, dim_ops, dim_tables, dim_pred_op = extract_dimensions(
-            feature_statistics
-        )
         self.num_cols = dim_cols
         self.num_tables = dim_tables
 
@@ -81,89 +94,6 @@ def make_filters_consistent(fc, db_col_mapping):
     return fc
 
 
-def make_pg_plan_consistent(p, db_col_mapping, db_table_mapping):
-    params = p["plan_parameters"]
-    if "table" in params.keys():
-        params["table"] = db_table_mapping[params["table"]]
-
-    if "output_columns" in params.keys():
-        for oc in params["output_columns"]:
-            if len(oc["columns"]) > 0:
-                for col in oc["columns"]:
-                    col["col_id"] = db_col_mapping[col["col_id"]]
-
-    if "filter" in params.keys():
-        fc = params["filter"]
-        make_filters_consistent(fc, db_col_mapping)
-
-    if "children" in params.keys():
-        for c in params["children"]:
-            make_pg_plan_consistent(c, db_col_mapping, db_table_mapping)
-
-
-def make_datasets_consistent(col_id, table_id, test_database_statistics, test_dataset):
-    col_mapping = dict()
-    table_mapping = dict()
-    for db_id, test_stat in test_database_statistics.items():
-        db_col_mapping = dict()
-        for i, test_c in enumerate(test_stat["column_stats"]):
-            mapped_id = col_id.get((test_c["attname"], test_c["tablename"]))
-            if mapped_id is not None:
-                db_col_mapping[i] = mapped_id
-
-        db_table_mapping = dict()
-        for i, test_c in enumerate(test_stat["table_stats"]):
-            mapped_id = table_id.get(test_c["relname"])
-            if mapped_id is not None:
-                db_table_mapping[i] = mapped_id
-
-        col_mapping[db_id] = db_col_mapping
-        table_mapping[db_id] = db_table_mapping
-
-    # There might be two plans pointing to the same object in memory. We do not want to permute those plans twice.
-    # Hence, we keep track of which plans were already permuted
-    for _, p in test_dataset:
-        if "permuted" not in p.keys():
-            p["permuted"] = False
-
-    # adapt plans to refer to the actual columns (traverse plans and replace tables, columns)
-    for _, p in test_dataset:
-        if p["permuted"]:
-            continue
-        p["permuted"] = True
-        db_id = p["database_id"]
-        db_col_mapping = col_mapping[db_id]
-        db_table_mapping = table_mapping[db_id]
-        make_pg_plan_consistent(p, db_col_mapping, db_table_mapping)
-
-
-def assert_db_stats_consistence(
-    database_statistics, test_database_statistics, test_dataset
-):
-    """
-    Makes sure one-hot encoded columns and tables refer to the same database
-    :param database_statistics:
-    :param test_database_statistics:
-    :param test_dataset:
-    :return:
-    """
-    train_stats = database_statistics[0]
-
-    # gold standard mapping
-    col_id = {
-        (train_c["attname"], train_c["tablename"]): i
-        for i, train_c in enumerate(train_stats["column_stats"])
-    }
-    table_id = {
-        train_t["relname"]: i for i, train_t in enumerate(train_stats["table_stats"])
-    }
-
-    # map every other dataset to the gold standard
-    make_datasets_consistent(col_id, table_id, test_database_statistics, test_dataset)
-
-    print("Successfully checked consistency of database statistics")
-
-
 def get_collate_func(
     model_config: ModelConfig,
     database_statistics: dict,
@@ -174,13 +104,20 @@ def get_collate_func(
     dim_word_emdb: int,
     dim_bitmaps: int,
     database_schema_info: dict,
+    table_id_dict: Dict[str, int],
+    col_id_dict: Dict[Tuple[str, str], int],
 ):
     collate_kwargs = {
         "db_statistics": database_statistics,
         "feature_statistics": feature_statistics,
         "column_statistics": column_statistics,
         "db_schema_info": database_schema_info,
+        "table_id_dict": table_id_dict,
+        "col_id_dict": col_id_dict,
     }
+
+    dim_tables = len(table_id_dict)
+    dim_cols = len(col_id_dict)
 
     if isinstance(
         model_config,
@@ -196,7 +133,12 @@ def get_collate_func(
         )
         plan_collator_func = baseline_plan_collator
         input_dims: InputDims = PlanModelInputDims(
-            feature_statistics, dim_word_emdb, dim_word_hash, dim_bitmaps
+            feature_statistics,
+            dim_word_emdb,
+            dim_word_hash,
+            dim_bitmaps,
+            dim_cols=dim_cols,
+            dim_tables=dim_tables,
         )
 
     elif isinstance(model_config, MSCNModelConfig):
@@ -210,7 +152,12 @@ def get_collate_func(
         )
         plan_collator_func = mscn_plan_collator
         input_dims: InputDims = MSCNInputDims(
-            feature_statistics, dim_word_emdb, dim_word_hash, dim_bitmaps
+            feature_statistics,
+            dim_word_emdb,
+            dim_word_hash,
+            dim_bitmaps,
+            dim_cols=dim_cols,
+            dim_tables=dim_tables,
         )
 
     elif isinstance(model_config, QueryFormerModelConfig):
@@ -226,13 +173,19 @@ def get_collate_func(
         )
         plan_collator_func = query_former_plan_collator
         input_dims: InputDims = PlanModelInputDims(
-            feature_statistics, dim_word_emdb, dim_word_hash, dim_bitmaps
+            feature_statistics,
+            dim_word_emdb,
+            dim_word_hash,
+            dim_bitmaps,
+            dim_cols=dim_cols,
+            dim_tables=dim_tables,
         )
 
     elif isinstance(model_config, NeoModelConfig):
         plan_collator_func = neo_collator
         input_dims: InputDims = NeoInputDims(
-            feature_statistics, dim_word_emdb, dim_word_hash, dim_bitmaps
+            dim_tables,
+            dim_cols,
         )
 
     else:
@@ -297,20 +250,15 @@ def create_baseline_dataloader(
             f"Created datasets of size: train {len(train_dataset)}, validation: {len(val_dataset)}, test: {len(test_dataset)}"
         )
 
-        assert_db_stats_consistence(
-            database_statistics, database_statistics, train_dataset
-        )
-        assert_db_stats_consistence(
-            database_statistics, database_statistics, val_dataset
-        )
-        assert_db_stats_consistence(
-            database_statistics, database_statistics, test_dataset
+        # create run_id independent mapping of table names to ids
+        table_id_dict, col_id_dict = get_general_table_col_to_ids_dict(
+            database_statistics
         )
 
         # plan_collator does the heavy lifting of creating the graphs and extracting the features and thus requires both
         # database statistics but also feature statistics
 
-        train_collate_fn, input_dims = get_collate_func(
+        collate_fn, input_dims = get_collate_func(
             model_config=model_config,
             database_statistics=database_statistics,
             feature_statistics=feature_statistics,
@@ -320,11 +268,17 @@ def create_baseline_dataloader(
             dim_word_emdb=dim_word_emdb,
             dim_bitmaps=dim_bitmaps,
             database_schema_info=db_schema_info,
+            table_id_dict=table_id_dict,
+            col_id_dict=col_id_dict,
         )
-        dataloader_args.update(collate_fn=train_collate_fn)
+        dataloader_args.update(collate_fn=collate_fn)
         train_loader = DataLoader(train_dataset, **dataloader_args)
         val_loader = DataLoader(val_dataset, **dataloader_args)
         test_loaders = [DataLoader(test_dataset, **dataloader_args)]
+    else:
+        raise Exception(
+            "no training workloads provided. This is a problem since training workloads are globally used for table & col-id mapping."
+        )
 
     if workload_runs.test_workload_runs:
         test_loaders = []
@@ -338,10 +292,6 @@ def create_baseline_dataloader(
                 stratify_per_wl_file=data_loader_options.stratify_per_wl_file,
             )
 
-            assert_db_stats_consistence(
-                database_statistics, database_statistics, test_dataset
-            )
-
             test_collate_fn, input_dims = get_collate_func(
                 model_config=model_config,
                 database_statistics=database_statistics,
@@ -352,6 +302,8 @@ def create_baseline_dataloader(
                 dim_word_emdb=dim_word_emdb,
                 dim_bitmaps=dim_bitmaps,
                 database_schema_info=db_schema_info,
+                table_id_dict=table_id_dict,
+                col_id_dict=col_id_dict,
             )
 
             dataloader_args.update(collate_fn=test_collate_fn)
@@ -364,4 +316,4 @@ def create_baseline_dataloader(
         val_loader,
         test_loaders,
         input_dims,
-    )  # ToDo!?
+    )

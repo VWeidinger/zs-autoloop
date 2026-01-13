@@ -1,5 +1,5 @@
 import collections
-from typing import Dict, List, Tuple
+from typing import DefaultDict, Dict, List, Tuple
 
 import dgl
 import numpy as np
@@ -36,7 +36,7 @@ def encode(column, plan_params, feature_statistics):
 
 def plan_to_graph(
     node,
-    database_id,
+    run_file_id: int,
     plan_depths,
     plan_features,
     plan_to_plan_edges,
@@ -72,7 +72,7 @@ def plan_to_graph(
         )
         plan_to_graph(
             node["children"][0],
-            database_id,
+            run_file_id,
             plan_depths,
             plan_features,
             plan_to_plan_edges,
@@ -113,7 +113,7 @@ def plan_to_graph(
             and annotate_base_table_card_to_scan_op
         ):
             # extract base table card
-            base_table_card = db_statistics[database_id]["table_stats"][
+            base_table_card = db_statistics[run_file_id]["table_stats"][
                 plan_params["table_id"]
             ]["reltuples"]
 
@@ -142,7 +142,7 @@ def plan_to_graph(
         for output_column in output_columns:
             output_column_id_list = [col["col_id"] for col in output_column["columns"]]
             output_column_node_id = output_column_idx.get(
-                (output_column["aggregation"], str(output_column_id_list), database_id)
+                (output_column["aggregation"], str(output_column_id_list), run_file_id)
             )
 
             # if not, create
@@ -158,20 +158,20 @@ def plan_to_graph(
                     (
                         output_column["aggregation"],
                         str(output_column_id_list),
-                        database_id,
+                        run_file_id,
                     )
                 ] = output_column_node_id
 
                 # featurize product of columns if there are any
-                db_column_features = db_statistics[database_id]["column_stats"]
-                assert db_column_features is not None
+                run_file_column_features = db_statistics[run_file_id]["column_stats"]
+                assert run_file_column_features is not None
                 for column in output_column["columns"]:
                     # lookup column node id or create node if not yet existing
                     column_node_id = get_or_add_col_id(
                         column["col_id"],
                         column_idx,
-                        database_id,
-                        db_column_features=db_column_features,
+                        run_file_id,
+                        run_file_column_features=run_file_column_features,
                         feature_statistics=feature_statistics,
                         plan_featurization=plan_featurization,
                         column_features=column_features,
@@ -190,7 +190,7 @@ def plan_to_graph(
         assert "is_index_cond" in filter, (
             f"No is_index_cond in filter: {filter} / {node}"
         )
-        db_column_features = db_statistics[database_id]["column_stats"]
+        db_column_features = db_statistics[run_file_id]["column_stats"]
         try:
             parse_predicates(
                 db_column_features,
@@ -205,7 +205,7 @@ def plan_to_graph(
                 logical_preds=logical_preds,
                 column_features=column_features,
                 column_idx=column_idx,
-                database_id=database_id,
+                run_file_id=run_file_id,
                 plan_node_id=plan_node_id,
                 inline_col_feats=filter_inline_col_feats,
             )
@@ -227,10 +227,10 @@ def plan_to_graph(
 
     if join is not None:
         assert "is_index_cond" in join, f"No is_index_cond in join: {join} / {node}"
-        db_column_features = db_statistics[database_id]["column_stats"]
+        run_file_column_features = db_statistics[run_file_id]["column_stats"]
         try:
             parse_predicates(
-                db_column_features,
+                run_file_column_features,
                 feature_statistics,
                 join,
                 filter_to_plan_edges,
@@ -242,7 +242,7 @@ def plan_to_graph(
                 logical_preds=logical_preds,
                 column_features=column_features,
                 column_idx=column_idx,
-                database_id=database_id,
+                run_file_id=run_file_id,
                 plan_node_id=plan_node_id,
                 is_join=True,
                 inline_col_feats=filter_inline_col_feats,
@@ -266,17 +266,21 @@ def plan_to_graph(
         assert isinstance(table_id, int), (
             f"Table id is not an int: {table_id} / {plan_params}"
         )
-        table_node_id = table_idx.get((table_id, database_id))
-        db_table_statistics = db_statistics[database_id]["table_stats"]
+        table_node_id = table_idx.get((table_id, run_file_id))
+        run_file_table_statistics = db_statistics[run_file_id]["table_stats"]
 
         if table_node_id is None:
             curr_table_features = [
-                encode(feature_name, db_table_statistics[table_id], feature_statistics)
+                encode(
+                    feature_name,
+                    run_file_table_statistics[table_id],
+                    feature_statistics,
+                )
                 for feature_name in plan_featurization.TABLE_FEATURES
             ]
             table_node_id = len(table_features)
             table_features.append(curr_table_features)
-            table_idx[(table_id, database_id)] = table_node_id
+            table_idx[(table_id, run_file_id)] = table_node_id
 
         table_to_plan_edges.append((table_node_id, plan_node_id))
 
@@ -288,7 +292,7 @@ def plan_to_graph(
     for i, c in enumerate(node["children"]):
         plan_to_graph(
             c,
-            database_id,
+            run_file_id,
             plan_depths,
             plan_features,
             plan_to_plan_edges,
@@ -321,37 +325,41 @@ def plan_to_graph(
 def get_or_add_col_id(
     column_id: int,
     column_idx: Dict,
-    database_id: int,
-    db_column_features: Dict,
+    run_file_id: int,
+    run_file_column_features: Dict,
     feature_statistics: Dict,
     plan_featurization,
     column_features: List,
 ):
-    column_node_id = column_idx.get((str(column_id), database_id))
+    column_node_id = column_idx.get((str(column_id), run_file_id))
     if column_node_id is None:
-        assert column_id < len(db_column_features), (
-            f"Column {column_id} w. db id: {database_id} not in db_column_features: {len(db_column_features)} / {db_column_features}"
+        assert column_id < len(run_file_column_features), (
+            f"Column {column_id} w. run file id: {run_file_id} not in run_file_column_features: {len(run_file_column_features)} / {run_file_column_features}"
         )
         try:
             curr_column_features = [
-                encode(feature_name, db_column_features[column_id], feature_statistics)
+                encode(
+                    feature_name,
+                    run_file_column_features[column_id],
+                    feature_statistics,
+                )
                 for feature_name in plan_featurization.COLUMN_FEATURES
             ]
         except Exception as e:
             print(
-                f"Error in column: {column_id} / {db_column_features[column_id]} / {str(feature_statistics)[:100]}",
+                f"Error in column: {column_id} / {run_file_column_features[column_id]} / {str(feature_statistics)[:100]}",
                 flush=True,
             )
             raise e
         column_node_id = len(column_features)
         column_features.append(curr_column_features)
-        column_idx[(str(column_id), database_id)] = column_node_id
+        column_idx[(str(column_id), run_file_id)] = column_node_id
 
     return column_node_id
 
 
 def parse_predicates(
-    db_column_features,
+    run_file_column_features,
     feature_statistics,
     filter,
     filter_to_plan_edges,
@@ -363,7 +371,7 @@ def parse_predicates(
     logical_preds,
     column_features,
     column_idx: Dict,
-    database_id: int,
+    run_file_id: int,
     plan_node_id=None,
     parent_filter_node_id=None,
     depth=0,
@@ -407,7 +415,9 @@ def parse_predicates(
             if "col_id" in filter and filter["col_id"] is not None:
                 curr_filter_col_feats = [
                     encode(
-                        column, db_column_features[filter["col_id"]], feature_statistics
+                        column,
+                        run_file_column_features[filter["col_id"]],
+                        feature_statistics,
                     )
                     for column in plan_featurization.COLUMN_FEATURES
                 ]
@@ -426,8 +436,8 @@ def parse_predicates(
                 col_node_id1 = get_or_add_col_id(
                     col_id1,
                     column_idx=column_idx,
-                    database_id=database_id,
-                    db_column_features=db_column_features,
+                    run_file_id=run_file_id,
+                    run_file_column_features=run_file_column_features,
                     feature_statistics=feature_statistics,
                     plan_featurization=plan_featurization,
                     column_features=column_features,
@@ -435,8 +445,8 @@ def parse_predicates(
                 col_node_id2 = get_or_add_col_id(
                     col_id2,
                     column_idx=column_idx,
-                    database_id=database_id,
-                    db_column_features=db_column_features,
+                    run_file_id=run_file_id,
+                    run_file_column_features=run_file_column_features,
                     feature_statistics=feature_statistics,
                     plan_featurization=plan_featurization,
                     column_features=column_features,
@@ -451,8 +461,8 @@ def parse_predicates(
                 col_node_id = get_or_add_col_id(
                     col_id,
                     column_idx=column_idx,
-                    database_id=database_id,
-                    db_column_features=db_column_features,
+                    run_file_id=run_file_id,
+                    run_file_column_features=run_file_column_features,
                     feature_statistics=feature_statistics,
                     plan_featurization=plan_featurization,
                     column_features=column_features,
@@ -493,7 +503,7 @@ def parse_predicates(
     if "children" in filter:
         for c in filter["children"]:
             parse_predicates(
-                db_column_features,
+                run_file_column_features,
                 feature_statistics,
                 c,
                 filter_to_plan_edges,
@@ -505,7 +515,7 @@ def parse_predicates(
                 logical_preds=logical_preds,
                 column_features=column_features,
                 column_idx=column_idx,
-                database_id=database_id,
+                run_file_id=run_file_id,
                 parent_filter_node_id=filter_node_id,
                 depth=depth + 1,
                 is_join=is_join,
@@ -576,10 +586,10 @@ def apply_feature_scalers(features, feature_statistics, feature_names: List[str]
 
 def postgres_plan_collator(
     plans: List[Tuple],
-    feature_statistics: dict[dict] = None,
-    db_statistics: dict = None,
-    db_schema_info: dict = None,
-    plan_featurization: Featurization = None,
+    feature_statistics: Dict,
+    db_statistics: Dict,
+    db_schema_info: Dict,
+    plan_featurization: Featurization,
     skip_top_aggregation: bool = False,
     filter_inline_col_feats: bool = True,
     annotate_base_table_card_to_scan_op: bool = False,
@@ -719,7 +729,7 @@ def postgres_plan_collator(
         # Parse the plan as graph
         plan_to_graph(
             p,
-            p["database_id"],
+            p["run_file_id"],
             plan_depths,
             plan_features,
             plan_to_plan_edges,
@@ -855,7 +865,7 @@ def postgres_plan_collator(
 
     # create graph
     try:
-        graph = dgl.heterograph(data_dict, num_nodes_dict=num_nodes_dict)
+        graph = dgl.heterograph(data_dict, num_nodes_dict=num_nodes_dict)  # type: ignore
     except Exception as e:
         print(
             f"Error in creating graph: {num_nodes_dict} \n {data_dict.keys()}",
@@ -865,16 +875,16 @@ def postgres_plan_collator(
     graph.max_depth = max_depth
     graph.max_pred_depth = max_pred_depth
 
-    features = collections.defaultdict(list)
+    features: DefaultDict = collections.defaultdict(list)
     features.update(
-        dict(
-            column=column_features,
-            table=table_features,
-            output_column=output_column_features,
-            filter_column=[
+        {
+            "column": column_features,
+            "table": table_features,
+            "output_column": output_column_features,
+            "filter_column": [
                 f for f, log_pred in zip(filter_features, logical_preds) if not log_pred
             ],
-        )
+        }
     )
     # sort the plan features based on the depth
     for u, plan_feat in enumerate(plan_features):
@@ -894,7 +904,7 @@ def postgres_plan_collator(
         node_type, _ = pred_node_type_id(logical_preds, pred_dict, pred_node_id)
         features[node_type].append(pred_feat)
 
-    features = postprocess_feats(features, num_nodes_dict)
+    postprocessed_features = postprocess_feats(features, num_nodes_dict)
 
     # rather deal with runtimes in secs
     labels = postprocess_labels(labels)
@@ -906,7 +916,7 @@ def postgres_plan_collator(
 
     return (
         graph,
-        features,
+        postprocessed_features,
         labels,
         {"sample_idxs": sample_idxs, **query_stats_dict},
     )
@@ -1007,7 +1017,7 @@ def create_node_types_per_depth(plan_depths, plan_to_plan_edges):
     return data_dict, nodes_per_depth, plan_dict
 
 
-def add_numerical_scalers(feature_statistics, scaler_type: str):
+def add_numerical_scalers(feature_statistics: Dict, scaler_type: str):
     for k, v in feature_statistics.items():
         if v["type"] == str(FeatureType.numeric):
             if scaler_type == "robust":

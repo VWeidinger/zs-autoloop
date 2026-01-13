@@ -380,6 +380,8 @@ def query_former_plan_collator(
     plans: List[SimpleNamespace],
     feature_statistics: Dict = None,
     db_statistics: Dict = None,
+    table_id_dict: Dict = None,  # only for interface consistency
+    col_id_dict: Dict = None,  # only for interface consistency
     db_schema_info: Dict = None,
     column_statistics: Dict = None,
     word_embeddings=None,

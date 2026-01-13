@@ -1,5 +1,5 @@
 from collections import defaultdict
-from typing import Dict
+from typing import Dict, Tuple
 
 import dgl
 import numpy as np
@@ -7,7 +7,6 @@ from models.white_mamba.extract_query_stats import extract_query_stats_for_plan
 from models.workload_driven.dataset.plan_tree_batching import (
     encode_one_hot,
     encode_predicate,
-    extract_dimensions,
     tensorize_feats,
 )
 from models.zeroshot.postgres_plan_batching import assign_additional_plan_info
@@ -18,48 +17,49 @@ def extract_predicate_features(
     n,
     pred_feats,
     column_statistics,
-    db_statistics,
     dim_word_emdb,
     dim_word_hash,
     feature_statistics,
     word_embeddings,
+    col_id_dict: Dict[Tuple[str, str], int],
 ):
     # (column one hot, operator one hot, predicate)
     if n["operator"] not in {str(LogicalOperator.AND), str(LogicalOperator.OR)}:
         pred_feat_vec = encode_predicate(
             column_statistics,
-            db_statistics,
             dim_word_emdb,
             dim_word_hash,
-            feature_statistics,
-            n,
-            word_embeddings,
+            feature_statistics=feature_statistics,
+            filter_column=n,
+            word_embeddings=word_embeddings,
+            col_id_dict=col_id_dict,
         )
         pred_feats.append(pred_feat_vec)
 
     if "children" in n.keys():
         for c in n["children"]:
             extract_predicate_features(
-                c,
-                pred_feats,
-                column_statistics,
-                db_statistics,
-                dim_word_emdb,
-                dim_word_hash,
-                feature_statistics,
-                word_embeddings,
+                n=c,
+                pred_feats=pred_feats,
+                column_statistics=column_statistics,
+                dim_word_emdb=dim_word_emdb,
+                dim_word_hash=dim_word_hash,
+                feature_statistics=feature_statistics,
+                word_embeddings=word_embeddings,
+                col_id_dict=col_id_dict,
             )
 
 
 def extract_set_features(
     plan,
-    feature_statistics,
+    feature_statistics: Dict,
     dim_word_hash,
     dim_word_emdb,
     column_statistics,
-    db_statistics,
     word_embeddings,
     dim_bitmaps,
+    table_id_dict: Dict[str, int],
+    col_id_dict: Dict[Tuple[str, str], int],
     table_feats=None,
     pred_feats=None,
 ):
@@ -81,21 +81,27 @@ def extract_set_features(
         extract_predicate_features(
             filter_columns,
             pred_feats,
-            column_statistics,
-            db_statistics,
-            dim_word_emdb,
-            dim_word_hash,
-            feature_statistics,
-            word_embeddings,
+            column_statistics=column_statistics,
+            dim_word_emdb=dim_word_emdb,
+            dim_word_hash=dim_word_hash,
+            feature_statistics=feature_statistics,
+            word_embeddings=word_embeddings,
+            col_id_dict=col_id_dict,
         )
 
     # table feature set#
 
     if "table_id" in params.keys():
-        table = params["table_id"]
-        _, _, dim_tables, _ = extract_dimensions(feature_statistics)
+        run_table_id = params["table_id"]
+        table_name = params["table_name"]
+
+        # lookup global table id
+        table_id = table_id_dict[table_name]
+
+        # one hot encoding
+        dim_tables = len(table_id_dict)
         table_vec = np.zeros(dim_tables)
-        table_vec[table] = 1
+        table_vec[table_id] = 1
         table_feat = np.concatenate([table_vec, sample_bitmap])
         table_feats.append(table_feat)
 
@@ -107,9 +113,10 @@ def extract_set_features(
                 dim_word_hash,
                 dim_word_emdb,
                 column_statistics,
-                db_statistics,
                 word_embeddings,
                 dim_bitmaps,
+                table_id_dict=table_id_dict,
+                col_id_dict=col_id_dict,
                 table_feats=table_feats,
                 pred_feats=pred_feats,
             )
@@ -170,8 +177,10 @@ def get_all_join_conds(plan: dict, feature_statistics: dict):
 
 def mscn_plan_collator(
     plans,
-    feature_statistics=None,
-    db_statistics=None,
+    feature_statistics: Dict,
+    db_statistics: Dict,
+    table_id_dict: Dict[str, int],
+    col_id_dict: Dict[Tuple[str, str], int],
     column_statistics=None,
     word_embeddings=None,
     dim_word_hash=None,
@@ -190,7 +199,6 @@ def mscn_plan_collator(
     # - output column set (which aggregation and which column)
 
     # compute input dimensions for model
-    db_stats = db_statistics[0]
     features = {"table": [], "pred": [], "agg": [], "join": []}
     edge_dict = {
         ("table", "table_plan", "plan"): [],
@@ -199,12 +207,9 @@ def mscn_plan_collator(
         ("join", "join_plan", "plan"): [],
     }
     labels = []
-    sql_statements = []
-    hints = []
 
     query_stats_dict = defaultdict(list)
 
-    sample_idxs = []
     for plan_id, (sample_idx, p) in enumerate(plans):
         labels.append(p["plan_runtime_ms"])
         assign_additional_plan_info(p, db_statistics, db_schema_info=db_schema_info)
@@ -219,17 +224,22 @@ def mscn_plan_collator(
         curr_table_feats, curr_pred_feats = extract_set_features(
             p,
             feature_statistics,
-            dim_word_hash,
-            dim_word_emdb,
-            column_statistics,
-            db_stats,
-            word_embeddings,
-            dim_bitmaps,
+            dim_word_hash=dim_word_hash,
+            dim_word_emdb=dim_word_emdb,
+            column_statistics=column_statistics,
+            word_embeddings=word_embeddings,
+            dim_bitmaps=dim_bitmaps,
+            table_id_dict=table_id_dict,
+            col_id_dict=col_id_dict,
         )
 
         join_conditions = get_all_join_conds(p, feature_statistics)
         curr_agg_feats, curr_join_feats = extract_joins_aggregations(
-            feature_statistics, p, join_conditions
+            feature_statistics,
+            p,
+            join_conditions,
+            num_cols=len(col_id_dict),
+            col_id_dict=col_id_dict,
         )
 
         # sanity checks
@@ -289,7 +299,11 @@ def mscn_plan_collator(
 
 
 def extract_joins_aggregations(
-    feature_statistics: dict, p: dict, join_conditions: list
+    feature_statistics: dict,
+    p: dict,
+    join_conditions: list,
+    num_cols: int,
+    col_id_dict: Dict[Tuple[str, str], int],
 ):
     # join feature set
     curr_join_feats = []
@@ -299,16 +313,19 @@ def extract_joins_aggregations(
         curr_join_feats.append(join_vec)
     # output column set
     curr_agg_feats = []
-    dim_cols, _, _, _ = extract_dimensions(feature_statistics)
+
+    # dimension of column one hot
     for output_col in p["plan_parameters"]["output_columns"]:
         if output_col["aggregation"] is None:
             continue
         agg_vec = encode_one_hot(
             "aggregation", feature_statistics, output_col["aggregation"]
         )
-        col_vec = np.zeros(dim_cols)
+        col_vec = np.zeros(num_cols)
         for c_idx in output_col["columns"]:
-            col_vec[c_idx["col_id"]] = 1
+            table_name = c_idx["table_name"]
+            col_name = c_idx["col_name"]
+            col_vec[col_id_dict[(table_name, col_name)]] = 1
         agg_feat = np.concatenate([agg_vec, col_vec])
         curr_agg_feats.append(agg_feat)
     return curr_agg_feats, curr_join_feats

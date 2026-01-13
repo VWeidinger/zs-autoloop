@@ -3,12 +3,10 @@ from pathlib import Path
 from typing import List
 
 import torch
+from classes.classes import ModelConfig
 from dgl.dataloading import DataLoader
 from torch import nn
 from torch.optim import Optimizer
-from wandb.apis.public import Run
-
-from classes.classes import ModelConfig
 from training.bound_predictions_with_history import PredictionBounder
 from training.training.checkpoint import save_checkpoint
 from training.training.metrics import Metric
@@ -16,6 +14,8 @@ from training.training.test import test_model
 from training.training.train import train_epoch
 from training.training.train_w_rank import RankModel, train_epoch_rank, validate_rank
 from training.training.validate import validate_model
+
+from wandb.apis.public import Run
 
 
 def train_model(
@@ -118,6 +118,9 @@ def train_model(
         any_best_metric = any_best_metric or new_best_metric_seen
 
         # validate on test sets with test evaluations
+        assert len(test_loaders) == len(test_csv_paths), (
+            f"Mismatch in test loaders and csv paths lengths: {len(test_loaders)} vs {len(test_csv_paths)}"
+        )
         test_model(
             config=config,
             test_csv_paths=test_csv_paths,

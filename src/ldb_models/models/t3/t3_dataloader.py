@@ -521,17 +521,18 @@ def gen_t3_dataset(
     )
 
     # augment database statistics
-    for db_id, stats in db_statistics.items():
+    for run_file_id, stats in db_statistics.items():
         assert isinstance(stats, Dict), f"Expected dict, got {type(stats)}"
         add_table_stats_dict(stats)
 
     # extract database schema information
     db_names = dict(
-        (db_id, value["database_name"]) for db_id, value in db_statistics.items()
+        (run_file_id, value["database_name"])
+        for run_file_id, value in db_statistics.items()
     )
     db_schema_info = dict(
-        (db_id, get_json_schema(db_name))
-        for db_id, db_name in db_names.items()
+        (run_file_id, get_json_schema(db_name))
+        for run_file_id, db_name in db_names.items()
         if db_name != "unknown"
     )
 
@@ -579,7 +580,7 @@ def gen_t3_dataset(
         qp = QueryPlan(
             plan,
             card_type=model_config.card_type,
-            db_statistics=db_statistics[plan["database_id"]],
+            db_statistics=db_statistics[plan["run_file_id"]],
         )
         qp.build_pipelines(pipelines=pipelines)
 

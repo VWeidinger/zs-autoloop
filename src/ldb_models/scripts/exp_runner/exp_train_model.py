@@ -3,7 +3,7 @@ import os
 # add to python path
 import sys
 from functools import lru_cache
-from typing import List
+from typing import List, Optional
 
 from ldb_schema.datasets import Dataset
 from ldb_schema.paths import ClusterPaths, LocalPaths
@@ -39,8 +39,8 @@ def generate_training_commands(
     datasets: List[Dataset],
     seeds: list[int],
     python_version: str,
-    wandb_project: str,
-    wandb_entity: str,
+    wandb_project: Optional[str],
+    wandb_entity: Optional[str],
     model_list: list[ModelConfig] = ModelConfig,
     quick_run: bool = False,
     pt_profiler: bool = False,
@@ -308,16 +308,18 @@ if __name__ == "__main__":
 
     if os.getenv("SSH_PATH") is not None:
         ssh_path = os.getenv("SSH_PATH")
+        assert ssh_path is not None, "SSH_PATH environment variable is not set"
     else:
         ssh_path = "ssh"
 
-    setup_steps = [
+    setup_steps = []
+    setup_steps.append(
         RsyncCurrentRepo(
             gitignore_path=".gitignore",
             local_folder_path=LocalPaths().Models.root.as_posix(),
             ssh_path=ssh_path,
-        ),
-    ]
+        )
+    )
 
     if install_venv:
         setup_steps.append(
@@ -368,16 +370,16 @@ if __name__ == "__main__":
         5
     ]  # 3=parsed_plans2, 4=fixed card-annotation of optimal plans in JOB & -Complex and improved logging/plotting, 5=fixed parser error (new feature statistics) 10/2025)
     nodes = [
-        # TrainingServers.NODE01,
-        # TrainingServers.NODE02,
-        # TrainingServers.NODE03,
-        # TrainingServers.NODE05,
-        # TrainingServers.NODE04,
-        TrainingServers.NODE00,
+        TrainingServers.NODE01,
+        TrainingServers.NODE02,
+        TrainingServers.NODE03,
+        TrainingServers.NODE04,
+        TrainingServers.NODE05,
+        # TrainingServers.NODE00,
         # TrainingServers.NODE09,
     ]
     sockets = [0, 1]
-    out_file_id_offset = 1
+    out_file_id_offset = 0
     num_parallel_screens = len(sockets)
     num_parallel_jobs_dgx = 1
     num_parallel_tasks_per_job_dgx = 1
@@ -419,22 +421,22 @@ if __name__ == "__main__":
     model_configs = []
     for model_type in [
         "postgres",
-        # "zeroshot",
+        "zeroshot",
         # "zeroshot_act_card",
         # # 'zeroshot_low_min',
         # # 'zeroshot_xl',
         # # 'zeroshot_timeout',
-        # "dace",
-        # "flat",
-        # "t3",
+        "dace",
+        "flat",
+        "t3",
         # "t3_act",
         # "zeroshot_vae",
-        # "neo",
-        # "qppnet",
-        # "mscn",
-        # "e2e",
-        # "query_former",
-        # "mamba",
+        "neo",
+        "qppnet",
+        "mscn",
+        "e2e",
+        "query_former",
+        "mamba",
         # # "mamba_tanh",
         # # "mamba_relu",
         # "spn",
