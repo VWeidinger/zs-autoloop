@@ -132,6 +132,7 @@ def get_parameterized_model_config(model_name: str, m_args: Dict) -> ModelConfig
             "subplan_monotonicity_loss_fn",
             "loss_class_name",
             "scaler_type",
+            "cardinality_estimation_correction_logic_params",
         ]
         found = False
         for str_keyword in str_keywords:

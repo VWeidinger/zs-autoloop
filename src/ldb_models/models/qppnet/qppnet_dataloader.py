@@ -138,6 +138,8 @@ def create_datasets(
         stratify_per_wl_file=stratify_per_wl_file,
         merge_nlj_and_inlj_to_same_op=model_config.merge_nlj_and_inlj_to_same_op,
         remove_join_cond_from_plan=model_config.remove_join_cond_from_plan,
+        apply_card_correction_logic=model_config.apply_cardinality_estimation_correction_logic,
+        card_correction_logic_params=model_config.cardinality_estimation_correction_logic_params,
     )
 
     no_plans = len(plans)

@@ -111,6 +111,8 @@ def create_dace_datasets(
         merge_nlj_and_inlj_to_same_op=model_config.merge_nlj_and_inlj_to_same_op,
         remove_join_cond_from_plan=model_config.remove_join_cond_from_plan,
         augment_with_subplans=model_config.train_on_subplans and not is_test,
+        apply_card_correction_logic=model_config.apply_cardinality_estimation_correction_logic,
+        card_correction_logic_params=model_config.cardinality_estimation_correction_logic_params,
     )
 
     # extract database schema information

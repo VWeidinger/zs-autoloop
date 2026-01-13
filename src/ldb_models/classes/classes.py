@@ -133,6 +133,8 @@ def shorten_model_name(name: str) -> str:
     name = name.replace("add_child_type_info_to_messages", "childtypeinfo")
     name = name.replace("filter_condense_operators", "filtercondensed")
     name = name.replace("scanhint_stratified", "scanstrat")
+    name = name.replace("apply_cardinality_estimation_correction_logic", "cardcor")
+    name = name.replace("cardinality_estimation_correction_logic_params", "ccmode")
     return name
 
 
@@ -191,6 +193,10 @@ class ModelConfig:
     prohibit_aggregation_node_at_root: bool = False  # prohibit that the root node is an aggregation node - will be done at the beginning of collator
 
     apply_outcol_pruning: bool = False  # perform projection pushdown on the plans - sometimes postgres is probably doing this but not annotating the query plans. i.e. all table accesses which are a left child of a join are annotated to output all columns of that table. This is unrealistic to assume, and confuses the model (is annotated, but has not impact on performance). This also increases the overall number of columns in the graph unreasonably.
+
+    # apply cardinality estimation correction logic
+    apply_cardinality_estimation_correction_logic: bool = False
+    cardinality_estimation_correction_logic_params: str = None
 
     def get_model_dir(self, source_path: Paths, database: Dataset) -> Path:
         # shorten model name - otherwise we are hitting file-name limits

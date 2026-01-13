@@ -24,6 +24,7 @@ from sklearn import preprocessing
 from sklearn.pipeline import Pipeline
 from torch.utils.data import DataLoader
 from tqdm import tqdm
+from training.dataset.card_adjustment import apply_cardinality_estimation_logic
 from training.dataset.plan_dataset import (
     OHEMPlanDataset,
     PlanDataset,
@@ -82,6 +83,8 @@ def read_workload_runs(
     merge_nlj_and_inlj_to_same_op: bool = False,
     remove_join_cond_from_plan: bool = False,
     apply_outcol_pruning: bool = False,
+    apply_card_correction_logic: bool = False,
+    card_correction_logic_params: Optional[str] = None,
 ) -> Tuple[List[dict], dict]:
     # reads several workload runs
     plans = []
@@ -221,6 +224,31 @@ def read_workload_runs(
                 except Exception as e:
                     print(f"full plan: {plan}", flush=True)
                     raise e
+
+            if apply_card_correction_logic:
+                # apply card correction logic for plans
+
+                enable_bu = (
+                    "bu" in card_correction_logic_params
+                    if card_correction_logic_params
+                    else True
+                )
+                enable_td = (
+                    "td" in card_correction_logic_params
+                    if card_correction_logic_params
+                    else True
+                )
+                update_est_loops = (
+                    "ul" in card_correction_logic_params
+                    if card_correction_logic_params
+                    else True
+                )
+                plan = apply_cardinality_estimation_logic(
+                    plan,
+                    enable_bu=enable_bu,
+                    enable_td=enable_td,
+                    update_est_loops=update_est_loops,
+                )
 
             per_file_plans.append(plan)
 
@@ -499,6 +527,8 @@ def create_datasets(
             merge_nlj_and_inlj_to_same_op=model_config.merge_nlj_and_inlj_to_same_op,
             remove_join_cond_from_plan=model_config.remove_join_cond_from_plan,
             apply_outcol_pruning=model_config.apply_outcol_pruning,
+            apply_card_correction_logic=model_config.apply_cardinality_estimation_correction_logic,
+            card_correction_logic_params=model_config.cardinality_estimation_correction_logic_params,
         )
     else:
         plans = inject_plans

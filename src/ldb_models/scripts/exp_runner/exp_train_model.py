@@ -7,13 +7,7 @@ from typing import List, Optional
 
 from ldb_schema.datasets import Dataset
 from ldb_schema.paths import ClusterPaths, LocalPaths
-from octopus.step import (
-    KillAllScreens,
-    Rsync,
-    RsyncCurrentRepo,
-    SetupRYEVenv,
-    SetupVenv,
-)
+from octopus.step import KillAllScreens, Rsync, RsyncCurrentRepo, SetupUVVenv, SetupVenv
 
 import wandb
 
@@ -330,7 +324,7 @@ if __name__ == "__main__":
             )
         )
     if install_rye:
-        setup_steps.append(SetupRYEVenv(no_lock=False))
+        setup_steps.append(SetupUVVenv())
 
     purge_steps = [KillAllScreens()]
     pickup_steps = [
@@ -459,8 +453,15 @@ if __name__ == "__main__":
                     model_type,
                     wandb_group="baseline",
                     include_pg_opt_workloads=True,
+                    apply_cardinality_estimation_correction_logic=True,
+                    cardinality_estimation_correction_logic_params=params,
                     **model_specific_args,
                 )
+                for params in [
+                    "el_bu_td",
+                    "el_bu",
+                    "el_td",
+                ]
             ]
         )
 
@@ -469,7 +470,7 @@ if __name__ == "__main__":
     runner = ExpRunner(
         replicate=False,
         node_names=[node["hostname"] for node in nodes],
-        python_version="rye",
+        python_version="uv",
         available_sockets=sockets,
         num_parallel_screens_or_jobs=min(num_parallel_screens, len(model_configs)),
         dgx_num_parallel_screens_or_jobs=num_parallel_jobs_dgx,
