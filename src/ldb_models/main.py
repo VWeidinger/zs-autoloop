@@ -1,6 +1,7 @@
 import argparse
 import copy
 import functools
+import random
 from datetime import datetime
 from pathlib import Path
 from typing import List, Optional, Tuple
@@ -9,12 +10,16 @@ import attrs as attrs
 import numpy as np
 import torch
 import torch.optim as opt
-from classes.classes import (
+import wandb
+from classes import (
+    CascadeRankingModelConfig,
     DACEModelConfig,
     DataLoaderOptions,
     E2EModelConfig,
     FlatModelConfig,
     MambaModelConfig,
+    MambaRankingModelConfig,
+    MambaSumOfOperatorsModelConfig,
     ModelConfig,
     MSCNModelConfig,
     NeoModelConfig,
@@ -22,10 +27,13 @@ from classes.classes import (
     QueryFormerModelConfig,
     ScaledPostgresModelConfig,
     SPNModelConfig,
+    SumOfOperatorsModelConfig,
+    SUMOModelConfig,
     T3ModelConfig,
     TabularModelConfig,
     TlstmModelConfig,
     ZeroShotModelConfig,
+    ZeroShotRankingModelBaseConfig,
     ZeroShotVAEModelConfig,
 )
 from classes.model_config_helper import get_model_config
@@ -36,11 +44,14 @@ from models.neo.neo_model import TreeConvolution
 from models.qppnet.qppnet_dataloader import create_qppnet_dataloader
 from models.qppnet.qppnet_model import QPPNet
 from models.query_former.model import QueryFormer
+from models.ranking.ranking import RankModel
+from models.sumo.sumo import SUMO
 from models.tabular.train_tabular_baseline import (
     predict_tabular_model,
     train_tabular_model,
 )
 from models.white_mamba.mamba_model import MambaModel
+from models.white_mamba.mamba_sum_of_operators import MambaSumOfOperatorsModel
 from models.workload_driven.dataset.dataset_creation import create_baseline_dataloader
 from models.workload_driven.model.e2e_model import E2EModel
 from models.workload_driven.model.mscn_model import MSCNModel
@@ -48,6 +59,7 @@ from models.zeroshot.specific_models.postgres_zero_shot import PostgresZeroShotM
 from models.zeroshot.specific_models.postgres_zero_shot_vae import (
     PostgresZeroShotModelVAE,
 )
+from models.zeroshot.specific_models.sum_of_operators import SumOfOperatorsModel
 from schedulefree import AdamWScheduleFree
 from torch import nn
 from torch.optim.optimizer import Optimizer
@@ -56,11 +68,10 @@ from train import train_model
 from training.bound_predictions_with_history import PredictionBounder
 from training.dataset.dataset_creation import create_zeroshot_dataloader
 from training.dataset.plan_dataset import OHEMPlanDataset
+from training.scheduler import init_scheduler
 from training.training.checkpoint import load_checkpoint
-from training.training.metrics import Metric, RankAccuracy, init_metrics
+from training.training.metrics import Metric, init_metrics
 from training.training.test import test_model
-
-import wandb
 from wandb.apis.public import Run
 
 
@@ -76,18 +87,116 @@ def init_model(
     if isinstance(
         config, (ZeroShotModelConfig, ZeroShotVAEModelConfig, MambaModelConfig)
     ):
+        shuffle = (
+            config.shuffle_train_data if hasattr(config, "shuffle_train_data") else True
+        )
+
         label_norm, feature_statistics, train_loader, val_loader, test_loaders = (
             create_zeroshot_dataloader(
                 workload_runs=workload_runs,
                 statistics_file=statistics_file,
                 model_config=config,
-                data_loader_options=DataLoaderOptions(),
+                data_loader_options=DataLoaderOptions(shuffle=shuffle),
                 quick_run=quick_run,
                 assemble_graphs_up_front=assemble_data_up_front,
             )
         )
 
-        if isinstance(config, ZeroShotVAEModelConfig):
+        print(f"Model device: {config.device}", flush=True)
+
+        if isinstance(config, CascadeRankingModelConfig):
+            # Instantiate the main RANKING model (the second, more complex stage)
+            ZSmodel = PostgresZeroShotModel(
+                model_config=config,
+                feature_statistics=feature_statistics,
+                label_norm=label_norm,
+            )
+
+            # Instantiate and load the pretrained FILTER model (the first stage)
+            print("--- Initializing cascade filter model for evaluation ---")
+            # Pass device at construction time since ModelConfig is frozen and
+            # cannot be mutated after instantiation.
+            filter_model_config = get_model_config(
+                model_type=config.cascade_filter_model_type,
+                m_args={"device": config.device},
+            )
+            if isinstance(filter_model_config, SUMOModelConfig):
+                filter_model_shell = SUMO(
+                    model_config=filter_model_config,
+                    feature_statistics=feature_statistics,
+                    label_norm=label_norm,
+                )
+            elif isinstance(filter_model_config, SumOfOperatorsModelConfig):
+                filter_model_shell = SumOfOperatorsModel(
+                    model_config=filter_model_config,
+                    feature_statistics=feature_statistics,
+                    label_norm=label_norm,
+                )
+            elif isinstance(filter_model_config, ZeroShotRankingModelBaseConfig):
+                filter_model_shell = PostgresZeroShotModel(
+                    model_config=filter_model_config,
+                    feature_statistics=feature_statistics,
+                    label_norm=label_norm,
+                )
+            else:
+                raise NotImplementedError(
+                    f"Cascade filter model type '{config.cascade_filter_model_type}' is not supported."
+                )
+            filter_model_shell = RankModel(
+                model=filter_model_shell, model_config=filter_model_config
+            )
+
+            print(
+                f"Loading filter model '{config.cascade_filter_model_name}' from '{config.cascade_filter_model_dir}'"
+            )
+            _, _, _, loaded_filter_model, _, _, _, _, _ = load_checkpoint(
+                model=filter_model_shell,
+                manual_model_dir=config.cascade_filter_model_dir,
+                config=filter_model_config,
+                manual_model_name=config.cascade_filter_model_name,
+                target_path=None,
+                optimizer=None,
+                metrics=[],
+            )
+
+            loaded_filter_model.eval()
+
+            model = RankModel(
+                model=ZSmodel, model_config=config, filter_model=loaded_filter_model
+            )
+
+        elif isinstance(config, SUMOModelConfig):
+            ZSmodel: nn.Module = SUMO(
+                model_config=config,
+                feature_statistics=feature_statistics,
+                label_norm=label_norm,
+            )
+            model: nn.Module = RankModel(model=ZSmodel, model_config=config)
+        elif isinstance(config, SumOfOperatorsModelConfig):
+            ZSmodel: nn.Module = SumOfOperatorsModel(
+                model_config=config,
+                feature_statistics=feature_statistics,
+                label_norm=label_norm,
+            )
+            model: nn.Module = RankModel(model=ZSmodel, model_config=config)
+        elif isinstance(config, MambaSumOfOperatorsModelConfig):
+            ZSmodel: nn.Module = MambaSumOfOperatorsModel(
+                model_config=config, feature_statistics=feature_statistics
+            )
+            model: nn.Module = RankModel(model=ZSmodel, model_config=config)
+        elif isinstance(config, MambaRankingModelConfig):
+            ZSmodel: nn.Module = MambaModel(
+                model_config=config, feature_statistics=feature_statistics
+            )
+            model: nn.Module = RankModel(model=ZSmodel, model_config=config)
+        elif isinstance(config, ZeroShotRankingModelBaseConfig):
+            ZSmodel: nn.Module = PostgresZeroShotModel(
+                model_config=config,
+                feature_statistics=feature_statistics,
+                label_norm=label_norm,
+            )
+            model: nn.Module = RankModel(model=ZSmodel, model_config=config)
+        elif isinstance(config, ZeroShotVAEModelConfig):
             model: nn.Module = PostgresZeroShotModelVAE(
                 model_config=config,
                 feature_statistics=feature_statistics,
@@ -206,6 +315,8 @@ def init_model(
         model = None
         train_loader, val_loader, test_loaders = None, None, None
         feature_statistics = None
+        model = None
+
     else:
         raise NotImplementedError
 
@@ -229,7 +340,10 @@ def init_model(
             f"({timeout_count / overall_count * 100:.2f}%) in {string}"
         )
 
-    if not config.online_hard_example_mining:
+    if (
+        hasattr(config, "online_hard_example_mining")
+        and not config.online_hard_example_mining
+    ) or not hasattr(config, "online_hard_example_mining"):
         assert not config.online_hard_example_mining, (
             "datasets will be instantiated later -> deferred_setup()"
         )
@@ -251,7 +365,6 @@ def use_model(
     column_statistics: Path,
     word_embeddings: Path,
     model_dir: Path,
-    ft_with_ranking: bool,
     target_dir: Path,
     config: ModelConfig,
     wandb_run: Run,
@@ -268,6 +381,7 @@ def use_model(
     print(f"Found model config {config}")
     torch.manual_seed(config.seed)
     np.random.seed(config.seed)
+    random.seed(config.seed)
 
     # Add test workloads to workload_runs
     wl_runs.update_test_workloads(target_dir, config.seed)
@@ -339,6 +453,8 @@ def use_model(
                 model.parameters(), **config.optimizer_kwargs
             )
 
+        scheduler, target_epochs = init_scheduler(config, optimizer)
+
         print(
             f"Try to load model with name {config.name.NAME} and seed {config.seed} from {model_dir}",
             flush=True,
@@ -362,7 +478,6 @@ def use_model(
             optimizer=optimizer,
             metrics=metrics,
             filetype=".pt",
-            prefer_ft_rank=ft_with_ranking,
             load_last_checkpoint=True,
         )
 
@@ -377,7 +492,8 @@ def use_model(
                 f"Try to initialize model from {pretrained_model_dir}/{pretrained_model_name}",
                 flush=True,
             )
-            _, _, _, model, _, _, _, found, _ = load_checkpoint(
+            # We capture both 'found' and 'rank_found' because load_checkpoint returns found=False for rank models.
+            _, _, _, model, _, _, _, found_base, found_rank = load_checkpoint(
                 model=model,
                 manual_model_dir=pretrained_model_dir,
                 manual_model_name=pretrained_model_name,
@@ -385,10 +501,12 @@ def use_model(
                 optimizer=None,
                 metrics=copy.deepcopy(metrics),
                 filetype=".pt",
-                prefer_ft_rank=ft_with_ranking,
                 load_last_checkpoint=False,
                 target_path=None,
             )  # load best checkpoint
+
+            # Consider the model "found" if either a base or a rank model was loaded.
+            found = found_base or found_rank
 
             assert found, (
                 f"Pretrained model not found in {pretrained_model_dir}/{pretrained_model_name}"
@@ -406,7 +524,10 @@ def use_model(
     ###
     # Do deferred setup of OHEM - it was easier to do it here, because we need the model and criterion (not yet available during dataset creation)
     ###
-    if config.online_hard_example_mining:
+    if (
+        hasattr(config, "online_hard_example_mining")
+        and config.online_hard_example_mining
+    ):
         assert isinstance(config, (ZeroShotModelConfig, MambaModelConfig)), (
             "OHEM is only supported for ZeroShot and Mamba at the moment"
         )
@@ -445,119 +566,83 @@ def use_model(
     rerun_predict = False
     epoch = 0
     if mode in ["train", "retrain"]:
-        # assemble train to do list - FALSE=no ranking, TRUE=ranking
-        if ft_with_ranking:
-            if rank_found:
-                todo_list = [True]
-            else:
-                todo_list = [False, True]
-        else:
-            todo_list = [False]
-
-        if finished:
-            print(
-                f"Training already finished for {config.name.NAME} with seed {config.seed}"
-            )
-            todo_list.pop(0)  # remove the first element - it has already finished
-
-            # if there is still something to do: start from the beginning the next stage
-            if len(todo_list) > 0:
-                epoch = 0
-                epochs_wo_improvement = 0
-            else:
-                rerun_predict = True
-
         try:
             wandb_run.watch(model, log="all")
         except Exception:
             print("Could not watch model with wandb")
 
-        for train_w_rank_model in todo_list:
-            print(f"Train Model using ranking: {train_w_rank_model}")
-
-            if train_w_rank_model:
-                rank_metric = RankAccuracy(early_stopping_metric=True)
-
-                # set early stopping metric to False for other metrics
-                for metric in metrics:
-                    metric.early_stopping_metric = False
-
-                metrics.append(rank_metric)
-            else:
-                rank_metric = None
-
-            if isinstance(model_config, TabularModelConfig):
-                # check if model is already pre-trained -> do not execute this
-                if not is_pretrained:
-                    model = train_tabular_model(
-                        workload_runs=wl_runs,
-                        config=config,
-                        statistics_file=statistics_file,
-                        model_dir=model_dir,
-                        bound_predictions=False,
-                        prediction_bounder=prediction_bounder,
-                        dataloader_options=DataLoaderOptions(),
-                    )
-            else:
-                train_model(
-                    model_dir=model_dir,
-                    train_loader=train_loader,
-                    val_loader=val_loader,
-                    test_loaders=test_after_epoch_dataloaders,
-                    test_csv_paths=test_after_epoch_testfiles,
-                    config=config,
-                    csv_stats=csv_stats,
-                    epochs_wo_improvement=epochs_wo_improvement,
-                    epoch=epoch,
-                    epoch_offset=0 if not train_w_rank_model else config.epochs,
-                    model=model,
-                    optimizer=optimizer,
-                    metrics=metrics,
-                    wandb_run=wandb_run,
-                    pt_profiler=pt_profiler,
-                    train_w_rank_model=train_w_rank_model,
-                    rank_metric=rank_metric,
-                    bound_predictions=False,
-                    prediction_bounder=prediction_bounder,
-                    quick_run=quick_run,
-                )
-
-            # perform validation - after each training stage
-            if isinstance(model_config, TabularModelConfig):
-                predict_tabular_model(
-                    config=config,
+        if isinstance(model_config, TabularModelConfig):
+            # check if model is already pre-trained -> do not execute this
+            if not is_pretrained:
+                model = train_tabular_model(
                     workload_runs=wl_runs,
+                    config=config,
                     statistics_file=statistics_file,
                     model_dir=model_dir,
-                    wandb_run=wandb_run,
-                    bound_predictions=bound_predictions,
+                    bound_predictions=False,
                     prediction_bounder=prediction_bounder,
-                    t3_model=model,
+                    dataloader_options=DataLoaderOptions(),
                 )
-            else:
-                test_model(
-                    config=config,
-                    test_csv_paths=wl_runs.target_test_csv_paths,
-                    test_loaders=test_loaders,
-                    model_dir=model_dir,
-                    epoch=epoch,
-                    model=model,
-                    metrics=metrics,
-                    wandb_run=wandb_run,
-                    log_prefix="test",
-                    file_suffix=f"{'_rankmodel' if train_w_rank_model else ''}",
-                    bound_predictions=bound_predictions,
-                    prediction_bounder=prediction_bounder,
-                    quick_run=quick_run,
-                )
+        else:
+            train_model(
+                model_dir=model_dir,
+                train_loader=train_loader,
+                val_loader=val_loader,
+                test_loaders=test_after_epoch_dataloaders,
+                test_csv_paths=test_after_epoch_testfiles,
+                config=config,
+                csv_stats=csv_stats,
+                epochs_wo_improvement=epochs_wo_improvement,
+                epoch=epoch,
+                epoch_offset=0 if not found else epoch,
+                target_epochs=target_epochs,
+                model=model,
+                optimizer=optimizer,
+                metrics=metrics,
+                wandb_run=wandb_run,
+                pt_profiler=pt_profiler,
+                bound_predictions=False,
+                prediction_bounder=prediction_bounder,
+                quick_run=quick_run,
+                scheduler=scheduler,
+            )
 
-            # reset stats
-            epoch = 0
-            epochs_wo_improvement = 0
+        # perform validation - after each training stage
+        if isinstance(model_config, TabularModelConfig):
+            predict_tabular_model(
+                config=config,
+                workload_runs=wl_runs,
+                statistics_file=statistics_file,
+                model_dir=model_dir,
+                wandb_run=wandb_run,
+                bound_predictions=bound_predictions,
+                prediction_bounder=prediction_bounder,
+                t3_model=model,
+            )
+        else:
+            test_model(
+                config=config,
+                test_csv_paths=wl_runs.target_test_csv_paths,
+                test_loaders=test_loaders,
+                model_dir=model_dir,
+                epoch=epoch,
+                model=model,
+                metrics=metrics,
+                wandb_run=wandb_run,
+                log_prefix="test",
+                file_suffix="",
+                bound_predictions=bound_predictions,
+                prediction_bounder=prediction_bounder,
+                quick_run=quick_run,
+            )
 
-        print(
-            f"--Run {config.name.NAME} ended at {datetime.now().strftime('%d/%m/%Y %H:%M:%S')} --"
-        )
+        # reset stats
+        epoch = 0
+        epochs_wo_improvement = 0
+
+    print(
+        f"--Run {config.name.NAME} ended at {datetime.now().strftime('%d/%m/%Y %H:%M:%S')} --"
+    )
 
     if mode in ["predict"] or rerun_predict:
         print(f"Predicting model {config.name.NAME} with seed {config.seed}")
@@ -601,7 +686,6 @@ if __name__ == "__main__":
     parser.add_argument("--statistics_file", default=None, required=True)
     parser.add_argument("--column_statistics", default=None)
     parser.add_argument("--model_dir", default=None, required=True)
-    parser.add_argument("--ft_with_ranking", action="store_true")
     parser.add_argument("--target_dir", default=None, required=True)
     parser.add_argument("--device", default="cpu")
     parser.add_argument("--hyperparameter_path", default=None)
@@ -619,7 +703,6 @@ if __name__ == "__main__":
     parser.add_argument("--bound_predictions", action="store_true")
     parser.add_argument("--qo_eval_after_each_epoch", action="store_true")
     parser.add_argument("--is_pretrained", action="store_true")
-
     # pre-trained model, used to initialize weights
     parser.add_argument("--pretrained_model_dir", default=None)
     parser.add_argument("--pretrained_model_name", default=None)
@@ -636,6 +719,8 @@ if __name__ == "__main__":
         "[socket]" not in args.device
     )  # make the sure the socket placeholder was correctly replaced during cmd generation
 
+    print(f"Device used: {args.device}")
+
     # Init model configuration by either reading out hyperparameters or using standard config
     model_args = dict(
         device=args.device,
@@ -645,7 +730,7 @@ if __name__ == "__main__":
     )
 
     if args.quick_run:
-        model_args.update(limit_plans_per_file=2000, epochs=3, batch_size=64)
+        model_args.update(limit_plans_per_file=2000, epochs=3)
 
     # Create workload runs
     if args.workload_runs:
@@ -673,6 +758,8 @@ if __name__ == "__main__":
     if model_type.startswith("postgres"):
         model_type = "postgres"
     elif model_type.startswith("zeroshot"):
+        model_type = "zeroshot"
+    elif model_type.startswith("zs"):
         model_type = "zeroshot"
     elif model_type.startswith("dace"):
         model_type = "dace"
@@ -736,7 +823,6 @@ if __name__ == "__main__":
         wl_runs=runs,
         statistics_file=Path(args.statistics_file),
         model_dir=Path(args.model_dir),
-        ft_with_ranking=args.ft_with_ranking,
         target_dir=Path(args.target_dir),
         config=model_config,
         word_embeddings=Path(args.word_embeddings) if args.word_embeddings else None,

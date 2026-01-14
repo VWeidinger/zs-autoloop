@@ -7,12 +7,15 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
-from classes.classes import (
+from classes import (
     DataLoaderOptions,
     InputFormats,
     MambaModelConfig,
+    MambaRankingModelConfig,
     ModelConfig,
+    SumOfOperatorsModelConfig,
     ZeroShotModelConfig,
+    ZeroShotRankingModelConfig,
 )
 from classes.workload_runs import WorkloadRuns
 from ldb_schema.load_schema import get_json_schema, load_json
@@ -20,6 +23,11 @@ from models.white_mamba.mamba_dataset import (
     augment_feature_stats_for_mamba,
 )
 from models.zeroshot.postgres_plan_batching import add_numerical_scalers
+from models.zeroshot.query_batch_sampler import (
+    AllPlansForQuerySampler,
+    BatchByQuerySampler,
+    SimilarSampler,
+)
 from sklearn import preprocessing
 from sklearn.pipeline import Pipeline
 from torch.utils.data import DataLoader
@@ -105,10 +113,12 @@ def read_workload_runs(
 
     if parallelize:
         num_workers = 10
+        """
         print(
             f"Start loading workload runs in parallel ({num_workers} workers, {len(workload_run_paths)} files)",
             flush=True,
         )
+        """
         with concurrent.futures.ProcessPoolExecutor(
             max_workers=num_workers
         ) as executor:
@@ -116,9 +126,7 @@ def read_workload_runs(
     else:
         run_list = [read_fn(path) for path in tqdm(workload_run_paths)]
 
-    print(
-        f"Loaded {len(run_list)} files in {time.perf_counter() - t0:.2f}s", flush=True
-    )
+    # print(f"Loaded {len(run_list)} files in {time.perf_counter() - t0:.2f}s", flush=True)
 
     assert len(run_list) == len(workload_run_paths)
     for path_index, (path, run) in enumerate(zip(workload_run_paths, run_list)):
@@ -316,11 +324,13 @@ def read_workload_runs(
         #        print_distr_stats=True, shuffle_before=True
         #    )
 
+        """
         print(
             f"Loaded {len(per_file_plans)}/{len(file_plans)} plans from {path} (include timeout: {include_timeout_queries} (excluded: {timeout_ctr}), "
             f" include invalid hint: {include_hint_not_obeyed_queries} (excluded: {hint_not_obeyed_ctr}), include zero card: {include_zero_card_queries} (excluded: {include_zero_card_queries_ctr}), file in limit blacklist: {file_in_limit_blacklist}, limit file: {limit_plans_per_file})",
             flush=True,
         )
+        """
 
         if return_per_file:
             plans.append(per_file_plans)
@@ -503,7 +513,9 @@ def create_datasets(
 ) -> Tuple[Pipeline, PlanDataset, PlanDataset, PlanDataset, Dict]:
     # check if we need to apply OHEM
     apply_ohem = (
-        model_config.online_hard_example_mining and not is_test_dataset
+        hasattr(model_config, "online_hard_example_mining")
+        and model_config.online_hard_example_mining
+        and not is_test_dataset
     )  # do not apply OHEM on test datasets - we want to have a static dataset
 
     if inject_plans is None or inject_database_statistics is None:
@@ -761,6 +773,23 @@ def create_zeroshot_dataloader(
     # requires both database statistics but also feature statistics
     label_norm = Optional[Pipeline]
 
+    group_similar = (
+        hasattr(model_config, "group_similar") and model_config.group_similar
+    )
+    batch_by_query = (
+        hasattr(model_config, "batch_by_query") and model_config.batch_by_query
+    )
+
+    if batch_by_query:
+        # This custom batching is not compatible with pre-batching or OHEM.
+        assert not assemble_graphs_up_front, (
+            "batch_by_query is not compatible with assemble_graphs_up_front=True"
+        )
+        assert (
+            not hasattr(model_config, "online_hard_example_mining")
+            or not model_config.online_hard_example_mining
+        ), "batch_by_query is not compatible with online_hard_example_mining"
+
     feature_statistics = load_json(str(statistics_file), namespace=False)
     assert feature_statistics != {}, "Feature statistics file is empty!"
 
@@ -783,6 +812,11 @@ def create_zeroshot_dataloader(
             feature_statistics["operator"]["value_dict"]["IS NOT NULL"] = 3
         if "IS NULL" not in feature_statistics["operator"]["value_dict"]:
             feature_statistics["operator"]["value_dict"]["IS NULL"] = 3
+        # Ensure logical operators are present to avoid runtime assertion when parsing predicates
+        if "OR" not in feature_statistics["operator"]["value_dict"]:
+            feature_statistics["operator"]["value_dict"]["OR"] = 3
+        if "AND" not in feature_statistics["operator"]["value_dict"]:
+            feature_statistics["operator"]["value_dict"]["AND"] = 3
 
     dataloader_args = dict(
         batch_size=model_config.batch_size,
@@ -792,7 +826,10 @@ def create_zeroshot_dataloader(
     )
 
     collator_args = {"scaler_type": model_config.scaler_type}
-    if isinstance(model_config, ZeroShotModelConfig):
+    if isinstance(
+        model_config,
+        (ZeroShotModelConfig, ZeroShotRankingModelConfig, SumOfOperatorsModelConfig),
+    ):
         collator_args["skip_top_aggregation"] = model_config.skip_top_aggregation
         collator_args["filter_inline_col_feats"] = model_config.filter_inline_col_feats
         collator_args["annotate_base_table_card_to_scan_op"] = (
@@ -804,7 +841,13 @@ def create_zeroshot_dataloader(
         collator_args["prohibit_aggregation_node_at_root"] = (
             model_config.prohibit_aggregation_node_at_root
         )
-    elif isinstance(model_config, MambaModelConfig):
+        # whether to apply log1p to input cardinality features (est/act) before scaling
+        collator_args["use_log_input_card"] = (
+            hasattr(model_config, "use_log_input_card")
+            and model_config.use_log_input_card
+        )
+
+    elif isinstance(model_config, (MambaModelConfig, MambaRankingModelConfig)):
         if model_config.filter_condense_operators:
             # overwrite part of the featurization
             scan_features = model_config.featurization.SCAN_FEATURES
@@ -819,24 +862,29 @@ def create_zeroshot_dataloader(
 
             # overwrite the scan features
             model_config.featurization.SCAN_FEATURES = scan_features
-
         # augment feature statistics for Mamba
         # doing this outside collate to avoid parallelization issues
         # (e.g. if we have multiple workers, we would augment the feature statistics multiple times)
         augment_feature_stats_for_mamba(feature_statistics)
-        add_numerical_scalers(feature_statistics, scaler_type=model_config.scaler_type)
+    add_numerical_scalers(feature_statistics, scaler_type=model_config.scaler_type)
 
     if workload_runs.train_workload_runs and len(workload_runs.train_workload_runs) > 0:
         # Split plans into train/test/validation set
         print("Creating dataloader for training and validation data")
+        collator_args["subplan_label_op_time"] = getattr(
+            model_config, "subplan_label_op_time", False
+        )
+        collator_args["log_transform_card_labels"] = (
+            hasattr(model_config, "log_transform_card_labels")
+            and model_config.log_transform_card_labels
+        )
 
-        train_collate_fn = functools.partial(
+        base_collate_fn = functools.partial(
             plan_collator,
             feature_statistics=feature_statistics,
             plan_featurization=model_config.featurization,
             **collator_args,
             output_tensors=assemble_graphs_up_front,
-            # in case we assemble the graphs up front, we directly want to convert to tensors
         )
 
         label_norm, train_dataset, val_dataset, database_statistics, db_schema_info = (
@@ -845,26 +893,101 @@ def create_zeroshot_dataloader(
                 model_config=model_config,
                 val_ratio=data_loader_options.val_ratio,
                 assemble_graphs=assemble_graphs_up_front,
-                plan_collate_fn=train_collate_fn,
+                plan_collate_fn=base_collate_fn,
             )
         )
 
-        if not assemble_graphs_up_front:
-            train_collate_fn = functools.partial(
-                train_collate_fn,
-                db_statistics=database_statistics,
-                db_schema_info=db_schema_info,
+        # Create the collate functions
+        train_collate_fn = functools.partial(
+            base_collate_fn,
+            db_statistics=database_statistics,
+            db_schema_info=db_schema_info,
+        )
+        valid_collate_fn = functools.partial(
+            base_collate_fn,
+            db_statistics=database_statistics,
+            db_schema_info=db_schema_info,
+        )
+
+        # Configure and create the Training DataLoader
+        train_loader_args = dataloader_args.copy()
+
+        if assemble_graphs_up_front:
+            # Pre-batched graphs. Each item in the dataset is a batch.
+            train_loader_args["batch_size"] = None
+            train_loader_args.pop(
+                "collate_fn", None
+            )  # collate_fn is not needed for pre-batched data
+        elif group_similar:
+            train_loader_args.pop("batch_size", None)
+            train_loader_args.pop("shuffle", None)
+            train_loader_args.pop("drop_last", None)
+            key = (
+                getattr(model_config, "group_by", "plan_runtime_ms")
+                if hasattr(model_config, "group_by")
+                else "plan_runtime_ms"
             )
-            dataloader_args.update(collate_fn=train_collate_fn)
+            train_batch_sampler = SimilarSampler(
+                plans=train_dataset.plans,
+                batch_size=model_config.batch_size,
+                key=key,
+                random_percentage=getattr(model_config, "random_percentage", 0.1),
+                group_size=getattr(model_config, "group_size", 16),
+            )
+            train_loader_args["batch_sampler"] = train_batch_sampler
+            train_loader_args["collate_fn"] = train_collate_fn
+        elif batch_by_query:
+            # Custom batching with QueryBatchSampler.
+            train_loader_args.pop("batch_size", None)
+            train_loader_args.pop("shuffle", None)
+            train_loader_args.pop("drop_last", None)
+
+            train_batch_sampler = BatchByQuerySampler(
+                plans=train_dataset.plans, max_batch_size=model_config.batch_size
+            )
+            train_loader_args["batch_sampler"] = train_batch_sampler
+            train_loader_args["collate_fn"] = train_collate_fn
         else:
-            # overwrite batch size to 1 - since we have already pre-batched everything
-            dataloader_args["batch_size"] = None
+            # Standard batching.
+            train_loader_args["collate_fn"] = train_collate_fn
 
-        train_loader: DataLoader = DataLoader(train_dataset, **dataloader_args)
-        val_loader: DataLoader = DataLoader(val_dataset, **dataloader_args)
+        train_loader: DataLoader = DataLoader(train_dataset, **train_loader_args)
 
-        # update ohem dataset if necessary - this is done post creation of the dataset! (this is a bit hacky, information was at init time not available)
-        if model_config.online_hard_example_mining:
+        # Configure and create the Validation DataLoader
+        val_loader = None
+        if val_dataset:
+            valid_loader_args = dataloader_args.copy()
+            valid_loader_args["shuffle"] = False
+            valid_loader_args["drop_last"] = False
+
+            if assemble_graphs_up_front:
+                valid_loader_args["batch_size"] = None
+                valid_loader_args.pop("collate_fn", None)
+            else:
+                valid_loader_args["collate_fn"] = valid_collate_fn
+
+            val_loader = DataLoader(val_dataset, **valid_loader_args)
+
+        # 3. Configure and create the Validation DataLoader
+        val_loader = None
+        if val_dataset:
+            valid_loader_args = dataloader_args.copy()
+            valid_loader_args["shuffle"] = False
+            valid_loader_args["drop_last"] = False
+
+            if assemble_graphs_up_front:
+                valid_loader_args["batch_size"] = None
+                valid_loader_args.pop("collate_fn", None)
+            else:
+                valid_loader_args["collate_fn"] = valid_collate_fn
+
+            val_loader = DataLoader(val_dataset, **valid_loader_args)
+
+        # Update OHEM dataset if necessary with the correct loader args
+        if (
+            hasattr(model_config, "online_hard_example_mining")
+            and model_config.online_hard_example_mining
+        ):
             train_dataset.dataloader_args = dataloader_args.copy()  # create copy, because following test dataset will reference and overwrite dataloader_args
             val_dataset.dataloader_args = dataloader_args.copy()
 
@@ -884,6 +1007,13 @@ def create_zeroshot_dataloader(
         # For each test workload run create a distinct test loader
         print("Creating dataloader for test data")
         test_loaders = []
+
+        all_same_batch_sampler = (
+            hasattr(model_config, "all_same_batch_sampler")
+            and model_config.all_same_batch_sampler
+        )
+        test_loader_args = dataloader_args.copy()
+        test_loader_args["shuffle"] = False
         for test_path in workload_runs.test_workload_runs:
             if "join_order" in str(test_path):
                 include_zero_card = True
@@ -915,25 +1045,40 @@ def create_zeroshot_dataloader(
                 )
             )
 
-            if not assemble_graphs_up_front:
-                test_collate_fn = functools.partial(
-                    test_collate_fn,
-                    db_statistics=test_database_statistics,
-                    db_schema_info=test_db_schema_info,
-                )
-                dataloader_args.update(collate_fn=test_collate_fn)
-            else:
-                # overwrite batch size to 1 - since we have already pre-batched everything
-                dataloader_args["batch_size"] = None
+            test_collate_fn = functools.partial(
+                test_collate_fn,
+                db_statistics=test_database_statistics,
+                db_schema_info=test_db_schema_info,
+            )
+            test_loader_args["collate_fn"] = test_collate_fn
+            if all_same_batch_sampler:
+                test_loader_args.pop("batch_size", None)
+                test_loader_args.pop("shuffle", None)
+                test_loader_args.pop("drop_last", None)
 
-            test_loader = DataLoader(test_dataset, **dataloader_args)
+                test_batch_sampler = AllPlansForQuerySampler(
+                    plans=test_dataset.plans, batch_size=model_config.batch_size
+                )
+                test_loader_args["batch_sampler"] = test_batch_sampler
+            elif assemble_graphs_up_front:
+                # overwrite batch size to 1 - since we have already pre-batched everything
+                test_loader_args["batch_size"] = None
+
+            # turn off shuffle for test set
+            test_loader_args["shuffle"] = False
+            test_loader_args["drop_last"] = False
+
+            test_loader = DataLoader(test_dataset, **test_loader_args)
             test_loaders.append(test_loader)
 
             # update ohem dataset if necessary - this is done post creation of the dataset! (this is a bit hacky, information was at init time not available)
-            if model_config.online_hard_example_mining:
-                test_dataset.dataloader_args = dataloader_args.copy()
+            if (
+                hasattr(model_config, "online_hard_example_mining")
+                and model_config.online_hard_example_mining
+            ):
+                test_dataset.dataloader_args = test_loader_args.copy()
 
-            print(f"Created datasets of size: test: {len(test_dataset)}")
+            print(f"Created dataset of size: {len(test_dataset)} for {test_path}")
     else:
         test_loaders = None
 

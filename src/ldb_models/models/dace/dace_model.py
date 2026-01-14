@@ -1,8 +1,9 @@
 import loralib as lora
 import torch
 import torch.nn as nn
-from classes.classes import DACEModelConfig
+from classes import DACEModelConfig
 from training.losses import create_loss
+from training.training.outputs import LossOutput, ModelOutput
 
 
 class DACELora(nn.Module):
@@ -61,19 +62,30 @@ class DACELora(nn.Module):
         out = self.sigmoid(out).squeeze(dim=2)
         return out
 
-    def forward(self, x, attn_mask=None):
+    def forward(self, x, **kwargs) -> ModelOutput:
         seq_encodings, attention_masks, loss_masks, real_run_times = x
 
         assert str(seq_encodings.device) == str(self.device), (
             f"Expected device {self.device}, but got {seq_encodings.device}"
         )
 
-        self.loss_fxn.loss_masks = loss_masks
-        self.loss_fxn.real_run_times = real_run_times
         preds = self.forward_batch(seq_encodings, attention_masks)
-        self.loss_fxn.preds = (
-            preds  # we append the full prediction to the loss function
-        )
+
         predicted_runtimes = preds[:, 0]
         predicted_runtimes = predicted_runtimes * self.config.max_runtime / 1000
-        return predicted_runtimes
+        self.loss_fxn.preds = preds
+        self.loss_fxn.loss_masks = loss_masks
+        self.loss_fxn.real_run_times = real_run_times
+
+        return ModelOutput(plan_predictions=predicted_runtimes)
+
+    def compute_loss(
+        self, output: ModelOutput, query_stats: dict, labels: torch.Tensor
+    ) -> LossOutput:
+        # Set state for DaceLoss
+        assert len(self.loss_fxn.preds) == len(self.loss_fxn.real_run_times), (
+            f"Output length {len(self.loss_fxn.preds)} does not match label length {len(self.loss_fxn.real_run_times)}"
+        )
+        loss = self.loss_fxn()  # Arguments are ignored by DaceLoss
+
+        return LossOutput(loss=loss, plan_loss=loss)

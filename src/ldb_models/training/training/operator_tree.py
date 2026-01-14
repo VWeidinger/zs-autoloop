@@ -2,7 +2,6 @@ from typing import List, Optional
 
 import numpy as np
 import torch
-
 from training.featurizations import QPPNetFeaturization
 from training.preprocessing.feature_statistics import FeatureType
 

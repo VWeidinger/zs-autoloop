@@ -5,7 +5,8 @@ from typing import List, Optional
 import numpy as np
 import pandas as pd
 import seaborn as sns
-from classes.classes import ModelConfig
+import wandb
+from classes import MambaRankingModelConfig, ModelConfig, ZeroShotRankingModelBaseConfig
 from dgl.dataloading import DataLoader
 from torch import nn
 from training.bound_predictions_with_history import PredictionBounder
@@ -18,8 +19,6 @@ from training.training.checkpoint import save_csv
 from training.training.metrics import Metric
 from training.training.utils import find_early_stopping_metric, prefix_dict
 from training.training.validate import validate_model
-
-import wandb
 from wandb.apis.public import Run
 
 
@@ -45,8 +44,8 @@ def test_model(
     job_total_slowdown = None
     joblight_total_selected_runtime = -1
     joblight_total_slowdown = None
-    jobextended_total_selected_runtime = -1
-    jobextended_total_slowdown = None
+    jobcomplex_total_selected_runtime = -1
+    jobcomplex_total_slowdown = None
     physop_total_selected_runtime = -1
     physop_total_slowdown = None
     physopidx_total_selected_runtime = -1
@@ -61,7 +60,14 @@ def test_model(
             # In case of retraining, do not load the totally best model but the latest one
             if load_best_checkpoint:
                 early_stop_m = find_early_stopping_metric(metrics)
-                model.load_state_dict(early_stop_m.best_model)
+                if early_stop_m.best_model is not None:
+                    if isinstance(
+                        config,
+                        (ZeroShotRankingModelBaseConfig, MambaRankingModelConfig),
+                    ):
+                        model.load_state_dict(early_stop_m.best_model, strict=False)
+                    else:
+                        model.load_state_dict(early_stop_m.best_model)
 
             for test_path, test_loader in zip(test_csv_paths, test_loaders):
                 print(f"Starting validation for {test_path}")
@@ -226,8 +232,12 @@ def test_model(
             if is_per_epoch:
                 wandb_run.log(
                     {
-                        "qo_total/selected_runtime": total_selected_runtime,
-                        "qo_total/avg_slowdown": avg_total_slowdown,
+                        "qo_total_per_epoch/selected_runtime": total_selected_runtime,
+                        "qo_total_per_epoch/avg_slowdown": avg_total_slowdown,
+                        "qo_total_with_complex_per_epoch/selected_runtime": total_selected_runtime
+                        + jobcomplex_total_selected_runtime,
+                        "qo_total_with_complex_per_epoch/avg_slowdown": avg_total_slowdown
+                        + jobcomplex_total_slowdown,
                     },
                     step=epoch,
                 )
@@ -236,6 +246,10 @@ def test_model(
                     {
                         "qo_total/selected_runtime": total_selected_runtime,
                         "qo_total/avg_slowdown": avg_total_slowdown,
+                        "qo_total_with_complex/selected_runtime": total_selected_runtime
+                        + jobcomplex_total_selected_runtime,
+                        "qo_total_with_complex/avg_slowdown": avg_total_slowdown
+                        + jobcomplex_total_slowdown,
                     }
                 )
 

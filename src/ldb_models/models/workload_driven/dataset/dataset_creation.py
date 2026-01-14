@@ -2,7 +2,7 @@ import functools
 from pathlib import Path
 from typing import Dict, Tuple
 
-from classes.classes import (
+from classes import (
     DataLoaderOptions,
     E2EModelConfig,
     ModelConfig,

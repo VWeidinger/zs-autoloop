@@ -2,9 +2,8 @@ import dgl.function as fn
 import torch
 from dgl.nn import edge_softmax
 from dgl.utils import expand_as_pair
-from torch import nn
-
 from models.zeroshot.message_aggregators.aggregator import MessageAggregator
+from torch import nn
 
 
 class GATConv(MessageAggregator):

@@ -1,5 +1,5 @@
 import random
-from typing import List, Dict
+from typing import Dict, List
 
 import numpy as np
 from tabulate import tabulate

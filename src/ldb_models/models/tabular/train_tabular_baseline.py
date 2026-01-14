@@ -11,7 +11,7 @@ import joblib
 import lightgbm as lgb
 import numpy as np
 import torch
-from classes.classes import (
+from classes import (
     AnalyticalActCardModelConfig,
     AnalyticalEstCardModelConfig,
     DataLoaderOptions,
@@ -22,8 +22,8 @@ from classes.classes import (
     T3FlatModelConfig,
     T3ModelConfig,
     T3TreeModelConfig,
+    WorkloadRuns,
 )
-from classes.workload_runs import WorkloadRuns
 from ldb_schema.load_schema import get_json_schema, load_json
 from models.t3.model import FlatTreeModel, PerTupleTreeModel, T3Model, TreeModel
 from models.t3.t3_dataloader import gen_t3_dataset
@@ -45,9 +45,8 @@ from training.evaluate_query_optimization import (
 from training.featurizations import Featurization
 from training.training.checkpoint import save_csv
 from training.training.metrics import init_metrics
-from training.training.utils import prefix_dict
-from training.training.validate import to_rows
-
+from training.training.outputs import ModelOutput
+from training.training.utils import prefix_dict, to_rows
 from wandb.apis.public import Run
 
 
@@ -244,7 +243,7 @@ def predict_tabular_model(
     wandb_run: Optional[Run] = None,
     bound_predictions: bool = False,
     prediction_bounder: Optional[PredictionBounder] = None,
-    log_all_queries: bool = False,
+    log_all_queries: bool = True,
     t3_model: T3Model = None,
 ):
     if bound_predictions or prediction_bounder:
@@ -264,7 +263,7 @@ def predict_tabular_model(
         def predict_with_lower_bound(data, lower_bound, bst=bst):
             predictions = bst.predict(data, num_iteration=bst.best_iteration)
             predictions = [max(prediction, lower_bound) for prediction in predictions]
-            return predictions
+            return ModelOutput(plan_predictions=predictions)
 
         # Partially apply the predict_with_lower_bound function
         pred_func = functools.partial(predict_with_lower_bound, lower_bound=0.01)
@@ -275,6 +274,7 @@ def predict_tabular_model(
         m = joblib.load(filename=f"{model_dir}_{config.seed}.pkl")
         pred_func = m.predict
         gen_dataset_func = gen_postgres_cost_dataset
+
     elif isinstance(config, T3ModelConfig):
         model_path = f"{model_dir}_{config.seed}_{config.name.NAME}.txt"
         print(f"Loading model from {model_path}")
@@ -337,10 +337,10 @@ def predict_tabular_model(
     # initialize variables for aggregated reporting across all experiments
     job_total_selected_runtime = -1
     job_total_slowdown = None
-    joblight_total_selected_runtime = -1
-    joblight_total_slowdown = None
-    jobextended_total_selected_runtime = -1
-    jobextended_total_slowdown = None
+    job_light_total_selected_runtime = -1
+    job_light_total_slowdown = None
+    job_complex_total_selected_runtime = -1
+    job_complex_total_slowdown = None
     physop_total_selected_runtime = -1
     physop_total_slowdown = None
     physopidx_total_selected_runtime = -1
@@ -363,6 +363,8 @@ def predict_tabular_model(
 
         else:
             pred_runtimes = pred_func(x_test)
+        if isinstance(pred_runtimes, ModelOutput):
+            pred_runtimes = pred_runtimes.plan_predictions
         test_stats.update(
             test_time=time.perf_counter() - start_t,
             no_test_points=len(y_test),
@@ -422,24 +424,32 @@ def predict_tabular_model(
             else:
                 raise ValueError(f"Unknown workload name: {test_file_name}")
             rt, slowdown = evaluate_join_order(
-                predictions=rows, wandb_run=wandb_run, wl_name=wl_name
+                predictions=rows,
+                wandb_run=wandb_run,
+                wl_name=wl_name,
+                is_per_epoch=True,
+                log_final_summary=True,
             )
             if wl_name == "job":
                 job_total_selected_runtime = rt
                 job_total_slowdown = slowdown
             elif wl_name == "job_light":
-                joblight_total_selected_runtime = rt
-                joblight_total_slowdown = slowdown
+                job_light_total_selected_runtime = rt
+                job_light_total_slowdown = slowdown
             elif wl_name == "job_complex":
-                jobcomplex_total_selected_runtime = rt
-                jobcomplex_total_slowdown = slowdown
+                job_complex_total_selected_runtime = rt
+                job_complex_total_slowdown = slowdown
             else:
                 raise ValueError(f"Unknown workload name: {wl_name}")
 
         if "physical_operator" in str(test_path):
             with_idxs = "_w_idx" in str(test_path)
             rt, slowdown = evaluate_physical_plan_selection(
-                predictions=rows, wandb_run=wandb_run, with_idxs=with_idxs
+                predictions=rows,
+                wandb_run=wandb_run,
+                with_idxs=with_idxs,
+                is_per_epoch=True,
+                log_final_summary=True,
             )
             if with_idxs:
                 physopidx_total_selected_runtime = rt
@@ -449,44 +459,70 @@ def predict_tabular_model(
                 physop_total_slowdown = slowdown
         if "access_path_selection" in str(test_path):
             accesspath_total_selected_runtime, accesspath_total_slowdown = (
-                evaluate_access_path_selection(predictions=rows, wandb_run=wandb_run)
+                evaluate_access_path_selection(
+                    predictions=rows,
+                    wandb_run=wandb_run,
+                    is_per_epoch=True,
+                    log_final_summary=True,
+                )
             )
 
     # aggregate metrics
     if (
         job_total_selected_runtime != -1
-        and joblight_total_selected_runtime != -1
+        and job_light_total_selected_runtime != -1
         and physop_total_selected_runtime != -1
         and physopidx_total_selected_runtime != -1
         and accesspath_total_selected_runtime != -1
     ):
         # if not all 5 workloads are present, do not aggregate
         assert job_total_selected_runtime is not None
-        assert joblight_total_selected_runtime is not None
+        assert job_light_total_selected_runtime is not None
         assert physop_total_selected_runtime is not None
         assert physopidx_total_selected_runtime is not None
         assert accesspath_total_selected_runtime is not None
 
         total_selected_runtime = (
             job_total_selected_runtime
-            + joblight_total_selected_runtime
+            + job_light_total_selected_runtime
             + physop_total_selected_runtime
             + physopidx_total_selected_runtime
             + accesspath_total_selected_runtime
         )
+        total_selected_runtime_with_complex = (
+            total_selected_runtime + job_complex_total_selected_runtime
+        )
         avg_total_slowdown = (
             job_total_slowdown
-            + joblight_total_slowdown
+            + job_light_total_slowdown
             + physop_total_slowdown
             + physopidx_total_slowdown
             + accesspath_total_slowdown
         ) / 5
+        avg_total_slowdown_with_complex = (
+            job_total_slowdown
+            + job_light_total_slowdown
+            + physop_total_slowdown
+            + physopidx_total_slowdown
+            + accesspath_total_slowdown
+            + job_complex_total_slowdown
+        ) / 6
 
         if wandb_run is not None:
             wandb_run.summary.update(
                 {
                     "qo_total/selected_runtime": total_selected_runtime,
                     "qo_total/avg_slowdown": avg_total_slowdown,
+                    "qo_total_with_complex/selected_runtime": total_selected_runtime_with_complex,
+                    "qo_total_with_complex/avg_slowdown": avg_total_slowdown_with_complex,
+                }
+            )
+            wandb_run.summary.update(
+                {
+                    "qo_total_per_epoch/selected_runtime": total_selected_runtime,
+                    "qo_total_per_epoch/avg_slowdown": avg_total_slowdown,
+                    "qo_total_with_complex_per_epoch/selected_runtime": total_selected_runtime_with_complex,
+                    "qo_total_with_complex_per_epoch/avg_slowdown": avg_total_slowdown_with_complex,
                 }
             )
     return
@@ -510,7 +546,7 @@ def gen_postgres_cost_dataset(
         stratify_dataset=stratify_dataset,
         stratify_per_wl_file=stratify_per_wl_file,
         limit_plans_overall=model_config.limit_plans_overall,
-        limit_plans_per_file=model_config.limit_plans_per_file,
+        limit_plans_per_file=None if is_test else model_config.limit_plans_per_file,
         augment_with_subplans=model_config.train_on_subplans and not is_test,
         remove_join_cond_from_plan=model_config.remove_join_cond_from_plan,
     )

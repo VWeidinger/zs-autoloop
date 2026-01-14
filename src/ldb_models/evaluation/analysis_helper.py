@@ -3,9 +3,8 @@ import urllib.parse
 from typing import Dict
 
 import requests
-from dotenv import load_dotenv
-
 import wandb
+from dotenv import load_dotenv
 
 load_dotenv()
 file_cache = dict()
@@ -183,9 +182,9 @@ def compute_optimal_picked_instances(df):
     )
 
 
-from ldb_schema.paths import LocalPaths
-from ldb_schema.load_schema import load_json
 import orjson
+from ldb_schema.load_schema import load_json
+from ldb_schema.paths import LocalPaths
 
 runs_file_cache = dict()
 

@@ -2,11 +2,13 @@ import inspect
 import re
 from typing import Dict
 
-import classes.classes as cls
 import torch.optim as opt
+import torch.optim.lr_scheduler as schedulers
 import training.featurizations as fts
-from classes.classes import ModelConfig, Name
 from training.featurizations import Featurization
+
+import classes as cls
+from classes import ModelConfig, Name
 
 
 def parameterized_config(base_config_name: str, **args):
@@ -29,10 +31,19 @@ def parameterized_config(base_config_name: str, **args):
             arg_string_list.append(value.__name__)
         elif key == "optimizer_class_name":
             arg_string_list.append(value)
+        elif key == "scheduler_class_name":
+            if value is None:
+                arg_string_list.append("NoScheduler")
+            else:
+                arg_string_list.append(value)
         elif key in ["pretrained_model_dir", "pretrained_model_name"]:
             # skip these
             # make sure they are passed via call argument - otherwise it will not be used on the cluster!
             continue
+        elif isinstance(value, float):
+            arg_string_list.append(
+                f"{key}{format(value, '.15f').rstrip('0').rstrip('.')}"
+            )
         else:
             arg_string_list.append(f"{key}{value}")
     model_name = f"pm-{base_config_name}-{'-'.join(arg_string_list)}"
@@ -87,21 +98,37 @@ def get_model_config(model_type: str, m_args: dict) -> ModelConfig:
     return classes_dict[model_type](**m_args)
 
 
-def split_if_ends_with_digits(input_string):
-    # Match groups of non-digits and a float or int at the end of the string
-    match = re.match(r"^(.*?)(\d+\.\d+|\d+)$", input_string)
+def split_if_ends_with_number(input_string):
+    """
+    Split a string into parameter name and numeric value (parsed).
+    Handles both integers and floating-point numbers and returns the
+    numeric value as an int or float so callers cannot forget parsing.
+
+    Examples:
+    - "regression_weight1.0" -> ("regression_weight", 1.0)
+    - "batch_size32" -> ("batch_size", 32)
+    - "use_flag" -> ("use_flag", None)
+    """
+    # Match parameter name followed by a number (integer or float)
+    match = re.match(r"^(.*?)(\d+(?:\.\d+)?)$", input_string)
     if match:
-        non_digit_part = match.group(1)
+        param_name = match.group(1)
         number_part = match.group(2)
-        # Try to convert to float if it contains a dot, else int
+        # parse the numeric portion to int or float for safety
         if "." in number_part:
-            return non_digit_part, float(number_part)
+            try:
+                value = float(number_part)
+            except ValueError:
+                return input_string, None
         else:
-            return non_digit_part, int(number_part)
-    return (
-        input_string,
-        None,
-    )  # Return the original string and None if no number at the end
+            try:
+                value = int(number_part)
+            except ValueError:
+                return input_string, None
+
+        return param_name, value
+
+    return input_string, None
 
 
 def get_parameterized_model_config(model_name: str, m_args: Dict) -> ModelConfig:
@@ -125,13 +152,22 @@ def get_parameterized_model_config(model_name: str, m_args: Dict) -> ModelConfig
         if arg in opt.__dict__.keys() or arg in ["AdamWScheduleFree"]:
             args_dict["optimizer_class_name"] = arg
             continue
+        if arg in schedulers.__dict__.keys() or arg in ["NoScheduler"]:
+            args_dict["scheduler_class_name"] = arg
+            continue
 
         # detect str key/value arguments
         str_keywords = [
             "ohem_slice_by",
+            "join_repr_mode",
             "subplan_monotonicity_loss_fn",
             "loss_class_name",
             "scaler_type",
+            "ranking_loss_name",
+            "regression_loss_name",
+            "scheduler_class_name",
+            "latent_strategy",
+            "group_by",
             "cardinality_estimation_correction_logic_params",
         ]
         found = False
@@ -146,7 +182,7 @@ def get_parameterized_model_config(model_name: str, m_args: Dict) -> ModelConfig
             continue
 
         # check if arg ends with number and if so, split it
-        param_name, number = split_if_ends_with_digits(arg)
+        param_name, number = split_if_ends_with_number(arg)
 
         if number is not None:
             args_dict[param_name] = number

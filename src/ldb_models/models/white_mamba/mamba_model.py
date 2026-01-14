@@ -1,7 +1,7 @@
 from typing import Dict
 
 import torch
-from classes.classes import MambaModelConfig
+from classes import MambaModelConfig
 from models.white_mamba.mamba_dataset import (
     augment_feature_stats_for_mamba,
     expand_scan_featurization,
@@ -9,11 +9,15 @@ from models.white_mamba.mamba_dataset import (
 from models.white_mamba.mamba_subplan_runtime_helper import (
     mamba_compute_subplan_runtimes,
 )
+from models.zeroshot.subplan_runtime_helper import (
+    extract_smaller_larger_preds_tensor_for_subplan_graphs,
+)
 from models.zeroshot.utils.fc_out_model import FcOutModel
 from models.zeroshot.zero_shot_model import NodeTypeEncoder
 from torch import nn
-from training.losses import create_loss
+from training.losses import LessThanLoss, RelativeLessThanLoss, create_loss
 from training.preprocessing.feature_statistics import FeatureType
+from training.training.outputs import LossOutput, ModelOutput
 
 
 class DAGDualInputConv(nn.Module):
@@ -366,6 +370,10 @@ class MambaModel(nn.Module):
             model_config.loss_class_name, loss_kwargs=model_config.loss_class_kwargs
         )
 
+        self.return_all_node_states = (
+            model_config.subplan_monotonicity_loss or model_config.subplan_estimation
+        )
+
         # initialize encoder and decoder
         self.encoder = MambaModelEncoder(model_config, local_feature_statistics)
 
@@ -384,9 +392,27 @@ class MambaModel(nn.Module):
             **model_config.final_mlp_kwargs,
         )
 
-        self.subplan_monotonicity_loss = model_config.subplan_monotonicity_loss
+        if (
+            hasattr(model_config, "subplan_monotonicity_loss")
+            and model_config.subplan_monotonicity_loss
+        ):
+            self.perform_subplan_monotonicity_loss = True
 
-    def forward(self, model_input):
+            # select loss function
+            assert hasattr(model_config, "subplan_monotonicity_loss_fn")
+            if model_config.subplan_monotonicity_loss_fn == "lt_loss":
+                self.subplan_monotonicity_loss = LessThanLoss()
+            elif model_config.subplan_monotonicity_loss_fn == "relative_lt_loss":
+                self.subplan_monotonicity_loss = RelativeLessThanLoss()
+            else:
+                raise ValueError(
+                    f"Unknown subplan monotonicity loss function: {model_config.subplan_monotonicity_loss_fn}"
+                )
+        else:
+            self.perform_subplan_monotonicity_loss = False
+            self.subplan_monotonicity_loss = None
+
+    def forward(self, model_input, plan_dict=None, **kwargs) -> ModelOutput:
         # run encoder
         root_node_states, root_node_types, all_node_states = self.encoder(*model_input)
 
@@ -410,10 +436,46 @@ class MambaModel(nn.Module):
         # apply decoders
         outputs = apply_decoder(root_node_states, root_node_types)
 
-        if self.subplan_monotonicity_loss:
+        if self.return_all_node_states:
             subplan_graphs, subplan_predictions_tensor = mamba_compute_subplan_runtimes(
                 all_node_states, model_input, apply_decoder
             )
-            return outputs, subplan_graphs, subplan_predictions_tensor
+            return ModelOutput(
+                plan_predictions=outputs,
+                subplan_graphs=subplan_graphs,
+                subplan_predictions=subplan_predictions_tensor,
+            )
         else:
-            return outputs
+            return ModelOutput(plan_predictions=outputs)
+
+    def compute_loss(
+        self, output: ModelOutput, query_stats: dict, labels: torch.Tensor
+    ) -> LossOutput:
+        # Loss computation
+        plan_predictions = output.plan_predictions
+        assert len(plan_predictions) == len(labels), (
+            f"Output length {len(plan_predictions)} does not match label length {len(labels)}"
+        )
+        loss = plan_loss = self.loss_fxn(plan_predictions, labels)
+        # co
+        monotonicity_loss = None
+        if self.perform_subplan_monotonicity_loss:
+            assert hasattr(output, "subplan_graphs")
+            assert hasattr(output, "subplan_predictions")
+            # extract smaller and larger tensors - input for our monotonicity loss
+            smaller_tensor, larger_tensor = (
+                extract_smaller_larger_preds_tensor_for_subplan_graphs(
+                    output.subplan_graphs, output.subplan_predictions
+                )
+            )
+
+            # Loss computation
+            monotonicity_loss = self.subplan_monotonicity_loss(
+                smaller_tensor, larger_tensor
+            )
+            loss = loss + monotonicity_loss
+        return LossOutput(
+            loss=loss,
+            plan_loss=plan_loss,
+            monotonicity_loss=monotonicity_loss,
+        )

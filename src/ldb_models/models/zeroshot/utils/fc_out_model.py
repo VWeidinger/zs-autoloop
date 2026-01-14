@@ -87,8 +87,8 @@ class ResidualBlock(DynamicLayer):
     def forward(self, x):
         residual = x
         out = x
-        for l in self.layers:
-            out = l(out)
+        for layer in self.layers:
+            out = layer(out)
 
         out += residual
         if self.activation:

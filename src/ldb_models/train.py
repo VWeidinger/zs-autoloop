@@ -3,18 +3,17 @@ from pathlib import Path
 from typing import List
 
 import torch
-from classes.classes import ModelConfig
+from classes import ModelConfig
 from dgl.dataloading import DataLoader
 from torch import nn
 from torch.optim import Optimizer
 from training.bound_predictions_with_history import PredictionBounder
+from training.scheduler import step_scheduler
 from training.training.checkpoint import save_checkpoint
 from training.training.metrics import Metric
 from training.training.test import test_model
-from training.training.train import train_epoch
-from training.training.train_w_rank import RankModel, train_epoch_rank, validate_rank
+from training.training.train_epoch import train_epoch
 from training.training.validate import validate_model
-
 from wandb.apis.public import Run
 
 
@@ -28,24 +27,19 @@ def train_model(
     epochs_wo_improvement: int,
     epoch_offset: int,  # this is only for reporting purposes
     epoch: int,
+    target_epochs: int,
     val_loader: DataLoader,
     model: nn.Module,
     optimizer: Optimizer,
     metrics: List[Metric],
-    rank_metric: Metric,
     wandb_run: Run,
     pt_profiler: bool = False,
     train_w_rank_model: bool = False,
     bound_predictions: bool = False,
     prediction_bounder: PredictionBounder = None,
     quick_run: bool = False,
+    scheduler=None,
 ):
-    if train_w_rank_model:
-        # wrap the model with the rank model
-        ranking_wrapper = RankModel(model)
-    else:
-        ranking_wrapper = None
-
     prof = None
     if pt_profiler:
         prof = torch.profiler.profile(
@@ -56,10 +50,8 @@ def train_model(
         )
         prof.start()
 
-    target_epochs = config.epochs if not train_w_rank_model else 20
-
     while epoch < target_epochs:
-        print(f"Epoch {epoch + epoch_offset + 1}/{config.epochs + epoch_offset}")
+        print(f"Epoch {epoch + epoch_offset + 1}/{target_epochs + epoch_offset}")
         epoch_stats = dict()
         epoch_stats.update(epoch=epoch + epoch_offset, train_w_rank=train_w_rank_model)
         epoch_start_time: float = time.perf_counter()
@@ -67,36 +59,16 @@ def train_model(
         wandb_plots_dict = dict() if wandb_run is not None else None
 
         any_best_metric = False
-        if train_w_rank_model:
-            train_epoch_rank(
-                epoch_stats=epoch_stats,
-                train_loader=train_loader,
-                model=ranking_wrapper,
-                optimizer=optimizer,
-                max_epoch_tuples=config.max_epoch_tuples,
-                custom_batch_to=config.batch_to_func,
-                profiler=prof,
-            )
-
-            # perform rank validation
-            any_best_metric = validate_rank(
-                val_loader=val_loader,
-                model=ranking_wrapper,
-                epoch_stats=epoch_stats,
-                rank_metric=rank_metric,
-                custom_batch_to=config.batch_to_func,
-            )
-        else:
-            train_epoch(
-                epoch_stats=epoch_stats,
-                train_loader=train_loader,
-                model=model,
-                optimizer=optimizer,
-                max_epoch_tuples=config.max_epoch_tuples,
-                custom_batch_to=config.batch_to_func,
-                model_config=config,
-                profiler=prof,
-            )
+        train_epoch(
+            epoch_stats=epoch_stats,
+            train_loader=train_loader,
+            model=model,
+            optimizer=optimizer,
+            max_epoch_tuples=config.max_epoch_tuples,
+            custom_batch_to=config.batch_to_func,
+            model_config=config,
+            profiler=prof,
+        )
 
         # validate model
         new_best_metric_seen, _ = validate_model(
@@ -151,7 +123,7 @@ def train_model(
             epochs_wo_improvement = 0
 
         # also set finished to true if this is the last epoch
-        if epoch == config.epochs - 1:
+        if epoch == target_epochs - 1:
             stop_early = True
 
         epoch_stats.update(stop_early=stop_early)
@@ -183,7 +155,10 @@ def train_model(
             wandb_run.log(epoch_stats, step=epoch)
             # wandb_run.log(wandb_plots_dict, step=epoch) # do not log plots per epoch
 
-        if config.online_hard_example_mining:
+        if (
+            hasattr(config, "online_hard_example_mining")
+            and config.online_hard_example_mining
+        ):
             if epoch % config.ohem_resort_after_num_epochs == 0:
                 print("Resorting OHEM dataset...")
                 train_loader.dataset.update_difficulty()
@@ -195,6 +170,13 @@ def train_model(
                 f"Early stopping kicked in due to no improvement in {config.early_stopping_patience} epochs"
             )
             break
+
+        # step the scheduler
+        step_scheduler(
+            scheduler=scheduler,
+            epoch=epoch,
+            avg_loss=epoch_stats.get("epoch_val_loss", None),
+        )
 
     if prof:
         prof.stop()

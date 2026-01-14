@@ -1,15 +1,15 @@
+import re
 import unittest
 
 from ldb_schema.load_schema import load_json
 from models.neo.neo_dataloader import (
-    extract_predicate_encoding,
-    init_table_ids,
+    _featurize_tree,
     extract_join_recursively,
     extract_plan_encoding_recursively,
+    extract_predicate_encoding,
+    init_table_ids,
     make_indexes,
-    _featurize_tree,
 )
-import re
 
 
 def init():

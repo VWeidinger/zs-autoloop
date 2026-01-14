@@ -3,10 +3,10 @@ from typing import Tuple
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
-from classes.classes import QueryFormerModelConfig
+from classes import QueryFormerModelConfig
 from models.workload_driven.dataset.dataset_creation import InputDims
 from training.losses import create_loss
+from training.training.outputs import LossOutput, ModelOutput
 
 
 class FinalPredictionLayer(nn.Module):
@@ -219,7 +219,7 @@ class QueryFormer(nn.Module):
             in_feature=hidden_dim, hid_units=config.hidden_dim_prediction
         )
 
-    def forward(self, input_batch: Tuple) -> torch.Tensor:
+    def forward(self, input_batch: Tuple, **kwargs) -> ModelOutput:
         # Read batch
         node_features, joins, attention_bias, node_distances, node_heights = input_batch
         batch_size, number_nodes = node_features.size()[:2]
@@ -280,7 +280,14 @@ class QueryFormer(nn.Module):
         # Final layer normalization
         out = self.final_ln(output)
         out = self.prediction_layer(out[:, 0, :])
-        return out
+        return ModelOutput(plan_predictions=out)
+
+    def compute_loss(
+        self, output: ModelOutput, query_stats: dict, labels: torch.Tensor
+    ) -> LossOutput:
+        plan_predictions = output.plan_predictions
+        loss = self.loss_fxn(plan_predictions, labels)
+        return LossOutput(loss=loss, plan_loss=loss)
 
 
 class FeedForwardNetwork(nn.Module):

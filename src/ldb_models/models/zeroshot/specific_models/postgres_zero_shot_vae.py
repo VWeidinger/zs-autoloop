@@ -1,11 +1,11 @@
-from torch import nn
 import torch
-
-from classes.classes import ZeroShotVAEModelConfig
+from classes import ZeroShotVAEModelConfig
 from models.zeroshot.subplan_runtime_helper import compute_subplan_runtimes
 from models.zeroshot.utils.fc_out_model import FcOutModel
 from models.zeroshot.zero_shot_model import ZeroShotModelEncoder
+from torch import nn
 from training.losses import create_loss
+from training.training.outputs import LossOutput, ModelOutput
 
 
 class PostgresZeroShotModelVAE(nn.Module):
@@ -42,7 +42,7 @@ class PostgresZeroShotModelVAE(nn.Module):
         self.loss_fcn = create_loss(
             model_config.loss_class_name, loss_kwargs=model_config.loss_class_kwargs
         )
-        self.loss_fxn = self.loss
+        self.loss_fxn = self.compute_loss
 
     def reparameterize(self, mu, logvar):
         logvar = torch.clamp(logvar, -10, 10)
@@ -50,7 +50,7 @@ class PostgresZeroShotModelVAE(nn.Module):
         eps = torch.randn_like(std)
         return mu + eps * std
 
-    def forward(self, model_input):
+    def forward(self, model_input, **kwargs):
         g, features = model_input
 
         if self.encoder.return_all_node_states:
@@ -68,7 +68,11 @@ class PostgresZeroShotModelVAE(nn.Module):
                 g, all_node_states, self.decoder.fcout
             )
 
-            return root_predictions, subplan_graphs, subplan_predictions_tensor
+            return ModelOutput(
+                plan_predictions=root_predictions,
+                subplan_graphs=subplan_graphs,
+                subplan_predictions=subplan_predictions_tensor,
+            )
         else:
             hidden_states = self.encoder((g, features))
 
@@ -76,7 +80,7 @@ class PostgresZeroShotModelVAE(nn.Module):
             self.logvar = self.log_var_proj(hidden_states)
             z = self.reparameterize(self.mu, self.logvar)
 
-            return self.decoder.fcout(z)
+            return ModelOutput(plan_predictions=self.decoder.fcout(z))
 
     def predict(self, model_input, num_samples: int = 0):
         if num_samples == 0:
@@ -101,12 +105,14 @@ class PostgresZeroShotModelVAE(nn.Module):
         predictions = all_preds.view(num_samples, batch_size, -1)
         predictions = torch.mean(predictions, dim=0)
 
-        return predictions
+        return ModelOutput(plan_predictions=predictions)
 
-    def loss(self, input, target):
-        recon_loss = self.loss_fcn(input, target)
+    def compute_loss(
+        self, output: ModelOutput, query_stats: dict, labels: torch.Tensor
+    ) -> LossOutput:
+        recon_loss = self.loss_fcn(output.plan_predictions, labels)
         kl_loss = -0.5 * torch.sum(1 + self.logvar - self.mu.pow(2) - self.logvar.exp())
-        return recon_loss + self.beta * kl_loss
+        return LossOutput(loss=recon_loss + self.beta * kl_loss)
 
 
 class PostgresZeroShotModelEncoder(ZeroShotModelEncoder):

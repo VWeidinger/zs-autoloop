@@ -4,7 +4,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 from ldb_schema.paths import LocalPaths
 
-from classes.classes import T3ModelConfig
+from classes import T3ModelConfig
 from models.t3.t3_dataloader import (
     gen_t3_dataset,
     rewrite_children,

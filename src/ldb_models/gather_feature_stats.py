@@ -2,7 +2,7 @@ import argparse
 import glob
 import os
 
-from classes.classes import InputFormats
+from classes import InputFormats
 from training.preprocessing.feature_statistics import gather_feature_statistics
 
 

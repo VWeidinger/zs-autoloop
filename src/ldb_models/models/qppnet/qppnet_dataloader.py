@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 import numpy as np
-from classes.classes import DataLoaderOptions, ModelConfig, QPPNetModelConfig
+from classes import DataLoaderOptions, ModelConfig, QPPNetModelConfig
 from classes.workload_runs import WorkloadRuns
 from ldb_schema.load_schema import get_json_schema, load_json
 from models.white_mamba.extract_query_stats import extract_query_stats_for_plan

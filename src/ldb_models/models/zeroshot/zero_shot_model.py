@@ -1,10 +1,9 @@
 import torch
-from torch import nn
-
-from classes.classes import ZeroShotModelConfig
+from classes import ZeroShotModelConfig
 from models.zeroshot.message_aggregators import message_aggregators
 from models.zeroshot.utils.fc_out_model import FcOutModel
 from models.zeroshot.utils.node_type_encoder import NodeTypeEncoder
+from torch import nn
 
 
 class ZeroShotModelEncoder(FcOutModel):
@@ -50,7 +49,11 @@ class ZeroShotModelEncoder(FcOutModel):
         self.tree_models = nn.ModuleDict(
             {
                 node_type: message_aggregators.__dict__[model_config.tree_layer_name](
-                    hidden_dim=self.hidden_dim, **model_config.tree_layer_kwargs
+                    # pass the node_type (model_name) so aggregators can behave differently
+                    node_type=node_type,
+                    hidden_dim=self.hidden_dim,
+                    join_repr_mode=getattr(model_config, "join_repr_mode", "sum"),
+                    **model_config.tree_layer_kwargs,
                 )
                 for node_type in tree_model_types
             }
@@ -106,7 +109,7 @@ class ZeroShotModelEncoder(FcOutModel):
 
         return hidden_dict
 
-    def forward(self, input):
+    def forward(self, input, **kwargs):
         """
         Returns logits for output classes
         """
@@ -179,6 +182,10 @@ class ZeroShotModelEncoder(FcOutModel):
                             # ensure that result is not NaN / inf
                             assert torch.isfinite(hidden_out).all(), (
                                 f"hidden_out for {out_type} contain NaN or inf"
+                                f" (input: {feat_dict[out_type]})"
+                                f" (model: {pd.model_name})"
+                                f" (hidden: {hidden_out})"
+                                f" (etypes: {pd.etypes})"
                             )
                         feat_dict[out_type] = hidden_out
 

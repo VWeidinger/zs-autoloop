@@ -1,11 +1,10 @@
 from typing import List
 
+from classes import ModelConfig
+from classes.model_config_helper import parameterized_config
 from ldb_schema.datasets import Dataset
 from ldb_schema.paths import ClusterPaths, LocalPaths
-from octopus.step import Rsync, KillAllScreens
-
-from classes.classes import ModelConfig
-from classes.model_config_helper import parameterized_config
+from octopus.step import KillAllScreens, Rsync
 from scripts.exp_runner.exp_runner import ExpRunner, TrainingServers
 
 

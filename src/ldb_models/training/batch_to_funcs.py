@@ -71,19 +71,36 @@ def zs_batch_to(batch, device, label_norm):
     # normalize the labels for training
     if label_norm is not None:
         label = label_norm.transform(np.asarray(label).reshape(-1, 1))
-        label = label.reshape(-1)
+        query_stats["subplan_labels"] = label_norm.transform(
+            np.asarray(query_stats["subplan_labels"]).reshape(-1, 1)
+        )
 
+    label = label.reshape(-1)
     label_tensor = torch.as_tensor(label, device=device, dtype=torch.float)
-
+    if "subplan_labels" in query_stats:
+        query_stats["subplan_labels"] = query_stats["subplan_labels"].reshape(-1)
+        query_stats["subplan_labels"] = torch.as_tensor(
+            query_stats["subplan_labels"], device=device, dtype=torch.float
+        )
+    if "subplan_card_labels" in query_stats:
+        query_stats["subplan_card_labels"] = query_stats["subplan_card_labels"].reshape(
+            -1
+        )
+        query_stats["subplan_card_labels"] = torch.as_tensor(
+            query_stats["subplan_card_labels"], device=device, dtype=torch.float
+        )
+    if "subplan_est_card_labels" in query_stats:
+        query_stats["subplan_est_card_labels"] = query_stats[
+            "subplan_est_card_labels"
+        ].reshape(-1)
+        query_stats["subplan_est_card_labels"] = torch.as_tensor(
+            query_stats["subplan_est_card_labels"], device=device, dtype=torch.float
+        )
     features = recursive_to(features, device)
     label_tensor = recursive_to(label_tensor, device)
     # recursive_to(graph, device)
     graph = graph.to(device, non_blocking=True)
-    return (
-        (graph, features),
-        label_tensor,
-        query_stats,
-    )
+    return ((graph, features), label_tensor, query_stats)
 
 
 def neo_batch_to(batch, device, label_norm):
@@ -128,6 +145,9 @@ def mamba_batch_to(batch, device, label_norm):
     if label_norm is not None:
         labels = label_norm.transform(np.asarray(labels).reshape(-1, 1))
         labels = labels.reshape(-1)
+        query_stats["subplan_labels"] = label_norm.transform(
+            np.asarray(query_stats["subplan_labels"]).reshape(-1, 1)
+        )
 
     labels = torch.as_tensor(labels, device=device, dtype=torch.float)
 
@@ -143,6 +163,26 @@ def mamba_batch_to(batch, device, label_norm):
         scan_features,
     )
     data = recursive_to(data, device)
+
+    if "subplan_labels" in query_stats:
+        query_stats["subplan_labels"] = query_stats["subplan_labels"].reshape(-1)
+        query_stats["subplan_labels"] = torch.as_tensor(
+            query_stats["subplan_labels"], device=device, dtype=torch.float
+        )
+    if "subplan_card_labels" in query_stats:
+        query_stats["subplan_card_labels"] = query_stats["subplan_card_labels"].reshape(
+            -1
+        )
+        query_stats["subplan_card_labels"] = torch.as_tensor(
+            query_stats["subplan_card_labels"], device=device, dtype=torch.float
+        )
+    if "subplan_est_card_labels" in query_stats:
+        query_stats["subplan_est_card_labels"] = query_stats[
+            "subplan_est_card_labels"
+        ].reshape(-1)
+        query_stats["subplan_est_card_labels"] = torch.as_tensor(
+            query_stats["subplan_est_card_labels"], device=device, dtype=torch.float
+        )
 
     return (data, labels, query_stats)
 

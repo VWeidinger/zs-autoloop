@@ -1,10 +1,15 @@
-from torch import nn
-
-from classes.classes import ZeroShotModelConfig
-from models.zeroshot.subplan_runtime_helper import compute_subplan_runtimes
+import torch
+from classes import ZeroShotModelConfig
+from models.zeroshot.subplan_runtime_helper import (
+    compute_subplan_runtimes,
+    extract_smaller_larger_preds_tensor_for_subplan_graphs,
+)
 from models.zeroshot.utils.fc_out_model import FcOutModel
 from models.zeroshot.zero_shot_model import ZeroShotModelEncoder
-from training.losses import create_loss
+from torch import nn
+from torch.nn import functional as F
+from training.losses import LessThanLoss, RelativeLessThanLoss, create_loss
+from training.training.outputs import LossOutput, ModelOutput
 
 
 class PostgresZeroShotModel(nn.Module):
@@ -18,11 +23,21 @@ class PostgresZeroShotModel(nn.Module):
 
         self.label_norm = None
         self.device = model_config.device
+        self.hidden_dim = model_config.hidden_dim
+
+        return_all_node_states = (
+            model_config.subplan_monotonicity_loss or model_config.subplan_estimation
+        )
+
+        print(
+            f"Subplan monotonicity loss: {model_config.subplan_monotonicity_loss} Subplan loss: {model_config.subplan_estimation} Return all node states: {return_all_node_states}",
+            flush=True,
+        )
 
         self.encoder = PostgresZeroShotModelEncoder(
             model_config,
             feature_statistics,
-            return_all_node_states=model_config.subplan_monotonicity_loss,
+            return_all_node_states=return_all_node_states,
             **zero_shot_kwargs,
         )
         self.decoder = FcOutModel(
@@ -37,24 +52,97 @@ class PostgresZeroShotModel(nn.Module):
             model_config.loss_class_name, loss_kwargs=model_config.loss_class_kwargs
         )
 
-    def forward(self, model_input):
-        g, features = model_input
+        if (
+            hasattr(model_config, "subplan_monotonicity_loss")
+            and model_config.subplan_monotonicity_loss
+        ):
+            self.perform_subplan_monotonicity_loss = True
 
-        if self.encoder.return_all_node_states:
-            hidden_states, all_node_states = self.encoder((g, features))
+            # select loss function
+            assert hasattr(model_config, "subplan_monotonicity_loss_fn")
+            if model_config.subplan_monotonicity_loss_fn == "lt_loss":
+                self.subplan_monotonicity_loss = LessThanLoss()
+            elif model_config.subplan_monotonicity_loss_fn == "relative_lt_loss":
+                self.subplan_monotonicity_loss = RelativeLessThanLoss()
+            else:
+                raise ValueError(
+                    f"Unknown subplan monotonicity loss function: {model_config.subplan_monotonicity_loss_fn}"
+                )
+        else:
+            self.perform_subplan_monotonicity_loss = False
+            self.subplan_monotonicity_loss = None
 
-            # compute predictions of full plans
-            root_predictions = self.decoder.fcout(hidden_states)
+    def forward(self, model_input, plan_dict=None, **kwargs) -> ModelOutput:
+        if self.encoder.return_all_node_states and (plan_dict is not None):
+            hidden_states, all_node_states, g = self.get_representation(model_input)
 
             # compute subplan predictions
             subplan_graphs, subplan_predictions_tensor = compute_subplan_runtimes(
-                g, all_node_states, self.decoder.fcout
+                g, all_node_states, self.decoder.fcout, plan_dict
             )
 
-            return root_predictions, subplan_graphs, subplan_predictions_tensor
+            plan_predictions = F.softplus(self.decoder.fcout(hidden_states))
+
+            subplan_predictions_tensor = F.softplus(subplan_predictions_tensor)
+
+            return ModelOutput(
+                plan_predictions=plan_predictions,
+                subplan_graphs=subplan_graphs,
+                subplan_predictions=subplan_predictions_tensor,
+            )
         else:
-            hidden_states = self.encoder((g, features))
-            return self.decoder.fcout(hidden_states)
+            hidden_states = self.get_representation(model_input, subplan=False)
+
+            plan_predictions = F.softplus(self.decoder.fcout(hidden_states))
+            # compute predictions
+            return ModelOutput(plan_predictions=plan_predictions)
+
+    def get_representation(self, model_input, subplan=True, **kwargs):
+        g, features = model_input
+
+        encoder_output = self.encoder((g, features))
+
+        if self.encoder.return_all_node_states:
+            hidden_states, all_node_states = encoder_output
+            if subplan:
+                return hidden_states, all_node_states, g
+            else:
+                return hidden_states
+        else:
+            hidden_states = encoder_output
+            return hidden_states
+
+    def compute_loss(
+        self, output: ModelOutput, query_stats: dict, labels: torch.Tensor
+    ) -> LossOutput:
+        # Loss computation
+        plan_predictions = output.plan_predictions
+        assert len(plan_predictions) == len(labels), (
+            f"Output length {len(plan_predictions)} does not match label length {len(labels)}"
+        )
+        loss = plan_loss = self.loss_fxn(plan_predictions, labels)
+        # co
+        monotonicity_loss = None
+        if self.perform_subplan_monotonicity_loss:
+            assert hasattr(output, "subplan_graphs")
+            assert hasattr(output, "subplan_predictions")
+            # extract smaller and larger tensors - input for our monotonicity loss
+            smaller_tensor, larger_tensor = (
+                extract_smaller_larger_preds_tensor_for_subplan_graphs(
+                    output.subplan_graphs, output.subplan_predictions
+                )
+            )
+
+            # Loss computation
+            monotonicity_loss = self.subplan_monotonicity_loss(
+                smaller_tensor, larger_tensor
+            )
+            loss = loss + monotonicity_loss
+        return LossOutput(
+            loss=loss,
+            plan_loss=plan_loss,
+            monotonicity_loss=monotonicity_loss,
+        )
 
 
 class PostgresZeroShotModelEncoder(ZeroShotModelEncoder):

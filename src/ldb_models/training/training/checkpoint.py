@@ -6,9 +6,8 @@ from pathlib import Path
 
 import joblib
 import torch
+from classes import ModelConfig, shorten_model_name
 from torch import nn
-
-from classes.classes import ModelConfig, shorten_model_name
 from training.training.utils import find_early_stopping_metric
 
 
@@ -40,7 +39,7 @@ def save_csv(csv_rows, target_csv_path):
         for key in csv_row.keys():
             if key not in csv_rows[0].keys():
                 csv_rows[0][key] = None
-
+    print(f"Saving CSV to {target_csv_path} with {len(csv_rows)} rows")
     with open(target_csv_path, "w", newline="") as f:
         w = csv.DictWriter(f, csv_rows[0].keys())
         for i, row in enumerate(csv_rows):
@@ -113,7 +112,6 @@ def load_checkpoint(
     filetype: str = ".pt",
     optimizer=None,
     metrics=None,
-    prefer_ft_rank: bool = False,
     manual_model_dir: str = None,
     manual_model_name: str = None,
     load_last_checkpoint: bool = True,
@@ -129,13 +127,6 @@ def load_checkpoint(
 
     if manual_model_name is None:
         model_name = f"{config.name.NAME}_{config.seed}"
-        if prefer_ft_rank:
-            rank_model_name = f"{model_name}_rankmodel"
-            checkpoint_file = os.path.join(target_path, f"{rank_model_name}{filetype}")
-            if os.path.exists(checkpoint_file):
-                # we found a rank model checkpoint
-                model_name = rank_model_name
-
         # shorten model name - otherwise we are hitting file-name limits
         model_name = shorten_model_name(model_name)
     else:
@@ -161,8 +152,7 @@ def load_checkpoint(
             epoch = checkpoint["epoch"]
 
             if load_last_checkpoint:
-                # load last checkpoint
-                model.load_state_dict(checkpoint["model"])
+                model.load_state_dict(checkpoint["model"], strict=False)
 
             # read label normalizer
             label_norm_path = os.path.join(target_path, f"{model_name}_label_norm.pkl")
@@ -182,7 +172,8 @@ def load_checkpoint(
                 # load best checkpoint
                 assert metrics is not None
                 early_stop_m = find_early_stopping_metric(metrics)
-                model.load_state_dict(early_stop_m.best_model)
+                best_model_state_dict = early_stop_m.best_model
+                model.load_state_dict(best_model_state_dict, strict=False)
 
             target_csv_path = os.path.join(target_path, f"{model_name}.csv")
             csv_stats = load_stats_csv(target_csv_path)

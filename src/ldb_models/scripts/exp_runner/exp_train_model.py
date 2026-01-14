@@ -5,17 +5,16 @@ import sys
 from functools import lru_cache
 from typing import List, Optional
 
+import wandb
 from ldb_schema.datasets import Dataset
 from ldb_schema.paths import ClusterPaths, LocalPaths
 from octopus.step import KillAllScreens, Rsync, RsyncCurrentRepo, SetupUVVenv, SetupVenv
-
-import wandb
 
 sys.path.append(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 )
 
-from classes.classes import ModelConfig, shorten_model_name
+from classes import ModelConfig, shorten_model_name
 from classes.model_config_helper import parameterized_config
 from scripts.exp_runner.exp_runner import ExpRunner, TrainingServers
 from training.featurizations import MambaFullWIdxCor
@@ -39,7 +38,6 @@ def generate_training_commands(
     quick_run: bool = False,
     pt_profiler: bool = False,
     test_against: str = None,
-    ft_with_ranking: bool = False,
     bound_predictions: bool = False,
     eval_join_order: bool = False,
     eval_access_path: bool = False,
@@ -165,6 +163,8 @@ def generate_training_commands(
                 model_type = "postgres"
             elif model_type.startswith("zeroshot"):
                 model_type = "zeroshot"
+            elif model_type.startswith("zs"):
+                model_type = "zeroshot"
             elif model_type.startswith("dace"):
                 model_type = "dace"
             elif model_type.startswith("flat"):
@@ -191,8 +191,6 @@ def generate_training_commands(
             for seed in seeds:
                 model_suffix = ""
 
-                if ft_with_ranking:
-                    model_suffix += "_ft_rank"
                 if bound_predictions:
                     model_suffix += "_bound"
                 if use_romans_runs:
@@ -269,9 +267,6 @@ def generate_training_commands(
 
                 if pt_profiler:
                     command += " --pt_profiler"
-
-                if ft_with_ranking:
-                    command += " --ft_with_ranking"
 
                 if bound_predictions:
                     command += " --bound_predictions"
@@ -361,7 +356,7 @@ if __name__ == "__main__":
     ]
 
     seeds = [
-        5
+        4
     ]  # 3=parsed_plans2, 4=fixed card-annotation of optimal plans in JOB & -Complex and improved logging/plotting, 5=fixed parser error (new feature statistics) 10/2025)
     nodes = [
         TrainingServers.NODE01,
@@ -385,7 +380,6 @@ if __name__ == "__main__":
     quick_run = False  # if True, it will run only a few epochs on a few workloads
     pt_profiler = False  # Profiler for PyTorch
     test_against = "imdb"  # if not set, will test against all in an leave one out style
-    ft_with_ranking = False  # fine-tune with ranking (pretrains a model and then fine-tunes it with ranking)
     bound_predictions = False  # bound predictions to the range of the training data and output them as separate metrics - at the moment not competitive
 
     # evaluate join order using JOB-Light runs with exhaustive join orders
@@ -467,6 +461,8 @@ if __name__ == "__main__":
 
     model_configs = [model for model in model_configs if model is not None]
 
+    print(f"Total number of models: {len(model_configs)}")
+
     runner = ExpRunner(
         replicate=False,
         node_names=[node["hostname"] for node in nodes],
@@ -490,7 +486,6 @@ if __name__ == "__main__":
         quick_run=quick_run,
         pt_profiler=pt_profiler,
         test_against=test_against,
-        ft_with_ranking=ft_with_ranking,
         bound_predictions=bound_predictions,
         eval_join_order=eval_join_order,
         eval_access_path=eval_access_path,

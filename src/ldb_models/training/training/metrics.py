@@ -4,7 +4,7 @@ from typing import List
 import numpy as np
 import scipy
 import sklearn
-from sklearn.metrics import mean_squared_error
+from sklearn.metrics import mean_squared_error, ndcg_score
 
 
 class Metric:
@@ -87,6 +87,10 @@ def init_metrics(loss_class_name: str) -> List[Metric]:
             QError(percentile=95),
             QError(percentile=100),
             SpearmanRank(),
+            NDCG(group_size=32),
+            NDCG(group_size=16),
+            NDCG(group_size=8),
+            NDCG(group_size=4),
         ]
     elif loss_class_name in ["MSELoss"]:
         metrics: List[Metric] = [
@@ -96,6 +100,10 @@ def init_metrics(loss_class_name: str) -> List[Metric]:
             QError(percentile=95),
             QError(percentile=100),
             SpearmanRank(),
+            NDCG(group_size=32),
+            NDCG(group_size=16),
+            NDCG(group_size=8),
+            NDCG(group_size=4),
         ]
     elif loss_class_name in ["RankLoss"]:
         metrics: List[Metric] = [
@@ -105,6 +113,31 @@ def init_metrics(loss_class_name: str) -> List[Metric]:
             QError(percentile=95),
             QError(percentile=100),
             SpearmanRank(early_stopping_metric=True),
+            NDCG(group_size=32),
+            NDCG(group_size=16),
+            NDCG(group_size=8),
+            NDCG(group_size=4),
+        ]
+    elif loss_class_name in [
+        "LambdaLoss",
+        "NDCGLoss",
+        "RankNetLoss",
+        "ListNetLoss",
+        "ListMLELoss",
+        "LearnToRankWithRegressionLoss",
+    ]:
+        metrics: List[Metric] = [
+            RMSE(),
+            MAPE(),
+            QError(percentile=50),
+            QError(percentile=95),
+            QError(percentile=100),
+            SpearmanRank(),
+            NDCG(),
+            NDCG(group_size=32),
+            NDCG(group_size=16, early_stopping_metric=True),
+            NDCG(group_size=8),
+            NDCG(group_size=4),
         ]
     else:
         raise Exception(f"Loss class not supported: {loss_class_name}")
@@ -119,9 +152,6 @@ class MAPE(Metric):
         mape = np.mean(np.abs((labels - preds) / labels))
         return mape
 
-    def evaluate_metric(self, labels=None, preds=None):
-        raise NotImplementedError
-
 
 class RMSE(Metric):
     def __init__(self, **kwargs):
@@ -132,17 +162,8 @@ class RMSE(Metric):
         return val_mse
 
 
-class MAPE(Metric):
-    def __init__(self, **kwargs):
-        super().__init__(metric_name="mape", maximize=False, **kwargs)
-
-    def evaluate_metric(self, labels=None, preds=None, probs=None):
-        mape = np.mean(np.abs((labels - preds) / labels))
-        return mape
-
-
 class QError(Metric):
-    def __init__(self, percentile=50, min_val=0.1, **kwargs):
+    def __init__(self, percentile=50, min_val=1e-8, **kwargs):
         super().__init__(
             metric_name=f"median_q_error_{percentile}", maximize=False, **kwargs
         )
@@ -152,8 +173,8 @@ class QError(Metric):
     def evaluate_metric(self, labels=None, preds=None, probs=None):
         # if not np.all(labels >= self.min_val):
         #    print("WARNING: some labels are smaller than min_val")
-        preds = np.abs(preds)
-        # preds = np.clip(preds, self.min_val, np.inf)
+        preds = np.clip(preds, self.min_val, np.inf)
+        labels = np.clip(labels, self.min_val, np.inf)
 
         q_errors = np.maximum(labels / preds, preds / labels)
         q_errors = np.nan_to_num(q_errors, nan=np.inf)
@@ -167,6 +188,47 @@ class SpearmanRank(Metric):
 
     def evaluate_metric(self, labels=None, preds=None, probs=None):
         value = scipy.stats.spearmanr(labels, preds).statistic
+        return value
+
+
+class NDCG(Metric):
+    def __init__(self, group_size=None, **kwargs):
+        super().__init__(metric_name=f"ndcg_{group_size}", maximize=True, **kwargs)
+        self.group_size = group_size
+
+    def evaluate_metric(self, labels=None, preds=None, probs=None):
+        labels = np.array(labels)
+        preds = np.array(preds)
+
+        if self.group_size is not None:
+            total = len(labels)
+            remainder = total % self.group_size
+
+            if total > self.group_size and remainder != 0:
+                full_len = total - remainder
+                needed = self.group_size - remainder
+
+                # sample only from the fully-formed portion
+                sample_idx = np.random.choice(full_len, size=needed, replace=False)
+
+                labels = np.concatenate([labels, labels[sample_idx]])
+                preds = np.concatenate([preds, preds[sample_idx]])
+
+            if total > self.group_size:
+                grouped_labels = labels.reshape(-1, self.group_size)
+                grouped_preds = preds.reshape(-1, self.group_size)
+            else:
+                grouped_labels = labels.reshape(1, -1)
+                grouped_preds = preds.reshape(1, -1)
+        else:
+            grouped_labels = labels.reshape(1, -1)
+            grouped_preds = preds.reshape(1, -1)
+
+        # apply the 1 / (x + 1) transformation to make ndcg focus on smaller values
+        transformed_labels = 1.0 / (grouped_labels + 1.0)
+        transformed_preds = 1.0 / (grouped_preds + 1.0)
+
+        value = ndcg_score(transformed_labels, transformed_preds)
         return value
 
 
@@ -187,12 +249,37 @@ class SelectedRuntime(Metric):
         super().__init__(metric_name="runtime", **kwargs)
 
     def evaluate_metric(self, labels=None, preds=None, probs=None):
+        # --- NumPy Array Implementation ---
+        assert len(labels) == len(preds), (
+            "Labels and predictions must have the same length."
+        )
         if isinstance(preds, np.ndarray):
-            index_of_minimal_prediction = np.argmin(preds)
+            # 1. Find the actual minimum prediction value
+            min_pred_value = np.min(preds)
+
+            # 2. Get all indices where the prediction equals the minimum value
+            indices_of_all_mins = np.where(preds == min_pred_value)[0]
+
+            # 3. Get the corresponding runtimes for all these indices
+            runtimes_at_min = labels[indices_of_all_mins]
+
+            # 4. Return the median of these runtimes
+            return np.median(runtimes_at_min)
+
+        # --- pandas Series/DataFrame Implementation ---
         else:
-            index_of_minimal_prediction = preds.idxmin()
-        runtime_of_minimal_prediction = labels[index_of_minimal_prediction]
-        return runtime_of_minimal_prediction
+            # 1. Find the actual minimum prediction value
+            min_pred_value = preds.min()
+
+            # 2. Get all indices where the prediction equals the minimum value
+            # This creates a boolean mask and gets the index from the filtered Series
+            indices_of_all_mins = preds[preds == min_pred_value].index
+
+            # 3. Get the corresponding runtimes for all these indices using .loc
+            runtimes_at_min = labels.loc[indices_of_all_mins]
+
+            # 4. Return the median of these runtimes
+            return runtimes_at_min.median()
 
 
 class OptimalRuntime(Metric):
@@ -227,10 +314,12 @@ class MaxUnderestimation(Metric):
     """This metric calculates the maximal factor of underestimation of the model predictions for
     a given set of queries"""
 
-    def __init__(self, **kwargs):
+    def __init__(self, min_val=1e-8, **kwargs):
         super().__init__(metric_name="max_underestimation", **kwargs)
+        self.min_val = min_val
 
     def evaluate_metric(self, labels=None, preds=None, probs=None):
+        preds = np.clip(preds, self.min_val, np.inf)
         max_underestimation = 1 / min(preds / labels)
         # Cap lower value to 1
         max_underestimation = max(1, max_underestimation)
@@ -241,10 +330,12 @@ class MaxOverestimation(Metric):
     """This metric calculates the maximal factor of overestmation of the model predictions for
     a given set of queries"""
 
-    def __init__(self, **kwargs):
+    def __init__(self, min_val=1e-8, **kwargs):
         super().__init__(metric_name="max_overestimation", **kwargs)
+        self.min_val = min_val
 
     def evaluate_metric(self, labels=None, preds=None, probs=None):
+        preds = np.clip(preds, self.min_val, np.inf)
         max_overestimation = max(preds / labels)
         # Cap lower value to 1
         max_overestimation = max(1, max_overestimation)

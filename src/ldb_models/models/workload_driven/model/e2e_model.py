@@ -2,12 +2,13 @@ import torch
 from torch import nn
 from torch.nn import ReLU
 
-from classes.classes import E2EModelConfig, TlstmModelConfig, TestSumModelConfig
+from classes import E2EModelConfig, TlstmModelConfig, TestSumModelConfig
 from models.workload_driven.dataset.dataset_creation import InputDims
 from models.workload_driven.model.tree_lstm import LstmConv
 from models.zeroshot.message_aggregators.pooling import PoolingType, PoolingConv
 from models.zeroshot.zero_shot_model import PassDirection
 from training.losses import create_loss
+from training.training.outputs import LossOutput, ModelOutput
 
 
 class E2EModel(nn.Module):
@@ -86,7 +87,7 @@ class E2EModel(nn.Module):
             ]
         )
 
-    def forward(self, input):
+    def forward(self, input, **kwargs) -> ModelOutput:
         """
         Returns logits for output classes
         """
@@ -112,7 +113,17 @@ class E2EModel(nn.Module):
 
         # final estimation layer to predict runtime
         out = self.est_layer(out)
-        return out
+        return ModelOutput(plan_predictions=out)
+
+    def compute_loss(
+        self, output: ModelOutput, query_stats: dict, labels: torch.Tensor
+    ) -> LossOutput:
+        plan_predictions = output.plan_predictions
+        assert len(plan_predictions) == len(labels), (
+            f"Output length {len(plan_predictions)} does not match label length {len(labels)}"
+        )
+        loss = plan_loss = self.loss_fxn(plan_predictions, labels)
+        return LossOutput(loss=loss, plan_loss=plan_loss)
 
     def encode_predicates(self, features, pred_graph, plan_pred_mapping):
         # encode base predicates

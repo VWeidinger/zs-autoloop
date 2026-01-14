@@ -1,4 +1,4 @@
-from typing import List, Dict, Tuple
+from typing import Dict, List, Tuple
 
 import torch
 
@@ -13,6 +13,20 @@ class SubplanClass:
 
 
 def compute_subplan_runtimes(
+    graph, all_node_states: Dict, pred_fn, plan_dict
+) -> Tuple[List[SubplanClass], torch.Tensor]:
+    if plan_dict is None:
+        # Enough for monotonicity loss - no need to align with plan dict
+        return compute_subplan_runtimes_unaligned(graph, all_node_states, pred_fn)
+    else:
+        # compute the subplan runtimes aligned with the plan dict
+        # so that we can apply a regression loss on them
+        return [], compute_subplan_runtimes_aligned(
+            graph, all_node_states, pred_fn, plan_dict
+        )
+
+
+def compute_subplan_runtimes_unaligned(
     graph, all_node_states: Dict, pred_fn
 ) -> Tuple[List[SubplanClass], torch.Tensor]:
     # predict runtime for each subplan i.e. for each plan node in the graph - this works because we did topological message passing before
@@ -95,6 +109,34 @@ def compute_subplan_runtimes(
     assert len(root_nodes) > 0
 
     return root_nodes, predictions_list
+
+
+def compute_subplan_runtimes_aligned(
+    graph, all_node_states: Dict, pred_fn, plan_dict
+) -> Tuple[List[SubplanClass], torch.Tensor]:
+    num_total_plan_nodes = len(plan_dict)
+
+    # Initialize a map to hold predictions keyed by the original node ID.
+    predictions_map = {}
+
+    # Process each node type that represents a plan operator (e.g., 'plan0', 'plan1', ...).
+    for node_type, node_states in all_node_states.items():
+        if node_type.startswith("plan") and node_states.shape[0] > 0:
+            # Run the prediction function on the node states for this type.
+            predictions = pred_fn(node_states)
+            # Retrieve the original IDs for these nodes.
+            original_ids = graph.nodes[node_type].data["original_id"]
+
+            # Store the predictions in the map, using the original IDs as keys.
+            for i in range(original_ids.shape[0]):
+                orig_id = original_ids[i]
+                predictions_map[orig_id] = predictions[i]
+
+    # Create a list to hold the predictions in the order of the original plan nodes.
+    ordered_predictions_list = [predictions_map[i] for i in range(num_total_plan_nodes)]
+    ordered_predictions_tensor = torch.stack(ordered_predictions_list)
+
+    return ordered_predictions_tensor.squeeze(-1)
 
 
 def recursively_get_parent_child_pairs(subplan: SubplanClass) -> List[Tuple[int, int]]:

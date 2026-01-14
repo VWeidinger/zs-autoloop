@@ -4,7 +4,7 @@ from typing import Dict, List, Optional, Tuple
 
 import lightgbm as lgb
 import numpy as np
-from classes.classes import T3FlatModelConfig, T3ModelConfig, T3TreeModelConfig
+from classes import T3FlatModelConfig, T3ModelConfig, T3TreeModelConfig
 from ldb_schema.load_schema import get_json_schema
 from models.t3.benchmarked_query import BenchmarkedQuery
 from models.t3.features import FeatureMapper

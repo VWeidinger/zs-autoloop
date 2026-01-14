@@ -2,11 +2,12 @@ import torch
 from torch import nn
 from torch.nn import ReLU
 
-from classes.classes import MSCNModelConfig
+from classes import MSCNModelConfig
 from models.workload_driven.dataset.dataset_creation import MSCNInputDims
 from models.zeroshot.message_aggregators.pooling import PoolingType, PoolingConv
 from models.zeroshot.zero_shot_model import PassDirection
 from training.losses import create_loss
+from training.training.outputs import LossOutput, ModelOutput
 
 
 class MSCNModel(nn.Module):
@@ -65,7 +66,7 @@ class MSCNModel(nn.Module):
 
         return enc_features
 
-    def forward(self, input):
+    def forward(self, input, **kwargs) -> ModelOutput:
         """
         Returns logits for output classes
         """
@@ -78,7 +79,17 @@ class MSCNModel(nn.Module):
         out = self.pool_set_features(graph, enc_plan_feats)
         # final estimation layer to predict runtime
         out = self.est_layer(out)
-        return out
+        return ModelOutput(plan_predictions=out)
+
+    def compute_loss(
+        self, output: ModelOutput, query_stats: dict, labels: torch.Tensor
+    ) -> LossOutput:
+        plan_predictions = output.plan_predictions
+        assert len(plan_predictions) == len(labels), (
+            f"Output length {len(plan_predictions)} does not match label length {len(labels)}"
+        )
+        loss = plan_loss = self.loss_fxn(plan_predictions, labels)
+        return LossOutput(loss=loss, plan_loss=plan_loss)
 
     def pool_set_features(self, graph, plan_feats):
         node_types = list(plan_feats.keys())

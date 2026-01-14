@@ -1,5 +1,4 @@
 import torch
-
 from models.zeroshot.utils.fc_out_model import FcOutModel
 
 

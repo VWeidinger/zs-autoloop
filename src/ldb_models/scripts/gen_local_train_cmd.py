@@ -1,7 +1,6 @@
+from classes.model_config_helper import parameterized_config
 from ldb_schema.datasets import Dataset
 from ldb_schema.paths import ClusterPaths, LocalPaths
-
-from classes.model_config_helper import parameterized_config
 from scripts.exp_runner.exp_train_model import generate_training_commands
 
 

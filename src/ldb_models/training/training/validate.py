@@ -6,13 +6,8 @@ from typing import Callable, Dict, List, Optional, Tuple
 import numpy as np
 import pandas as pd
 import torch
-from classes.classes import ModelConfig
-from models.zeroshot.specific_models.postgres_zero_shot_vae import (
-    PostgresZeroShotModelVAE,
-)
-from models.zeroshot.subplan_runtime_helper import (
-    extract_smaller_larger_preds_tensor_for_subplan_graphs,
-)
+import wandb
+from classes import ModelConfig
 from torch import nn
 from torch.utils.data import DataLoader
 from tqdm import tqdm
@@ -20,11 +15,9 @@ from training.bound_predictions_with_history import (
     PredictionBounder,
     bound_predictions_helper,
 )
-from training.losses import LessThanLoss
 from training.training.checkpoint import save_csv
-from training.training.metrics import Metric, QError, RankAccuracy
-
-import wandb
+from training.training.metrics import Metric, QError
+from training.training.outputs import LossOutput, ModelOutput
 
 
 def validate_model(
@@ -50,8 +43,13 @@ def validate_model(
     model.eval()
 
     with torch.autograd.no_grad():
-        val_loss = torch.tensor([0.0], device=model.device)
-        monotonicity_loss = torch.tensor([0.0], device=model.device)
+        losses = {
+            "val_loss": 0,
+            "plan_loss": 0,
+            "subplan_loss": 0,
+            "monotonicity_loss": 0,
+            "card_loss": 0,
+        }
 
         # Collect as tensors for efficiency
         labels = []
@@ -59,20 +57,24 @@ def validate_model(
         probs = []
         query_stats_dict = defaultdict(list)
 
-        if (
-            hasattr(model_config, "subplan_monotonicity_loss")
-            and model_config.subplan_monotonicity_loss
-        ):
-            perform_subplan_monotonicity_loss = True
-            subplan_monotonicity_loss = LessThanLoss()
-        else:
-            perform_subplan_monotonicity_loss = False
-            subplan_monotonicity_loss = None
+        subplan_preds_list, subplan_pred_card_list = [], []
 
         # evaluate test set using model
         test_start_t = time.perf_counter()
         val_num_tuples = 0
+        len_val_loader = len(val_loader)
+        # avoid ZeroDivisionError when dataset is small
+        debug_denom = max(1, len_val_loader // 2)
+        subplan_estimation = (
+            hasattr(model_config, "subplan_estimation")
+            and model_config.subplan_estimation
+        )
+        cardinality_estimation = (
+            hasattr(model_config, "cardinality_estimation")
+            and model_config.cardinality_estimation
+        )
         for batch_idx, batch in enumerate(tqdm(val_loader)):
+            debug = batch_idx % debug_denom == 0
             if (
                 max_epoch_tuples is not None
                 and batch_idx * model_config.batch_size > max_epoch_tuples
@@ -80,75 +82,117 @@ def validate_model(
                 break
 
             val_num_tuples += model_config.batch_size
-
-            # Access path selection eval: selectivity + scan_op
-            # Physicl op selection eval: join_op
-            (
+            # prepare batch
+            input_model, label, query_stats = custom_batch_to(
+                batch, model.device, model.label_norm
+            )
+            # forward pass
+            output: ModelOutput = model(
                 input_model,
-                label,
-                query_stats,
-            ) = custom_batch_to(batch, model.device, model.label_norm)
-
-            if isinstance(model, PostgresZeroShotModelVAE):
-                output = model.predict(input_model, model_config.num_samples)
-            else:
-                output = model(input_model)
-
-            if perform_subplan_monotonicity_loss:
-                assert len(output) == 3
-                output, subplan_graphs, subplan_predictions_dict = output
-
-                # extract smaller and larger tensors - input for our monotonicity loss
-                smaller_tensor, larger_tensor = (
-                    extract_smaller_larger_preds_tensor_for_subplan_graphs(
-                        subplan_graphs, subplan_predictions_dict
-                    )
+                plan_dict=query_stats.get("plan_dict", None),
+                debug=debug,
+                plan_labels=label,
+                subplan_labels=query_stats.get("subplan_labels", None),
+                card_labels=query_stats.get("subplan_card_labels", None),
+                num_samples=model_config.num_samples
+                if hasattr(model_config, "num_samples")
+                else None,
+            )
+            # compute loss
+            loss_output: LossOutput = model.compute_loss(
+                output=output, query_stats=query_stats, labels=label
+            )
+            # accumulate losses
+            losses["val_loss"] += loss_output.loss.detach().cpu().item()
+            losses["plan_loss"] += loss_output.plan_loss.detach().cpu().item()
+            if loss_output.monotonicity_loss is not None:
+                losses["monotonicity_loss"] += (
+                    loss_output.monotonicity_loss.detach().cpu().item()
                 )
-
-                # Loss computation
-                loss = subplan_monotonicity_loss(smaller_tensor, larger_tensor).cpu()
-
-                # sum up
-                monotonicity_loss += loss
-                val_loss += loss
-
-            # sum up mean batch losses
-            val_loss += model.loss_fxn(output, label).cpu()
-
             # inverse transform the predictions and labels
-            curr_pred = output.cpu().numpy()
+            curr_pred = output.plan_predictions.cpu().numpy()
             curr_label = label.cpu().numpy()
-
             if model.label_norm is not None:
                 curr_pred = model.label_norm.inverse_transform(curr_pred)
                 curr_label = model.label_norm.inverse_transform(
                     curr_label.reshape(-1, 1)
                 ).reshape(-1)
-
             preds.append(curr_pred.reshape(-1))
             labels.append(curr_label.reshape(-1))
-
             # add all info to query stats dict
             for key, value in query_stats.items():
-                query_stats_dict[key].extend(value)
+                if key in ["subplan_est_card_labels", "subplan_card_labels"]:
+                    # keep as list of lists
+                    query_stats_dict[key].extend(
+                        [v.cpu().numpy().tolist() for v in value]
+                    )
+                else:
+                    query_stats_dict[key].extend(value)
+            # collect subplan predictions if available
+            if subplan_estimation:
+                losses["subplan_loss"] += loss_output.subplan_loss.detach().cpu().item()
+                subplan_preds_list.extend(
+                    [
+                        t.cpu().numpy().tolist()
+                        for t in torch.split(
+                            output.subplan_predictions, output.subplan_lengths.tolist()
+                        )
+                    ]
+                )
+            if cardinality_estimation:
+                losses["card_loss"] += loss_output.card_loss.detach().cpu().item()
+                subplan_pred_card_list.extend(
+                    [
+                        t.cpu().numpy().tolist()
+                        for t in torch.split(
+                            output.subplan_card_predictions,
+                            output.subplan_lengths.tolist(),
+                        )
+                    ]
+                )
 
         labels = np.concatenate(labels, axis=0)
         preds = np.concatenate(preds, axis=0)
 
+        if len(subplan_preds_list) > 0:
+            query_stats_dict["subplan_predictions"] = subplan_preds_list
+        if len(subplan_pred_card_list) > 0:
+            query_stats_dict["subplan_card_predictions"] = subplan_pred_card_list
+
         if epoch_stats is not None:
             epoch_stats[f"{log_prefix}_time"] = time.perf_counter() - test_start_t
             epoch_stats[f"{log_prefix}_num_tuples"] = val_num_tuples
+            length = len(val_loader)
+            for key, value in losses.items():
+                if value > 0:
+                    epoch_stats[f"{log_prefix}_{key}"] = value / length
 
-            val_loss = (val_loss.cpu() / len(val_loader)).item()
-            print(f"{log_prefix}_loss epoch {epoch}: {val_loss}")
-            epoch_stats[f"{log_prefix}_loss"] = val_loss
-
-            if perform_subplan_monotonicity_loss:
-                monotonicity_loss = (monotonicity_loss.cpu() / len(val_loader)).item()
-                print(
-                    f"{log_prefix}_monotonicity_loss epoch {epoch}: {monotonicity_loss}"
+            if (
+                "subplan_card_labels" in query_stats_dict
+                and "subplan_est_card_labels" in query_stats_dict
+            ):
+                est_metrics = compute_card_qerror_metrics(
+                    actual=query_stats_dict["subplan_card_labels"],
+                    compared=query_stats_dict["subplan_est_card_labels"],
+                    log_scale=model_config.log_transform_card_labels
+                    if hasattr(model_config, "log_transform_card_labels")
+                    else False,
                 )
-                epoch_stats[f"{log_prefix}_monotonicity_loss"] = monotonicity_loss
+                for k, v in est_metrics.items():
+                    epoch_stats[f"{log_prefix}_est_card_qerror_{k}"] = v
+                if cardinality_estimation:
+                    flat_pred_cards = [
+                        item for sublist in subplan_pred_card_list for item in sublist
+                    ]
+                    pred_metrics = compute_card_qerror_metrics(
+                        actual=query_stats_dict["subplan_card_labels"],
+                        compared=flat_pred_cards,
+                        log_scale=model_config.log_transform_card_labels
+                        if hasattr(model_config, "log_transform_card_labels")
+                        else False,
+                    )
+                    for k, v in pred_metrics.items():
+                        epoch_stats[f"{log_prefix}_pred_card_qerror_{k}"] = v
 
         epoch_stats.update(val_std=np.std(labels))
 
@@ -168,10 +212,6 @@ def validate_model(
         if metrics is not None:
             for bound in bound_list:
                 for metric in metrics:
-                    if isinstance(metric, RankAccuracy):
-                        # skip - has to be handled separately
-                        continue
-
                     best_seen = metric.evaluate(
                         metrics_dict=metrics_dict,
                         model=model if store_model_snapshot else None,
@@ -195,6 +235,17 @@ def validate_model(
         # add metrics dict to epoch stats
         for key, value in metrics_dict.items():
             epoch_stats[f"{log_prefix}_{key}"] = value
+
+        # drop the query stats that are not available for all queries (plan_dict, subplan_labels))
+        drop_keys = [
+            "plan_dict",
+            "subplan_labels",
+            "subplan_card_labels",
+            "subplan_est_card_labels",
+        ]
+        for key in drop_keys:
+            if key in query_stats_dict:
+                query_stats_dict.pop(key)
 
         predictions = to_rows(
             dict(
@@ -283,10 +334,12 @@ def to_rows(data: dict) -> list:
     into a list of dicts (rows), adding qerror for each row if 'label' and 'prediction' are present.
     """
     # Ensure all lists are of the same length
-    lengths = [len(v) for v in data.values()]
-    assert len(set(lengths)) == 1, f"Input lists have different lengths: {lengths}"
+    lengths = {k: len(v) for k, v in data.items()}
+    if len(set(lengths.values())) > 1:
+        raise AssertionError(f"Input lists have different lengths: {lengths}")
 
-    num_rows = lengths[0]
+    num_rows = list(lengths.values())[0] if lengths else 0
+
     rows = []
     keys = list(data.keys())
     for i in range(num_rows):
@@ -296,12 +349,57 @@ def to_rows(data: dict) -> list:
                 entry["label"], entry["prediction"]
             )
 
-        for key, value in entry.items():
-            assert not isinstance(value, list), (
-                f"Value for key '{key}' is a list, expected a single value: {value}"
-            )
-            assert not isinstance(key, list), (
-                f"Key '{key}' is a list, expected a single value: {key}"
-            )
         rows.append(entry)
     return rows
+
+
+def compute_card_qerror_metrics(actual: List, compared: List, log_scale=False) -> dict:
+    """
+    Compute richer q-error metrics when values are on a log scale.
+
+    Parameters
+    - actual: array-like or torch.Tensor of ground-truth values on the log(scale) (e.g., log1p(card))
+    - compared: array-like or torch.Tensor of predicted/estimated values on the same log scale
+
+    q-error for each item is computed as: np.expm1(np.maximum(actual - compared, compared - actual))
+    (equivalently: np.expm1(np.abs(actual - compared))). This converts the log-difference
+    back into a multiplicative q-error on the original scale.
+
+    Returns a dict with keys:
+    - "mean": mean q-error
+    - "median": median q-error
+    - "p50": 50th percentile (same as median)
+    - "p95": 95th percentile
+    - "max": max q-error
+    """
+
+    actual = np.array(actual).reshape(-1)
+    compared = np.array(compared).reshape(-1)
+
+    if actual.size != compared.size:
+        raise AssertionError(
+            f"actual and compared must have the same length: {actual.size} != {compared.size}"
+        )
+    if log_scale:
+        # compute q-errors from log-scale differences
+        log_abs_diff = np.abs(actual - compared)
+        qerrors = np.exp(log_abs_diff)
+    else:
+        # compute standard q-errors
+        qerrors = np.maximum(
+            actual / np.clip(compared, a_min=1e-10, a_max=None),
+            compared / np.clip(actual, a_min=1e-10, a_max=None),
+        )
+    # remove NaNs/Infs just in case
+    mask = np.isfinite(qerrors)
+    qerrors = qerrors[mask]
+
+    metrics = {
+        "mean": float(np.mean(qerrors)),
+        "median": float(np.median(qerrors)),
+        "p50": float(np.percentile(qerrors, 50)),
+        "p95": float(np.percentile(qerrors, 95)),
+        "max": float(np.max(qerrors)),
+    }
+
+    return metrics

@@ -2,11 +2,12 @@ from typing import Tuple
 
 import torch
 import torch.nn as nn
-from classes.classes import QPPNetModelConfig
+from classes import QPPNetModelConfig
 from classes.workload_runs import WorkloadRuns
 from models.zeroshot.postgres_plan_batching import add_numerical_scalers
 from training.losses import create_loss
 from training.training.operator_tree import OperatorTree
+from training.training.outputs import LossOutput, ModelOutput
 
 
 class NeuralUnit(nn.Module):
@@ -204,7 +205,7 @@ class QPPNet(nn.Module):
         for operator in self.optimizers:
             self.optimizers[operator].zero_grad()
 
-    def forward(self, input):
+    def forward(self, input, **kwargs) -> ModelOutput:
         # Initializing variables for the forward pass.
         query_plans: list[OperatorTree] = input
         predictions: list[torch.Tensor] = []
@@ -217,7 +218,18 @@ class QPPNet(nn.Module):
             predictions.append(pred)
             self.loss_fxn.update_total_losses()
 
-        return torch.tensor(predictions)
+        if len(predictions) > 0:
+            plan_predictions = torch.stack(predictions)
+        else:
+            plan_predictions = torch.tensor(predictions)
+
+        return ModelOutput(plan_predictions=plan_predictions)
+
+    def compute_loss(
+        self, output: ModelOutput, query_stats: dict, labels: torch.Tensor
+    ) -> LossOutput:
+        loss = self.loss_fxn(output.plan_predictions, labels)
+        return LossOutput(loss=loss, plan_loss=loss)
 
     def backward(self):
         # Do step on all operator-level optimizers

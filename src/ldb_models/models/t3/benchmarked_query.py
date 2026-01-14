@@ -1,8 +1,7 @@
 from dataclasses import dataclass
-from typing import Tuple, Optional
+from typing import Optional, Tuple
 
 import numpy as np
-
 from models.t3.features import FeatureMapper
 from models.t3.metrics import q_error
 from models.t3.operators import OperatorType

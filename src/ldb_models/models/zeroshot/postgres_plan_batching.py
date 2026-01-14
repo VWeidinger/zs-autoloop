@@ -39,6 +39,9 @@ def plan_to_graph(
     run_file_id: int,
     plan_depths,
     plan_features,
+    subplan_labels,
+    subplan_card_labels,
+    subplan_est_card_labels,
     plan_to_plan_edges,
     db_statistics,
     feature_statistics,
@@ -63,6 +66,7 @@ def plan_to_graph(
     skip_top_aggregation: bool = False,
     filter_inline_col_feats: bool = True,
     annotate_base_table_card_to_scan_op: bool = False,
+    subplan_label_op_time: bool = False,
 ):
     plan_params = node["plan_parameters"]
 
@@ -75,6 +79,9 @@ def plan_to_graph(
             run_file_id,
             plan_depths,
             plan_features,
+            subplan_labels,
+            subplan_card_labels,
+            subplan_est_card_labels,
             plan_to_plan_edges,
             db_statistics,
             feature_statistics,
@@ -99,8 +106,56 @@ def plan_to_graph(
             skip_top_aggregation=False,
             filter_inline_col_feats=filter_inline_col_feats,
             annotate_base_table_card_to_scan_op=annotate_base_table_card_to_scan_op,
+            subplan_label_op_time=subplan_label_op_time,
         )
         return
+
+    plan_node_id = len(plan_depths)
+
+    subplan_card_labels.append(plan_params.get("act_card", 1.0))
+    subplan_est_card_labels.append(plan_params.get("est_card", 1.0))
+
+    # Extract the ground-truth runtime for this subplan (plan node)
+    if subplan_label_op_time:
+        if "act_time" in plan_params:
+            act_time = plan_params["act_time"]
+            children_act_times = [
+                child["plan_parameters"].get("act_time", 0)
+                for child in node["children"]
+            ]
+            sum_child_time = sum(children_act_times) if children_act_times else 0
+
+            op_time = act_time - sum_child_time
+            # Clamp at 0, as operation time cannot be negative (due to measurement noise)
+            subplan_labels.append(max(op_time, 1e-6))
+        else:
+            # Cannot compute op_time without act_time
+            print("No act_time in plan parameters for op_time calculation")
+            subplan_labels.append(1e-6)
+    else:
+        if "act_time" in plan_params:
+            if len(node["children"]) > 0:
+                children_act_times = [
+                    child["plan_parameters"]["act_time"] for child in node["children"]
+                ]
+                sum_child_time = sum(children_act_times) if children_act_times else 0
+                if plan_params["act_time"] < sum_child_time:
+                    subplan_labels.append(sum_child_time)
+                else:
+                    subplan_labels.append(plan_params["act_time"])
+            else:
+                subplan_labels.append(plan_params["act_time"])
+        else:
+            print("No act_time in plan parameters")
+            if len(node["children"]) > 0:
+                children_act_times = [
+                    child["plan_parameters"]["act_time"] for child in node["children"]
+                ]
+                print(f"Using children act_time: {children_act_times}")
+                sum_child_time = sum(children_act_times) if children_act_times else 0
+                subplan_labels.append(sum_child_time)
+            else:
+                subplan_labels.append(1e-6)
 
     is_scan_op = "table_id" in plan_params
 
@@ -131,9 +186,6 @@ def plan_to_graph(
             )
 
     plan_features.append(curr_plan_features)
-
-    # compute plan node id
-    plan_node_id = len(plan_depths)
     plan_depths.append(depth)
 
     # encode output columns which can in turn have several columns as a product in the aggregation
@@ -295,6 +347,9 @@ def plan_to_graph(
             run_file_id,
             plan_depths,
             plan_features,
+            subplan_labels,
+            subplan_card_labels,
+            subplan_est_card_labels,
             plan_to_plan_edges,
             db_statistics,
             feature_statistics,
@@ -319,7 +374,68 @@ def plan_to_graph(
             skip_top_aggregation=skip_top_aggregation,
             filter_inline_col_feats=filter_inline_col_feats,
             annotate_base_table_card_to_scan_op=annotate_base_table_card_to_scan_op,
+            subplan_label_op_time=subplan_label_op_time,
         )
+
+
+def print_errors_recursive(node, depth=0):
+    plan_params = node["plan_parameters"]
+    indent = "--" * depth
+    est = int(plan_params.get("est_card", -1))
+    est_pre = int(plan_params.get("est_card_pre", -1))
+    act = int(plan_params.get("act_card", -1))
+
+    est_bu = int(plan_params.get("est_card_bu", -1))
+    est_td = int(plan_params.get("est_card_td", -1))
+
+    op_name = plan_params.get("op_name", "Unknown")
+    print(
+        f"{indent}Op: {op_name} | Est: {est_pre} | Est_Upd: {est}| Act: {act} | Est_BU: {est_bu} | Est_TD: {est_td}",
+        flush=True,
+    )
+    children = node.get("children", [])
+    len_children = len(children)
+    if len_children == 2:
+        # if one is join, print it second
+        op_name = plan_params.get("op_name", "").lower()
+        if "join" in op_name or "nested loop" in op_name:
+            print_errors_recursive(children[1], depth + 1)
+            print_errors_recursive(children[0], depth + 1)
+        else:
+            print_errors_recursive(children[0], depth + 1)
+            print_errors_recursive(children[1], depth + 1)
+    elif len_children == 1:
+        print_errors_recursive(children[0], depth + 1)
+    else:
+        for c in children:
+            print_errors_recursive(c, depth + 1)
+
+
+def get_operator_type(op_name):
+    op_name = op_name.lower()
+    # Scans (Base cases)
+    if "scan" in op_name:
+        # Index Scan, Seq Scan, Index Only Scan
+        return "SCAN"
+
+    # Joins (Multiplicative error propagation)
+    elif "join" in op_name or "nested loop" in op_name:
+        # Hash Join, Merge Join, Nested Loop Join, Index Nested Loop Join
+        return "JOIN"
+
+    # Aggregates (Cardinality reset or dependent on grouping)
+    elif "aggregate" in op_name or "group" in op_name:
+        if "simple" in op_name:
+            # e.g., "Simple Aggregate" (COUNT(*)) -> Always returns 1 row
+            return "SCALAR_AGG"
+        return "GROUP_AGG"
+
+    elif "sort" in op_name or "materialize" in op_name or "hash" in op_name:
+        # Sort, Hash, Materialize in op_name:
+        return "Pass-through"
+
+    else:
+        raise NotImplementedError(f"Unknown operator type for op_name: {op_name}")
 
 
 def get_or_add_col_id(
@@ -535,25 +651,45 @@ def apply_feature_scalers(features, feature_statistics, feature_names: List[str]
 
         raise e
 
-    if len(features) > 0:
-        assert len(features[0]) == len(feature_names), (
-            f"Features {len(features[0])} do not match feature names {len(feature_names)}"
+    # Handle empty feature lists
+    if features.size == 0:
+        # return an empty 2D array with zero rows and correct number of columns
+        return np.zeros((0, len(feature_names)), dtype=np.float32)
+
+    # If features is 1D, it can mean two things:
+    #  - a single sample row with len == n_features (shape should be (1, n_features))
+    #  - a single feature column with shape (n_samples,) where n_features == 1
+    # Normalize both cases to a 2D array with shape (n_samples, n_features)
+    if features.ndim == 1:
+        if features.shape[0] == len(feature_names):
+            # single row: reshape to (1, n_features)
+            features = features.reshape((1, -1))
+        else:
+            # assume single-column features: reshape to (n_samples, 1)
+            features = features.reshape((-1, 1))
+
+    # Validate that the number of columns matches expected feature names
+    if features.shape[1] != len(feature_names):
+        raise AssertionError(
+            f"Features have {features.shape[1]} columns but expected {len(feature_names)} ({feature_names})"
         )
-    else:
-        print(f"Empty features: {features} / {feature_names}", flush=True)
 
     scaled_features = []
     for i, column in enumerate(feature_names):
-        # extract features of this column
+        # extract features of this column (always 1D)
         column_features = features[:, i]
 
         # apply scalers
         if feature_statistics[column].get("type") == str(FeatureType.numeric):
             try:
-                scaler = feature_statistics[column]["scaler"]
-                scaled = scaler.transform(column_features.reshape((-1, 1))).reshape(
-                    (-1,)
-                )
+                scaler = feature_statistics[column].get("scaler")
+                if scaler is None:
+                    # Fallback: if no scaler is set, don't transform (identity)
+                    scaled = column_features
+                else:
+                    scaled = scaler.transform(column_features.reshape((-1, 1))).reshape(
+                        (-1,)
+                    )
             except Exception as e:
                 print(
                     f"Error applying scaler for column {column} with features {column_features}",
@@ -597,6 +733,9 @@ def postgres_plan_collator(
     prohibit_aggregation_node_at_root: bool = False,
     output_tensors: bool = False,
     scaler_type: str = "robust",
+    subplan_label_op_time: bool = False,
+    log_transform_card_labels: bool = False,
+    use_log_input_card: bool = False,
 ):
     """
     Combines physical plans into a large graph that can be fed into ML models.
@@ -632,6 +771,10 @@ def postgres_plan_collator(
     table_features = []
     table_to_plan_edges = []
     labels = []
+    subplan_labels = []
+    subplan_card_labels = []
+    subplan_est_card_labels = []
+
     predicate_depths = []
     intra_predicate_edges = []
     logical_preds = []
@@ -643,13 +786,11 @@ def postgres_plan_collator(
     # query stats
     query_stats_dict = collections.defaultdict(list)
 
-    # prepare robust encoder for the numerical fields
-    add_numerical_scalers(feature_statistics, scaler_type=scaler_type)
-
     # iterate over plans and create lists of edges and features per node
     sample_idxs = []
     for sample_idx, p in plans:
         sample_idxs.append(sample_idx)
+        # print(f'Before extracting plan runtime: {p}', flush=True)
         labels.append(p["plan_runtime_ms"])
 
         # annotate additional info
@@ -732,6 +873,9 @@ def postgres_plan_collator(
             p["run_file_id"],
             plan_depths,
             plan_features,
+            subplan_labels,
+            subplan_card_labels,
+            subplan_est_card_labels,
             plan_to_plan_edges,
             db_statistics,
             feature_statistics,
@@ -754,6 +898,7 @@ def postgres_plan_collator(
             skip_top_aggregation=skip_top_aggregation,
             filter_inline_col_feats=filter_inline_col_feats,
             annotate_base_table_card_to_scan_op=annotate_base_table_card_to_scan_op,
+            subplan_label_op_time=subplan_label_op_time,
         )
 
         # extract query stats
@@ -765,7 +910,22 @@ def postgres_plan_collator(
         )
 
     assert len(labels) == len(plans)
+    assert len(subplan_labels) == len(plan_features)
     assert len(plan_depths) == len(plan_features)
+
+    # Optionally apply log1p to input cardinality features (est/act) before scaling.
+    if use_log_input_card:
+        # find indices of plan features that contain 'card' in their name
+        card_feature_indices = [
+            i for i, f in enumerate(plan_featurization.PLAN_FEATURES) if "card" in f
+        ]
+        if len(card_feature_indices) > 0 and len(plan_features) > 0:
+            # apply np.log1p in-place to the specific columns
+            plan_features_np = np.array(plan_features, dtype=np.float32)
+            plan_features_np[:, card_feature_indices] = np.log1p(
+                plan_features_np[:, card_feature_indices]
+            )
+            plan_features = plan_features_np.tolist()
 
     # run the feature scaling
     plan_features = apply_feature_scalers(
@@ -886,6 +1046,34 @@ def postgres_plan_collator(
             ],
         }
     )
+
+    # Invert plan_dict to map the model's internal node index back to our original ID.
+    # The original ID corresponds to the label index.
+    inv_plan_dict = {}
+    for orig_id, (type_idx, depth) in plan_dict.items():
+        ntype = f"plan{depth}"
+        if ntype not in inv_plan_dict:
+            inv_plan_dict[ntype] = {}
+        inv_plan_dict[ntype][type_idx] = orig_id
+
+    # Attach the original_ids as data to each plan node in the graph.
+    for ntype in graph.ntypes:
+        if ntype.startswith("plan"):
+            # Check if we have nodes of this type in the current batch
+            if ntype in inv_plan_dict and graph.num_nodes(ntype) > 0:
+                type_map = inv_plan_dict[ntype]
+                # Create a list of original_ids, sorted by the DGL node index (0, 1, 2, ...).
+                # This assumes DGL node IDs for a given type are contiguous from 0.
+                if graph.num_nodes(ntype) != len(type_map):
+                    # This might happen if a plan has no nodes of a certain depth but the graph was constructed
+                    # to potentially have them. Only process if they match.
+                    continue
+
+                sorted_orig_ids = [type_map[i] for i in range(graph.num_nodes(ntype))]
+                graph.nodes[ntype].data["original_id"] = torch.tensor(
+                    sorted_orig_ids, dtype=torch.long
+                )
+
     # sort the plan features based on the depth
     for u, plan_feat in enumerate(plan_features):
         u_node_id, d_u = plan_dict[u]
@@ -908,17 +1096,35 @@ def postgres_plan_collator(
 
     # rather deal with runtimes in secs
     labels = postprocess_labels(labels)
+    subplan_labels = postprocess_labels(subplan_labels)
+    subplan_card_labels = np.array(subplan_card_labels, dtype=np.float32)
+    subplan_est_card_labels = np.array(subplan_est_card_labels, dtype=np.float32)
+    if log_transform_card_labels:
+        subplan_card_labels = np.log1p(subplan_card_labels)
+        subplan_est_card_labels = np.log1p(subplan_est_card_labels)
 
     if output_tensors:
         # create tensors
         labels = torch.from_numpy(labels)
+        subplan_labels = torch.from_numpy(subplan_labels)
         sample_idxs = torch.from_numpy(np.array(sample_idxs, dtype=np.int64))
+        subplan_card_labels = torch.from_numpy(subplan_card_labels, dtype=np.float32)
+        subplan_est_card_labels = torch.from_numpy(
+            subplan_est_card_labels, dtype=np.float32
+        )
 
     return (
         graph,
         postprocessed_features,
         labels,
-        {"sample_idxs": sample_idxs, **query_stats_dict},
+        {
+            "sample_idxs": sample_idxs,
+            **query_stats_dict,
+            "subplan_labels": subplan_labels,
+            "plan_dict": plan_dict,
+            "subplan_card_labels": subplan_card_labels,
+            "subplan_est_card_labels": subplan_est_card_labels,
+        },
     )
 
 
@@ -932,8 +1138,7 @@ def postprocess_labels(labels):
 
 def postprocess_feats(features, num_nodes_dict):
     # convert to tensors, replace nan with 0®
-    for k in features.keys():
-        v = features[k]
+    for k, v in features.items():
         v = np.array(v, dtype=np.float32)
         v = np.nan_to_num(v, nan=0.0)
         v = torch.from_numpy(v)

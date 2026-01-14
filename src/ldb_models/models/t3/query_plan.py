@@ -1,16 +1,16 @@
 import math
 from enum import Enum
 from functools import cmp_to_key
-from typing import Optional, Tuple, Dict
+from typing import Dict, Optional, Tuple
 
 from models.t3.database import Database
 from models.t3.operator_stages import (
     ExecutionPhase,
-    Pipeline,
     OperatorStage,
+    Pipeline,
     build_pipeline,
 )
-from models.t3.operators import Operator, OperatorType, parse_operator_type, Expressions
+from models.t3.operators import Expressions, Operator, OperatorType, parse_operator_type
 
 
 class CardType(Enum):

@@ -1,9 +1,9 @@
 import torch
 import torch.nn as nn
-
-from classes.classes import NeoModelConfig
+from classes import NeoModelConfig
 from models.workload_driven.dataset.dataset_creation import NeoInputDims
 from training.losses import create_loss
+from training.training.outputs import LossOutput, ModelOutput
 
 
 class TreeConvolution(nn.Module):
@@ -83,13 +83,28 @@ class TreeConvolution(nn.Module):
                 # assert 'norm' in name and 'weight' in name, name
                 nn.init.ones_(p)
 
-    def forward(self, model_input: tuple):
+    def forward(self, model_input: tuple, **kwargs) -> ModelOutput:
         out = self._forward(
             query_features=model_input[0],
             plan_encodings=model_input[1],
             indexes=model_input[2],
         )
-        return out
+        return ModelOutput(plan_predictions=out)
+
+    def compute_loss(
+        self, output: ModelOutput, query_stats: dict, labels: torch.Tensor
+    ) -> LossOutput:
+        # Loss computation
+        plan_predictions = output.plan_predictions
+        assert len(plan_predictions) == len(labels), (
+            f"Output length {len(plan_predictions)} does not match label length {len(labels)}"
+        )
+        loss = plan_loss = self.loss_fxn(plan_predictions, labels)
+
+        return LossOutput(
+            loss=loss,
+            plan_loss=plan_loss,
+        )
 
     def _forward(
         self,

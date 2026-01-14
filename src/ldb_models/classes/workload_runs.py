@@ -4,7 +4,7 @@ from typing import List, Optional
 
 import attrs as attrs
 from attr import field
-from classes.classes import ModelConfig, ModelType
+from classes import ModelConfig, ModelType
 
 
 @attrs.define(frozen=True, slots=False)

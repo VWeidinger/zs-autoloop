@@ -105,6 +105,9 @@ def mamba_plan_collator(
     db_schema_info: Dict,
     scaler_type: str,
     output_tensors: bool = False,
+    subplan_label_op_time: bool = False,
+    log_transform_card_labels: bool = False,
+    **kwargs,
 ):
     # edge information
     edge_ids = []  # list edges (src ndoe id, dst node id)
@@ -120,6 +123,9 @@ def mamba_plan_collator(
     join_features = []  # node features for joins
     scan_features = []  # node features for scans
     labels = []
+    subplan_labels = []
+    subplan_card_labels = []
+    subplan_est_card_list = []
 
     # other test information
     query_stats_dict = defaultdict(list)
@@ -156,6 +162,10 @@ def mamba_plan_collator(
             db_schema_info=db_schema_info,
             parent_node_id=None,
             node_is_left=None,
+            subplan_labels_list=subplan_labels,
+            subplan_card_labels_list=subplan_card_labels,
+            subplan_est_card_list=subplan_est_card_list,
+            subplan_label_op_time=subplan_label_op_time,
         )
 
         # add plan id to the features
@@ -238,10 +248,31 @@ def mamba_plan_collator(
 
     # rather deal with runtimes in secs
     labels = postprocess_labels(labels)
+    query_stats_dict["subplan_labels"] = postprocess_labels(subplan_labels)
+    subplan_card_labels = np.array(subplan_card_labels, dtype=np.float32)
+    subplan_est_card_list = np.array(subplan_est_card_list, dtype=np.float32)
+    if log_transform_card_labels:
+        subplan_card_labels = np.log1p(subplan_card_labels)
+        subplan_est_card_list = np.log1p(subplan_est_card_list)
+    query_stats_dict["subplan_card_labels"] = np.array(
+        subplan_card_labels, dtype=np.float32
+    )
+    query_stats_dict["subplan_est_card_labels"] = np.array(
+        subplan_est_card_list, dtype=np.float32
+    )
 
     if output_tensors:
-        # create tensors
         labels = torch.as_tensor(labels, dtype=torch.float32)
+        # Convert new labels to tensors if needed, though they are returned in dict
+        query_stats_dict["subplan_labels"] = torch.as_tensor(
+            subplan_labels, dtype=torch.float32
+        )
+        query_stats_dict["subplan_card_labels"] = torch.as_tensor(
+            subplan_card_labels, dtype=torch.float32
+        )
+        query_stats_dict["subplan_est_card"] = torch.as_tensor(
+            subplan_est_card_list, dtype=torch.float32
+        )
 
     return (
         edge_ids,
@@ -613,6 +644,10 @@ def plan_to_graph(
     db_schema_info: Dict,
     parent_node_id: str,
     node_is_left: bool,
+    subplan_labels_list: List[float],
+    subplan_card_labels_list: List[float],
+    subplan_est_card_list: List[float],
+    subplan_label_op_time: bool = False,
 ):
     plan_params = node["plan_parameters"]
     phys_op = plan_params["op_name"]
@@ -650,7 +685,26 @@ def plan_to_graph(
             db_schema_info,
             parent_node_id,
             node_is_left,
+            subplan_labels_list=subplan_labels_list,
+            subplan_card_labels_list=subplan_card_labels_list,
+            subplan_est_card_list=subplan_est_card_list,
+            subplan_label_op_time=subplan_label_op_time,
         )
+
+    subplan_card_labels_list.append(plan_params.get("act_card", 1.0))
+    subplan_est_card_list.append(plan_params.get("est_card", 1.0))
+    if subplan_label_op_time:
+        act_time = plan_params.get("act_time", 0.0)
+        children_act_times = [
+            child["plan_parameters"].get("act_time", 0.0)
+            for child in node.get("children", [])
+        ]
+        op_time = act_time - sum(children_act_times)
+        # Operation time cannot be negative. Clamp at a small positive value.
+        subplan_labels_list.append(max(op_time, 1e-6))
+    else:
+        # Default behavior: use the total runtime of the subplan as the label.
+        subplan_labels_list.append(plan_params.get("act_time", 1e-6))
 
     node_features, node_type = process_node_features(
         node,
@@ -701,6 +755,10 @@ def plan_to_graph(
             db_schema_info,
             parent_node_id=node_id,
             node_is_left=True,
+            subplan_labels_list=subplan_labels_list,
+            subplan_card_labels_list=subplan_card_labels_list,
+            subplan_est_card_list=subplan_est_card_list,
+            subplan_label_op_time=subplan_label_op_time,
         )
         # process right child
         plan_to_graph(
@@ -720,4 +778,8 @@ def plan_to_graph(
             db_schema_info,
             parent_node_id=node_id,
             node_is_left=False,
+            subplan_labels_list=subplan_labels_list,
+            subplan_card_labels_list=subplan_card_labels_list,
+            subplan_est_card_list=subplan_est_card_list,
+            subplan_label_op_time=subplan_label_op_time,
         )

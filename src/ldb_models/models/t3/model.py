@@ -2,14 +2,17 @@ from abc import ABC, abstractmethod
 
 import lightgbm as lgb
 import numpy as np
-
+import torch
 from models.t3.benchmarked_query import BenchmarkedQuery
 from models.t3.features import FeatureMapper
 from models.t3.query_plan import QueryPlan
+from torch import nn
+from training.training.outputs import LossOutput, ModelOutput
 
 
 class T3Model(ABC):
     tree: lgb.Booster
+    loss_fxn: nn.Module = None
 
     @abstractmethod
     def estimate_runtime(self, query: "BenchmarkedQuery") -> float:
@@ -31,7 +34,20 @@ class T3Model(ABC):
         # convert to seconds
         preds = preds / 1000
 
-        return preds
+        return ModelOutput(plan_predictions=preds)
+
+    def forward(self, queries: list["BenchmarkedQuery"]) -> ModelOutput:
+        preds = self.estimate_runtime_wrapper(queries)
+        return ModelOutput(plan_predictions=preds)
+
+    def compute_loss(
+        self, output: ModelOutput, query_stats: dict, labels: torch.Tensor
+    ) -> LossOutput:
+        if self.loss_fxn is None:
+            raise ValueError("Loss function not set for T3Model")
+
+        loss = self.loss_fxn(output.plan_predictions, labels)
+        return LossOutput(loss=loss, plan_loss=loss)
 
 
 class TreeModel(T3Model):
@@ -65,6 +81,8 @@ class FlatTreeModel:
     Predicts execution time of whole query
     """
 
+    loss_fxn: nn.Module = None
+
     def __init__(self, tree):
         # super().__init__()
         self.tree: lgb.Booster = tree
@@ -89,6 +107,19 @@ class FlatTreeModel:
         preds = preds / 1000
 
         return preds
+
+    def forward(self, queries: list["BenchmarkedQuery"]) -> ModelOutput:
+        preds = self.estimate_runtime_wrapper(queries)
+        return ModelOutput(plan_predictions=torch.tensor(preds, dtype=torch.float32))
+
+    def compute_loss(
+        self, output: ModelOutput, query_stats: dict, labels: torch.Tensor
+    ) -> LossOutput:
+        if self.loss_fxn is None:
+            raise ValueError("Loss function not set for T3Model")
+
+        loss = self.loss_fxn(output.plan_predictions, labels)
+        return LossOutput(loss=loss, plan_loss=loss)
 
 
 class PerTupleTreeModel(T3Model):

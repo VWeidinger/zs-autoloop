@@ -6,7 +6,7 @@ from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import torch
-from classes.classes import DACEModelConfig, DataLoaderOptions
+from classes import DACEModelConfig, DataLoaderOptions
 from classes.workload_runs import WorkloadRuns
 from ldb_schema.load_schema import get_json_schema, load_json
 from models.white_mamba.extract_query_stats import extract_query_stats_for_plan

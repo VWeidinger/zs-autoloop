@@ -2,6 +2,7 @@ import argparse
 import ast
 import functools
 import os
+from pathlib import Path
 from random import randint
 from typing import List
 
@@ -15,8 +16,11 @@ from octopus.step import CheckActiveScreens, CheckOutput, Step
 
 
 class TrainingServers:
-    load_dotenv()
-    NODE00 = ast.literal_eval(os.getenv("NODE00"))
+    # Load .env from the repository root (relative path).
+    # Resolve the file location relative to this script and climb up to the repo root.
+    env_path = Path(__file__).resolve().parents[4] / ".env"
+    load_dotenv(env_path.as_posix(), override=True, verbose=True)
+    # NODE00 = ast.literal_eval(os.getenv("NODE00"))
     NODE01 = ast.literal_eval(os.getenv("NODE01"))
     NODE02 = ast.literal_eval(os.getenv("NODE02"))
     NODE03 = ast.literal_eval(os.getenv("NODE03"))
