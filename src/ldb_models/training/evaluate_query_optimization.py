@@ -392,6 +392,9 @@ def evaluate_physical_plan_selection(
                 total_optimal_runtime
             )
             wandb_run.summary[f"{base_log_prefix}/avg_pick_rate"] = avg_pick_rate
+            reduced_prediction_dataframe, sql_table = reduce_pred_table_size(
+                prediction_dataframe
+            )
             wandb_run.log(
                 {
                     f"{base_log_prefix}_pred_table": wandb.Table(
@@ -589,6 +592,10 @@ def evaluate_access_path_selection(
                 total_optimal_runtime
             )
             wandb_run.summary[f"{base_prefix}/avg_pick_rate"] = total_pick_rate
+
+            reduced_prediction_dataframe, sql_table = reduce_pred_table_size(
+                prediction_dataframe
+            )
             wandb_run.log(
                 {
                     f"{base_prefix}_pred_table": wandb.Table(

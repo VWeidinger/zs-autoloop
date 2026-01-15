@@ -9,6 +9,7 @@ from training.featurizations import Featurization
 
 import classes as cls
 from classes import ModelConfig, Name
+from classes.configs.base import shorten_model_name
 
 
 def parameterized_config(base_config_name: str, **args):
@@ -191,6 +192,9 @@ def get_parameterized_model_config(model_name: str, m_args: Dict) -> ModelConfig
         else:
             # it is a flag - make it a boolean
             args_dict[param_name] = True
+
+    # shorten the model name
+    model_name = shorten_model_name(model_name)
 
     args_dict["name"] = Name(model_name, model_name)
     args_dict.update(m_args.copy())
