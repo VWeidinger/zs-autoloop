@@ -10,6 +10,8 @@ from ldb_schema.datasets import Dataset
 from ldb_schema.paths import ClusterPaths, LocalPaths
 from octopus.step import KillAllScreens, Rsync, RsyncCurrentRepo, SetupUVVenv, SetupVenv
 
+import wandb
+
 sys.path.append(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 )
@@ -30,6 +32,7 @@ def get_wandb_api_runs(wandb_project: str):
 
 def generate_training_commands(
     datasets: List[Dataset],
+    version: int,
     seeds: list[int],
     python_version: str,
     wandb_project: Optional[str],
@@ -201,9 +204,7 @@ def generate_training_commands(
                 else:
                     name_short = name
 
-                wandb_name = (
-                    f"{name_short}{model_suffix}/{target_dataset.db_name}/{seed}"
-                )
+                wandb_name = f"{name_short}{model_suffix}/{target_dataset.db_name}/{seed}v{version}"
 
                 # shorten wandb name
                 wandb_name = shorten_model_name(wandb_name)
@@ -242,6 +243,7 @@ def generate_training_commands(
                     f"--target_dir {target_model.get_eval_dir(ClusterPaths(), target_dataset).as_posix()} "
                     f"--statistics_file {statistics_path} "
                     f"--seed {seed} "
+                    f"--version {version} "
                     f"--wandb_name {wandb_name} "
                 )
 
@@ -355,9 +357,8 @@ if __name__ == "__main__":
         Dataset("fhnk", scale=2),
     ]
 
-    seeds = [
-        4
-    ]  # 3=parsed_plans2, 4=fixed card-annotation of optimal plans in JOB & -Complex and improved logging/plotting, 5=fixed parser error (new feature statistics) 10/2025)
+    version = 5  # 3=parsed_plans2, 4=fixed card-annotation of optimal plans in JOB & -Complex and improved logging/plotting, 5=fixed parser error (new feature statistics) 10/2025)
+    seeds = [5]
     nodes = [
         TrainingServers.NODE01,
         TrainingServers.NODE02,
@@ -480,6 +481,7 @@ if __name__ == "__main__":
         datasets=datasets,
         model_list=model_configs,
         python_version="",
+        version=version,
         seeds=seeds,
         wandb_project=runner.wandb_project,
         wandb_entity=runner.wandb_entity,

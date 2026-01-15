@@ -10,8 +10,6 @@ dependencies = [
     "osfclient>=0.0.5",
     "scikit-learn>=1.5.1",
     "torch==2.3.0",
-    "torch-scatter>=2.1.2 ; platform_system == 'Darwin'",
-    "torch-scatter>=2.1.2 ; platform_system == 'Linux'",
     "lightning>=2.4.0",
     "polars>=1.6.0",
     "pandas>=2.2.2",
@@ -40,16 +38,12 @@ dependencies = [
     "ipywidgets>=8.1.7",
     "statsmodels",
     "torchdata==0.8.0",
-    #    "torchdata==0.8.0",
-    # "dgl @ https://data.dgl.ai/wheels/dgl-2.2.0-cp312-cp312-macosx_12_0_arm64.whl",
-    # "dgl @ https://data.dgl.ai/wheels/torch-2.3/cu121/dgl-2.4.0%2Bcu121-cp312-cp312-manylinux1_x86_64.whl",
-    # "dgl @ https://data.dgl.ai/wheels/torch-2.3/cu121/dgl-2.4.0%2Bcu121-cp312-cp312-manylinux1_x86_64.whl",
     "setup @ git+https://github.com/DataManagementLab/SPFlow.git",
     "torch-scatter>=2.1.2",
     "octopus @ git+https://github.com/DataManagementLab/octopus.git",
 ]
 readme = "README.md"
-requires-python = ">= 3.12"
+requires-python = "~= 3.12.0"
 
 [project.optional-dependencies]
 jupyter = [
@@ -72,17 +66,35 @@ build-backend = "hatchling.build"
 # url = 'https://data.dgl.ai/wheels/repo.html'
 # type = "find-links"
 
-# Source for Mac/CPU
-[[tool.uv.sources]]
-name = "pyg-cpu"
-url = "https://data.pyg.org/whl/torch-2.3.0+cpu.html"
-type = "find-links"
+[tool.uv]
 
-# Source for Linux/GPU with CUDA 12.1
-[[tool.uv.sources]]
+[tool.uv.sources]
+# Install CUDA-enabled PyTorch wheels on Linux.
+torch = { index = "pytorch-cuda", marker = "platform_system == 'Linux'" }
+
+# Avoid building torch-scatter from source under build isolation by using the
+# official prebuilt PyG wheels for the matching Torch/CUDA combo.
+torch-scatter = [
+    { index = "pyg-cuda", marker = "platform_system == 'Linux'" },
+    { index = "pyg-cpu", marker = "platform_system == 'Darwin'" },
+]
+
+[[tool.uv.index]]
 name = "pytorch-cuda"
 url = "https://download.pytorch.org/whl/cu121"
-type = "find-links"
+explicit = true
+
+[[tool.uv.index]]
+name = "pyg-cpu"
+url = "https://data.pyg.org/whl/torch-2.3.0+cpu.html"
+format = "flat"
+explicit = true
+
+[[tool.uv.index]]
+name = "pyg-cuda"
+url = "https://data.pyg.org/whl/torch-2.3.0+cu121.html"
+format = "flat"
+explicit = true
 
 [tool.hatch.metadata]
 allow-direct-references = true

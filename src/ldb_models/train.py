@@ -14,6 +14,7 @@ from training.training.metrics import Metric
 from training.training.test import test_model
 from training.training.train_epoch import train_epoch
 from training.training.validate import validate_model
+
 from wandb.apis.public import Run
 
 
@@ -180,6 +181,8 @@ def train_model(
 
     if prof:
         prof.stop()
-        profile_output_dir = str(model_dir / f"{config.name.NAME}_{config.seed}")
+        profile_output_dir = str(
+            model_dir / f"{config.name.NAME}_{config.seed}v{config.version}"
+        )
         print(f"Profile with pytorch profiler to logdir {profile_output_dir}")
         prof.export_chrome_trace(profile_output_dir + ".prof")

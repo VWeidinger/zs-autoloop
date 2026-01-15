@@ -16,5 +16,8 @@
     "notebook.codeActionsOnSave": {
         "notebook.source.fixAll": "explicit",
         "notebook.source.organizeImports": "explicit"
+    },
+    "chat.tools.terminal.autoApprove": {
+        "uv": true
     }
 }

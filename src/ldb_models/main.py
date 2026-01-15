@@ -4,13 +4,12 @@ import functools
 import random
 from datetime import datetime
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import attrs as attrs
 import numpy as np
 import torch
 import torch.optim as opt
-import wandb
 from classes import (
     CascadeRankingModelConfig,
     DACEModelConfig,
@@ -72,6 +71,8 @@ from training.scheduler import init_scheduler
 from training.training.checkpoint import load_checkpoint
 from training.training.metrics import Metric, init_metrics
 from training.training.test import test_model
+
+import wandb
 from wandb.apis.public import Run
 
 
@@ -83,7 +84,7 @@ def init_model(
     word_embeddings: Path,
     quick_run: bool = False,
     assemble_data_up_front: bool = False,
-) -> Tuple[Optional[nn.Module], DataLoader, DataLoader, List[DataLoader]]:
+) -> Tuple[Optional[nn.Module], DataLoader, DataLoader, List[DataLoader], Dict]:
     if isinstance(
         config, (ZeroShotModelConfig, ZeroShotVAEModelConfig, MambaModelConfig)
     ):
@@ -344,9 +345,6 @@ def init_model(
         hasattr(config, "online_hard_example_mining")
         and not config.online_hard_example_mining
     ) or not hasattr(config, "online_hard_example_mining"):
-        assert not config.online_hard_example_mining, (
-            "datasets will be instantiated later -> deferred_setup()"
-        )
         if train_loader:
             gather_dataloader_stats(train_loader, "train_loader")
             gather_dataloader_stats(val_loader, "val_loader")
@@ -384,7 +382,7 @@ def use_model(
     random.seed(config.seed)
 
     # Add test workloads to workload_runs
-    wl_runs.update_test_workloads(target_dir, config.seed)
+    wl_runs.update_test_workloads(target_dir, config.seed, config.version)
 
     # Check if training and testing was previously executed
     if wl_runs.check_if_done(config.name.NAME):
@@ -398,7 +396,7 @@ def use_model(
 
     # Initialize models and data loaders
     print(
-        f"Initializing model {config.name.NAME} with seed {config.seed} and load datasets",
+        f"Initializing model {config.name.NAME} with seed {config.seed} and version {config.version} and load datasets",
         flush=True,
     )
     model, train_loader, val_loader, test_loaders, feature_stats = init_model(
@@ -697,6 +695,7 @@ if __name__ == "__main__":
     parser.add_argument("--wandb_group", default=None)
     parser.add_argument("--wandb_resume_id", default=None)
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--version", type=int, default=0)
     parser.add_argument("--num_workers", type=int, default=20)
     parser.add_argument("--quick_run", action="store_true")
     parser.add_argument("--pt_profiler", action="store_true")
@@ -726,6 +725,7 @@ if __name__ == "__main__":
         device=args.device,
         cap_training_samples=args.cap_training_samples,
         seed=args.seed,
+        version=args.version,
         num_workers=args.num_workers,
     )
 
@@ -798,6 +798,7 @@ if __name__ == "__main__":
         config_dict["name"] = wandb_name
         config_dict["model_type"] = model_type
         config_dict["seed"] = args.seed
+        config_dict["version"] = args.version
         config_dict["quick_run"] = args.quick_run
         config_dict["device"] = args.device
 

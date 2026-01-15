@@ -104,6 +104,7 @@ class ModelConfig:
     optimizer_kwargs: dict = dict(lr=1e-3)
     batch_size: int = 64
     seed: int = field(default=0)
+    version: int = field(default=0)
     epochs: int = field(default=200)
     early_stopping_patience: int = 20
     num_workers: int = field(default=20)

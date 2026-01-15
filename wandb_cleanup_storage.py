@@ -1,4 +1,5 @@
-from concurrent.futures import ThreadPoolExecutor, as_completed
+import traceback
+from multiprocessing import Pool
 
 from tqdm import tqdm
 
@@ -32,23 +33,38 @@ deleted = 0
 runs = wandb.Api().runs(f"{ENTITY}/{PROJECT}")
 print(f"Fetched {len(runs)} runs.")
 
-
-def process_run(run):
-    run_deleted = 0
-    print(f"Processing run: {run.id}")
-    for file in tqdm(run.files(pattern=ARTIFACT_REGEX), desc=run.id):
-        file_name = file.name
-        if file_name.endswith(FILE_SUFFIX):
-            file.delete()
-            run_deleted += 1
-    print(f"Run {run.id} - Deleted files: {run_deleted}")
-    return run_deleted
+run_ids = [run.id for run in runs]
 
 
-with ThreadPoolExecutor(max_workers=20) as executor:
-    futures = [executor.submit(process_run, run) for run in runs]
-    for future in as_completed(futures):
-        deleted += future.result()
+def process_run(run_id):
+    try:
+        run_deleted = 0
+        print(f"Processing run: {run_id}")
+        try:
+            run = api.run(f"{ENTITY}/{PROJECT}/{run_id}")
+        except Exception as e:
+            print(f"Failed to fetch run {run_id}: {e}")
+            return run_deleted
+        for file in tqdm(run.files(pattern=ARTIFACT_REGEX), desc=run_id):
+            try:
+                file_name = file.name
+                if file_name.endswith(FILE_SUFFIX):
+                    file.delete()
+                    run_deleted += 1
+            except Exception:
+                continue
+        print(f"Run {run_id} - Deleted files: {run_deleted}")
+        return run_deleted
+    except Exception as e:
+        print(f"Error processing run {run_id}: {e}")
+        traceback.print_exc()
+        return run_deleted
+
+
+if __name__ == "__main__":
+    with Pool() as pool:
+        results = pool.map(process_run, run_ids)
+        deleted = sum(results)
 
 print("-" * 60)
 print(f"Deleted artifacts:  {deleted}")

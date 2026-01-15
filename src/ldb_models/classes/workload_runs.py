@@ -4,6 +4,7 @@ from typing import List, Optional
 
 import attrs as attrs
 from attr import field
+
 from classes import ModelConfig, ModelType
 
 
@@ -13,13 +14,13 @@ class WorkloadRuns:
     test_workload_runs: Optional[List[Path]] = field(default=None)
     target_test_csv_paths: List[Path] = []
 
-    def update_test_workloads(self, target_dir: Path, seed: int) -> None:
+    def update_test_workloads(self, target_dir: Path, seed: int, version: int) -> None:
         if self.test_workload_runs:
             for test_path in self.test_workload_runs:
                 test_workload = os.path.basename(test_path).replace(".json.gz", "")
                 test_workload = os.path.basename(test_workload).replace(".json", "")
                 self.target_test_csv_paths.append(
-                    Path(target_dir) / f"{test_workload}_{seed}"
+                    Path(target_dir) / f"{test_workload}_{seed}v{version}"
                 )
         else:
             # When no test paths are given, this is a workload driven model,
@@ -28,7 +29,7 @@ class WorkloadRuns:
                 test_workload = os.path.basename(test_path).replace(".json.gz", "")
                 test_workload = os.path.basename(test_workload).replace(".json", "")
                 self.target_test_csv_paths.append(
-                    Path(target_dir) / f"{test_workload}_{seed}"
+                    Path(target_dir) / f"{test_workload}_{seed}v{version}"
                 )
 
     def check_if_done(self, model_name: str) -> bool:

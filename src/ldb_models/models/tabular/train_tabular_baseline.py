@@ -22,8 +22,8 @@ from classes import (
     T3FlatModelConfig,
     T3ModelConfig,
     T3TreeModelConfig,
-    WorkloadRuns,
 )
+from classes.workload_runs import WorkloadRuns
 from ldb_schema.load_schema import get_json_schema, load_json
 from models.t3.model import FlatTreeModel, PerTupleTreeModel, T3Model, TreeModel
 from models.t3.t3_dataloader import gen_t3_dataset
@@ -46,7 +46,9 @@ from training.featurizations import Featurization
 from training.training.checkpoint import save_csv
 from training.training.metrics import init_metrics
 from training.training.outputs import ModelOutput
-from training.training.utils import prefix_dict, to_rows
+from training.training.utils import prefix_dict
+from training.training.validate import to_rows
+
 from wandb.apis.public import Run
 
 
@@ -157,8 +159,8 @@ def train_tabular_model(
         param_dict.update(
             num_boost_round=num_boost_round, early_stopping_rounds=early_stopping_rounds
         )
-        bst.save_model(f"{model_dir}_{config.seed}.txt")
-        print(f"Model saved to {model_dir}_{config.seed}.txt")
+        bst.save_model(f"{model_dir}_{config.seed}v{config.version}.txt")
+        print(f"Model saved to {model_dir}_{config.seed}v{config.version}.txt")
 
     elif isinstance(
         config,
@@ -170,9 +172,10 @@ def train_tabular_model(
     ):
         m = LinearRegression()
         m.fit(x_train, y_train)
-        joblib.dump(m, f"{model_dir}_{config.seed}.pkl")
-        print(f"Model saved to {model_dir}_{config.seed}.pkl")
-        os.chmod(f"{model_dir}_{config.seed}.pkl", 0o777)
+        model_path = f"{model_dir}_{config.seed}v{config.version}.pkl"
+        joblib.dump(m, model_path)
+        print(f"Model saved to {model_path}")
+        os.chmod(model_path, 0o777)
 
     elif isinstance(config, T3ModelConfig):
         param = {"objective": "mape", "verbose": 2 if verbose else -1}
@@ -186,9 +189,11 @@ def train_tabular_model(
                 print(i + 1, bst.eval_train(), bst.eval_valid())
 
         # assemble model path
-        model_path = f"{model_dir}_{config.seed}_{config.name.NAME}.txt"
+        model_path = (
+            f"{model_dir}_{config.seed}_{config.name.NAME}v{config.version}.txt"
+        )
         bst.save_model(model_path)
-        print(f"Model saved to {model_path}.txt")
+        print(f"Model saved to {model_path}")
 
         # wrap the model in the T3Model class
         if isinstance(config, T3FlatModelConfig):
@@ -213,7 +218,9 @@ def train_tabular_model(
         spn = learn_parametric(train, ds_context, min_instances_slice=20)
 
         print("Saving SPN model...")
-        model_path = f"{model_dir}_{config.seed}_{config.name.NAME}.pkl"
+        model_path = (
+            f"{model_dir}_{config.seed}_{config.name.NAME}v{config.version}.pkl"
+        )
 
         with open(f"{model_path}", "wb") as f:
             pickle.dump(spn, f)
@@ -229,7 +236,9 @@ def train_tabular_model(
     )
 
     save_csv(
-        [param_dict], str(model_dir) + f"_{config.seed}_{config.name.NAME}_params.csv"
+        [param_dict],
+        str(model_dir)
+        + f"_{config.seed}v{config.version}_{config.name.NAME}_params.csv",
     )
     return model
 
@@ -256,8 +265,9 @@ def predict_tabular_model(
     np.random.seed(config.seed)
 
     if isinstance(config, FlatModelConfig):
-        print(f"Loading model from {model_dir}_{config.seed}.txt")
-        bst = lgb.Booster(model_file=f"{model_dir}_{config.seed}.txt")
+        model_path = f"{model_dir}_{config.seed}v{config.version}.txt"
+        print(f"Loading model from {model_path}")
+        bst = lgb.Booster(model_file=model_path)
 
         # Define a function to apply lower bound
         def predict_with_lower_bound(data, lower_bound, bst=bst):
@@ -270,16 +280,19 @@ def predict_tabular_model(
         gen_dataset_func = gen_flattened_dataset
 
     elif isinstance(config, ScaledPostgresModelConfig):
-        print(f"Loading model from {model_dir}_{config.seed}.pkl")
-        m = joblib.load(filename=f"{model_dir}_{config.seed}.pkl")
+        model_path = f"{model_dir}_{config.seed}v{config.version}.pkl"
+        print(f"Loading model from {model_path}")
+        m = joblib.load(filename=model_path)
         pred_func = m.predict
         gen_dataset_func = gen_postgres_cost_dataset
 
     elif isinstance(config, T3ModelConfig):
-        model_path = f"{model_dir}_{config.seed}_{config.name.NAME}.txt"
+        model_path = (
+            f"{model_dir}_{config.seed}_{config.name.NAME}v{config.version}.txt"
+        )
         print(f"Loading model from {model_path}")
         bst = lgb.Booster(model_file=model_path)
-        print(f"Model saved to {model_dir}_{config.seed}.txt")
+        print(f"Model saved to {model_path}")
 
         # wrap the model in the T3Model class
         if isinstance(config, T3FlatModelConfig):
@@ -295,9 +308,11 @@ def predict_tabular_model(
         )
 
     elif isinstance(config, SPNModelConfig):
-        model_path = f"{model_dir}_{config.seed}_{config.name.NAME}.pkl"
+        model_path = (
+            f"{model_dir}_{config.seed}_{config.name.NAME}v{config.version}.pkl"
+        )
         print(f"Loading model from {model_path}")
-        with open(f"{model_path}", "rb") as f:
+        with open(model_path, "rb") as f:
             spn_loaded = pickle.load(f)
         assert spn_loaded is not None, f"SPN model {model_path} could not be loaded"
         pred_func = lambda x: mpe(spn_loaded, x)

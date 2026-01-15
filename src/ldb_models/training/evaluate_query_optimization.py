@@ -3,7 +3,6 @@ from collections import defaultdict
 
 import numpy as np
 import pandas as pd
-import wandb
 from matplotlib import pyplot as plt
 from sklearn.metrics import (
     ConfusionMatrixDisplay,
@@ -21,6 +20,8 @@ from training.training.metrics import (
     SpearmanRank,
     SurpassedPlans,
 )
+
+import wandb
 from wandb.sdk.wandb_run import Run
 
 
@@ -229,6 +230,9 @@ def evaluate_join_order(
                 aggregated_results["spearman_corr"]
             )
             wandb_run.summary[f"{base_prefix}/num_plans"] = len(predictions)
+            reduced_prediction_dataframe, sql_table = reduce_pred_table_size(
+                prediction_dataframe
+            )
             wandb_run.log(
                 {
                     f"{base_prefix}_pred_table": wandb.Table(
