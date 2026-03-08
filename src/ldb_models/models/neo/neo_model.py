@@ -46,13 +46,13 @@ class TreeConvolution(nn.Module):
 
         # Tree Convolution
         self.conv = nn.Sequential(
-            TreeConv1d(32 + max_plan_depth, 512),
+            TreeConv1d(32 + max_plan_depth, 512, device=self.device),
             TreeStandardize(),
             TreeAct(nn.LeakyReLU()),
-            TreeConv1d(512, 256),
+            TreeConv1d(512, 256, device=self.device),
             TreeStandardize(),
             TreeAct(nn.LeakyReLU()),
-            TreeConv1d(256, 128),
+            TreeConv1d(256, 128, device=self.device),
             TreeStandardize(),
             TreeAct(nn.LeakyReLU()),
             TreeMaxPool(),
@@ -131,7 +131,7 @@ class TreeConvolution(nn.Module):
         query_embs = query_embs.expand(
             query_embs.shape[0], query_embs.shape[1], max_subtrees
         )
-        concat = torch.cat((query_embs, plan_encodings), axis=1)
+        concat = torch.cat(tensors=(query_embs, plan_encodings), dim=1)
 
         # Convolution and pooling
         out = self.conv((concat, indexes))
@@ -142,9 +142,9 @@ class TreeConvolution(nn.Module):
 class TreeConv1d(nn.Module):
     """Conv1d adapted to tree data."""
 
-    def __init__(self, in_dims, out_dims):
+    def __init__(self, in_dims, out_dims, device):
         super().__init__()
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.device = device
         self._in_dims = in_dims
         self._out_dims = out_dims
         self.weights = nn.Conv1d(in_dims, out_dims, kernel_size=3, stride=3)

@@ -24,6 +24,23 @@ def get_col_stats(column_stats: list, column_name: str):
             return col_stat
 
 
+def _parse_based_on_dtype(literal: str, dtype: str) -> str | int | float:
+    if dtype == "integer":
+        return int(float(literal))
+    elif dtype in ["float", "numeric", "double", "double precision"]:
+        return float(literal)
+    elif dtype in [
+        "character varying",
+        "varchar",
+        "time without time zone",
+        "character",
+        "char",
+    ]:
+        return str(literal)
+    else:
+        raise ValueError(f"Unsupported datatype: {dtype}")
+
+
 def construct_filter_sample(
     table_samples: dict, column_stats: list, filter_column: dict
 ):
@@ -48,14 +65,7 @@ def construct_filter_sample(
 
         # Cast literal to the correct type
         if literal:
-            if datatype == "integer":
-                literal = int(float(literal))
-            elif datatype == "float":
-                literal = float(literal)
-            elif datatype == "character varying":
-                literal = str(literal)
-            else:
-                raise ValueError(f"Unsupported datatype: {datatype}")
+            literal = _parse_based_on_dtype(literal, datatype)
 
         # Compute Sample Vectors
         if filter_column["operator"] == "=":
@@ -74,7 +84,7 @@ def construct_filter_sample(
             regex = regex.replace("%", ".*?")
             regex = f"^{regex}$"
             # sample_vec = base_sample.str.contains(regex)
-            sample_vec = base_sample.str.contains(regex, regex=True, na=False)
+            sample_vec = base_sample.astype(str).str.contains(regex, regex=True, na=False)
             if filter_column["operator"] == "NOT LIKE":
                 sample_vec[sample_vec.isna()] = False
                 sample_vec = ~sample_vec
@@ -82,12 +92,7 @@ def construct_filter_sample(
             literal = literal.split(",")
             casted_literals = []
             for l in literal:
-                if datatype == "integer":
-                    l = int(float(l))
-                elif datatype == "float":
-                    l = float(l)
-                elif datatype == "character varying":
-                    l = str(l)
+                l = _parse_based_on_dtype(l, datatype)
                 casted_literals.append(l)
             sample_vec = base_sample.isin(casted_literals)
         elif filter_column["operator"] == "IS NOT NULL":
@@ -166,10 +171,14 @@ def augment_sample_vectors(
 ):
     # Check first that all workload paths exist
     print("Checking existence of all workloads", flush=True)
+    filtered_workloads = []
     for workload in workloads:
         source_path = os.path.join(plan_path, f"{workload}.json")
-        if not os.path.exists(source_path):
-            raise FileNotFoundError(f"Could not find workload file {source_path}")
+        if os.path.exists(source_path):
+            filtered_workloads.append(workload)
+        else:
+            print(f"Could not find workload file {source_path}, skipping {workload}")
+    workloads = filtered_workloads
 
     # create output directory
     os.makedirs(target_path, exist_ok=True)

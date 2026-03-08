@@ -241,8 +241,8 @@ def _walk(curr: tuple[int], vecs: list[tuple]) -> None:
 def _make_preorder_ids_tree(
     curr: dict, root_index: int = 1
 ) -> (
-    tuple[tuple[int, int, int], int]
-    | tuple[tuple[int, tuple[int, int, int], tuple[int, int, int]], int]
+    Tuple[Tuple[int, int, int], int]
+    | Tuple[Tuple[int, Tuple[int, int, int], Tuple[int, int, int]], int]
 ):
     """Returns a tuple containing a tree of preorder positional IDs.
 
@@ -280,10 +280,9 @@ def _make_preorder_ids_tree(
 def make_indexes(plan: dict) -> np.ndarray:
     # Join(A, B)            --> preorder_ids = (1, (2, 0, 0), (3, 0, 0))
     # Join(Join(A, B), C)   --> preorder_ids = (1, (2, 3, 4), (5, 0, 0))
-    preorder_ids: tuple[int, int, int]
     preorder_ids, _ = _make_preorder_ids_tree(
         plan
-    )  # method returns (tree structure, largest id under me), tuple[tuple[int, int, int], int]
+    )  # method returns (tree structure, largest id under me), Tuple[Tuple[int, int, int], int]
     vecs = []
     _walk(preorder_ids, vecs)
     vecs = np.asarray(vecs).reshape(-1, 1)
