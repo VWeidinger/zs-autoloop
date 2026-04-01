@@ -26,7 +26,7 @@ if __name__ == "__main__":
             )
         )
     if install_rye:
-        setup_steps.append(SetupUVVenv(no_lock=False, no_dev=False))
+        setup_steps.append(SetupUVVenv())
 
     purge_steps = [KillAllScreens()]
 
@@ -48,16 +48,20 @@ if __name__ == "__main__":
     file_name = "feature_statistics"
     target_folder = f"{ClusterPaths().Data.root}/feature_statistics"
 
+    parsed_plans_dirname = "parsed_plans3"
+
     # First generate generic feature statistics over all workloads
-    suffix = "_v20260107"
-    eval_commands = [
+    suffix = "_v20260309"
+    eval_commands = []
+    eval_commands += [
         f"python3 gather_feature_stats.py "
         f"--database {' '.join([d.data_folder for d in datasets])} "
-        f"--workload workload_200k_s1.json complex_workload_200k_s1.json join_order.json access_path_selection.json physical_operator.json physical_operator_w_idx.json job_w_optimal_w_idxs.json job_complex_w_optimal_w_idxs.json complex_workload_1join_random_allops.json full_qo_complex_workload_200k_s1.json scan_only_s1_access_path_hints.json "
+        f"--workload workload_200k_s1.json complex_workload_200k_s1.json complex_workload_many_joins_hints.json full_qo_complex_workload_200k_s1.json scan_only_s1_access_path_hints_stratified.json workload_200k_s1_full_hints_gt30.json workload_200k_s1_full_hints_idx.json workload_200k_s1_full_hints_lt30.json join_order.json access_path_selection.json access_path_selection_with_aggregate.json physical_operator.json physical_operator_w_idx.json job_w_optimal_w_idxs.json job_complex_w_optimal_w_idxs.json "
         f"--file_name {file_name} "
         f"--target_folder {target_folder} "
         f"--runs_dir {ClusterPaths().Data.runs} "
-        f"--file_name feature_statistics{suffix}",
+        f"--file_name feature_statistics{suffix} "
+        f" --parsed_plans_dirname {parsed_plans_dirname}",
     ]
 
     # Next, generate workload-specific feature statistics
@@ -65,11 +69,12 @@ if __name__ == "__main__":
         eval_commands += [
             f"python3 gather_feature_stats.py "
             f"--database {dataset.data_folder} "
-            f"--workload workload_200k_s1.json complex_workload_200k_s1.json join_order.json access_path_selection.json physical_operator.json physical_operator_w_idx.json job_w_optimal_w_idxs.json job_complex_w_optimal_w_idxs.json complex_workload_1join_random_allops.json full_qo_complex_workload_200k_s1.json scan_only_s1_access_path_hints.json "
+            f"--workload workload_200k_s1.json complex_workload_200k_s1.json complex_workload_many_joins_hints.json full_qo_complex_workload_200k_s1.json scan_only_s1_access_path_hints_stratified.json workload_200k_s1_full_hints_gt30.json workload_200k_s1_full_hints_idx.json workload_200k_s1_full_hints_lt30.json join_order.json access_path_selection.json access_path_selection_with_aggregate.json physical_operator.json physical_operator_w_idx.json job_w_optimal_w_idxs.json job_complex_w_optimal_w_idxs.json "
             f"--file_name {file_name} "
             f"--target_folder {target_folder} "
             f"--runs_dir {ClusterPaths().Data.runs} "
-            f"--file_name feature_statistics{suffix}_{dataset.db_name}",
+            f"--file_name feature_statistics{suffix}_{dataset.db_name} "
+            f"--parsed_plans_dirname {parsed_plans_dirname}",
         ]
 
     runner.run_exp(

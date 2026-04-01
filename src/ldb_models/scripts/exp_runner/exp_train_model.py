@@ -5,10 +5,16 @@ import sys
 from functools import lru_cache
 from typing import List, Optional
 
-import wandb
 from ldb_schema.datasets import Dataset
 from ldb_schema.paths import ClusterPaths, LocalPaths
-from octopus.step import KillAllScreens, Rsync, RsyncCurrentRepo, SetupUVVenv, SetupVenv
+from octopus.step import (
+    KillAllScreens,
+    Rsync,
+    RsyncCurrentRepo,
+    SetupUVVenv,
+    SetupVenv,
+    Step,
+)
 
 import wandb
 
@@ -37,10 +43,10 @@ def generate_training_commands(
     python_version: str,
     wandb_project: Optional[str],
     wandb_entity: Optional[str],
-    model_list: list[ModelConfig] = ModelConfig,
+    model_list: list[ModelConfig] = [],
     quick_run: bool = False,
     pt_profiler: bool = False,
-    test_against: str = None,
+    test_against: str | None = None,
     bound_predictions: bool = False,
     eval_join_order: bool = False,
     eval_access_path: bool = False,
@@ -323,8 +329,8 @@ if __name__ == "__main__":
     if install_rye:
         setup_steps.append(SetupUVVenv())
 
-    purge_steps = [KillAllScreens()]
-    pickup_steps = [
+    purge_steps: list[Step] = [KillAllScreens()]
+    pickup_steps: list[Step] = [
         Rsync(
             src=[ClusterPaths().Data.runs.as_posix()],
             dest=[LocalPaths().data],
@@ -357,14 +363,14 @@ if __name__ == "__main__":
         Dataset("fhnk", scale=2),
     ]
 
-    version = 5  # 3=parsed_plans2, 4=fixed card-annotation of optimal plans in JOB & -Complex and improved logging/plotting, 5=fixed parser error (new feature statistics) 10/2025)
+    version = 6  # 3=parsed_plans2, 4=fixed card-annotation of optimal plans in JOB & -Complex and improved logging/plotting, 5=fixed parser error (new feature statistics) 10/2025) # 6= parsed plans 3
     seeds = [5]
     nodes = [
-        TrainingServers.NODE01,
+        # TrainingServers.NODE01,
         TrainingServers.NODE02,
-        TrainingServers.NODE03,
-        TrainingServers.NODE04,
-        TrainingServers.NODE05,
+        # TrainingServers.NODE03,
+        # TrainingServers.NODE04,
+        # TrainingServers.NODE05,
         # TrainingServers.NODE00,
         # TrainingServers.NODE09,
     ]
@@ -409,23 +415,23 @@ if __name__ == "__main__":
     # generate model configs
     model_configs = []
     for model_type in [
-        "postgres",
-        "zeroshot",
+        # "postgres",
+        # "zeroshot",
         # "zeroshot_act_card",
         # # 'zeroshot_low_min',
         # # 'zeroshot_xl',
         # # 'zeroshot_timeout',
-        "dace",
-        "flat",
-        "t3",
+        # "dace",
+        # "flat",
+        # "t3",
         # "t3_act",
         # "zeroshot_vae",
         "neo",
-        "qppnet",
-        "mscn",
-        "e2e",
-        "query_former",
-        "mamba",
+        # "qppnet",
+        # "mscn",
+        # "e2e",
+        # "query_former",
+        # "mamba",
         # # "mamba_tanh",
         # # "mamba_relu",
         # "spn",
@@ -444,19 +450,13 @@ if __name__ == "__main__":
 
         model_configs.extend(
             [
+                # +
                 parameterized_config(
                     model_type,
-                    wandb_group="baseline",
+                    wandb_group="baselines",
                     include_pg_opt_workloads=True,
-                    apply_cardinality_estimation_correction_logic=True,
-                    cardinality_estimation_correction_logic_params=params,
                     **model_specific_args,
                 )
-                for params in [
-                    "el_bu_td",
-                    "el_bu",
-                    "el_td",
-                ]
             ]
         )
 

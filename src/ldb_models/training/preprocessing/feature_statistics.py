@@ -121,11 +121,16 @@ def gather_feature_statistics(workload_run_paths, target):
             continue
 
         if all(
-            [isinstance(v, int) or isinstance(v, float) or v is None for v in values]
+            [
+                (isinstance(v, (int, float)) and not isinstance(v, bool)) or v is None
+                for v in values
+            ]
         ):
             scaler = RobustScaler()
-            np_values = np.array(values, dtype=np.float32).reshape(-1, 1)
+            np_values = np.array(values, dtype=np.float64).reshape(-1, 1)
+            np_values = np_values[np.isfinite(np_values).all(axis=1)]
             scaler.fit(np_values)
+            np_values = np_values.astype(np.float64)
 
             statistics_dict[k] = {
                 "max": float(np_values.max()),

@@ -116,7 +116,7 @@ class ModelConfig:
     limit_plans_overall: int = field(default=None)
     include_timeout_queries: bool = False
     input_format: InputFormats = field(default=None)
-    hyperparameter: Path = None
+    hyperparameter: Path | None = None
     column_statistics: bool = False
     word_embeddings: bool = False
     stratified_workloads: bool = False
@@ -157,8 +157,8 @@ class ModelConfig:
     group_by: str = "sql"  # sql/plan_runtime_ms
 
     # model should be pretrained
-    pretrained_model_dir: str = None
-    pretrained_model_name: str = None
+    pretrained_model_dir: str | None = None
+    pretrained_model_name: str | None = None
 
     enforce_aggregation_node_at_root: bool = False  # enforce that the root node is an aggregation node - will be done at the beginning of collator
     prohibit_aggregation_node_at_root: bool = False  # prohibit that the root node is an aggregation node - will be done at the beginning of collator
@@ -167,7 +167,7 @@ class ModelConfig:
 
     # apply cardinality estimation correction logic
     apply_cardinality_estimation_correction_logic: bool = False
-    cardinality_estimation_correction_logic_params: str = None
+    cardinality_estimation_correction_logic_params: str | None = None
 
     def get_model_dir(self, source_path: Paths, database: Dataset) -> Path:
         # shorten model name - otherwise we are hitting file-name limits
@@ -186,10 +186,16 @@ class ModelConfig:
         format: InputFormats,
         suffix: str = "",
     ) -> Path:
+        # map format always to parsed for getting statistics, as the statistics are the same for both formats
         if format == InputFormats.baseline_parsed:
             format = InputFormats.parsed
 
-        format_str = f"{format}" if format != InputFormats.parsed else "parsed_plans2"
+        if format == InputFormats.parsed:
+            format_str = ClusterPaths().Data.parsed_plans.name
+        elif format == InputFormats.json:
+            format_str = ClusterPaths().Data.json_plans.name
+        else:
+            raise Exception(f"Unknown input format: {format}")
 
         if self.type == ModelType.WL_DRIVEN:
             return (
@@ -203,6 +209,8 @@ class ModelConfig:
                 / "feature_statistics"
                 / f"{format_str}_feature_statistics{suffix}.json"
             )
+        else:
+            raise ValueError(f"Unknown model type: {self.type}")
 
     def get_column_stats(self, dataset: Dataset) -> Optional[Path]:
         if self.column_statistics:
@@ -233,7 +241,7 @@ class ModelConfig:
         target_dataset: Dataset,
         stratified_workload: bool = False,
         romans_runs: bool = False,
-    ) -> List[str]:
+    ) -> list[str]:
         # select the workload to be used
         workload_names = []
 
@@ -268,7 +276,7 @@ class ModelConfig:
             workload_names.append("complex_workload_many_joins_hints")
 
         if self.type == ModelType.WL_AGNOSTIC:
-            training_workloads = []
+            training_workloads: list[str] = []
             for db in training_datasets:
                 if db.db_name != target_dataset.db_name:
                     for wl in workload_names:
@@ -318,6 +326,8 @@ class ModelConfig:
                 f"No training workloads found for {self.name.NAME}"
             )
             return training_workloads
+        else:
+            raise ValueError(f"Unknown model type: {self.type}")
 
     def assemble_wl_path(
         self,
@@ -361,7 +371,7 @@ class ModelConfig:
             if self.input_format == InputFormats.baseline_parsed:
                 return ClusterPaths().Data.augmented_plans
             elif self.input_format == InputFormats.parsed:
-                return ClusterPaths().Data.parsed_plans_stratified2
+                return ClusterPaths().Data.parsed_plans_stratified
             elif self.input_format == InputFormats.json:
                 return ClusterPaths().Data.json_plans_stratified
             else:
@@ -371,7 +381,7 @@ class ModelConfig:
                 return ClusterPaths().Data.augmented_plans
             elif self.input_format == InputFormats.parsed:
                 if not romans_runs:
-                    return ClusterPaths().Data.parsed_plans2
+                    return ClusterPaths().Data.parsed_plans
                 else:
                     return ClusterPaths().Data.root / "runs_roman" / "parsed_plans"
             elif self.input_format == InputFormats.json:

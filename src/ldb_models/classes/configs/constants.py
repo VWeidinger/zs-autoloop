@@ -1,3 +1,5 @@
+from enum import Enum
+
 import attrs as attrs
 from attr import field
 
@@ -8,7 +10,7 @@ class Name:
     DISPLAY_NAME: str = field(default=None)
 
 
-class InputFormats:
+class InputFormats(Enum):
     parsed = "parsed_plans"
     baseline_parsed = "augmented_plans"
     json = "json"

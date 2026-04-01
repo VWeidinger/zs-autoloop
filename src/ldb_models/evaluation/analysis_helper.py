@@ -3,8 +3,9 @@ import urllib.parse
 from typing import Dict
 
 import requests
-import wandb
 from dotenv import load_dotenv
+
+import wandb
 
 load_dotenv()
 file_cache = dict()
@@ -23,7 +24,7 @@ def load_run_file(file_name: str = None):
         job_data = orjson.loads(f.read())
 
     print(f"Loaded parsed job file {file_name}")
-    with open(LocalPaths().Data.parsed_plans2.as_posix() + "/" + file_name, "r") as f:
+    with open(LocalPaths().Data.parsed_plans.as_posix() + "/" + file_name, "r") as f:
         job_data_parsed = orjson.loads(f.read())
 
     file_cache[file_name] = job_data

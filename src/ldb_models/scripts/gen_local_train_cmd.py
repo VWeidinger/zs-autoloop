@@ -7,11 +7,11 @@ from scripts.exp_runner.exp_train_model import generate_training_commands
 def replace_file_paths_in_train_command(train_command: str) -> str:
     # Replace the cluster path with the local path
     train_command = train_command.replace(
-        ClusterPaths().Data.parsed_plans2.as_posix(),
+        ClusterPaths().Data.parsed_plans.as_posix(),
         LocalPaths().Data.parsed_plans.as_posix(),
     )  # warning: pp2->pp1
     train_command = train_command.replace(
-        ClusterPaths().Data.parsed_plans_stratified2.as_posix(),
+        ClusterPaths().Data.parsed_plans_stratified.as_posix(),
         LocalPaths().Data.parsed_plans.as_posix(),
     )  # warning: pp2->pp1 & strat->non-strat
 

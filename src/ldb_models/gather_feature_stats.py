@@ -29,19 +29,27 @@ if __name__ == "__main__":
     parser.add_argument("--file_name", default=None, type=str)
     parser.add_argument("--target_folder", default=None)
     parser.add_argument("--runs_dir", default=None)
+    parser.add_argument("--parsed_plans_dirname", default=None, type=str)
     args = parser.parse_args()
 
     for mode in [InputFormats.json, InputFormats.parsed]:
-        mode_str = f"{mode}" if mode != InputFormats.parsed else "parsed_plans2"
+        mode_str = (
+            f"{mode}" if mode != InputFormats.parsed else args.parsed_plans_dirname
+        )
 
         json_files = []
         for workload in args.workload:
+            assert workload.endswith(".json"), (
+                f"Expected workload to end with .json, got {workload}"
+            )
             for database in args.database:
                 json_files += get_all_json_files(
                     f"{args.runs_dir}/{mode_str}/{database}/{workload}"
                 )
 
-        assert len(json_files) > 0, "No json files found"
+        assert len(json_files) > 0, (
+            f"No json files found: {args.runs_dir}/{mode_str}/{{database}}/{{workload}}"
+        )
 
         target_path = f"{args.target_folder}/{mode_str}_{args.file_name}.json"
         print(
