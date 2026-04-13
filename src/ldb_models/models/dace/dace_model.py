@@ -2,7 +2,7 @@ import loralib as lora
 import torch
 import torch.nn as nn
 from classes import DACEModelConfig
-from training.losses import create_loss
+from training.losses.factory import create_loss
 from training.training.outputs import LossOutput, ModelOutput
 
 
@@ -80,7 +80,7 @@ class DACELora(nn.Module):
         return ModelOutput(plan_predictions=predicted_runtimes)
 
     def compute_loss(
-        self, output: ModelOutput, query_stats: dict, labels: torch.Tensor
+        self, output: ModelOutput, query_stats: dict, labels: torch.Tensor, **kwargs
     ) -> LossOutput:
         # Set state for DaceLoss
         assert len(self.loss_fxn.preds) == len(self.loss_fxn.real_run_times), (

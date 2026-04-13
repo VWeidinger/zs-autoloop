@@ -14,7 +14,6 @@ from training.training.metrics import Metric
 from training.training.test import test_model
 from training.training.train_epoch import train_epoch
 from training.training.validate import validate_model
-
 from wandb.apis.public import Run
 
 
@@ -178,6 +177,17 @@ def train_model(
             epoch=epoch,
             avg_loss=epoch_stats.get("epoch_val_loss", None),
         )
+
+        # Get the learning rate used for this epoch
+        learning_rate = (
+            scheduler.get_last_lr()[0]
+            if hasattr(scheduler, "get_last_lr")
+            else scheduler.get_lr()[0]
+        )
+        if wandb_run:
+            # Read-only scheduler access used purely for W&B logging.
+            # Scheduler stepping/state updates are handled above by step_scheduler().
+            wandb_run.log({"learning_rate": learning_rate}, step=epoch)
 
     if prof:
         prof.stop()

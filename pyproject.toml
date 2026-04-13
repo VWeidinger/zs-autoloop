@@ -10,6 +10,8 @@ dependencies = [
     "osfclient>=0.0.5",
     "scikit-learn>=1.5.1",
     "torch==2.3.0",
+    "torch-scatter>=2.1.2 ; platform_system == 'Darwin'",
+    "torch-scatter>=2.1.2 ; platform_system == 'Linux'",
     "lightning>=2.4.0",
     "polars>=1.6.0",
     "pandas>=2.2.2",

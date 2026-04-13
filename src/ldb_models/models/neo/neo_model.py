@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 from classes import NeoModelConfig
 from models.workload_driven.dataset.dataset_creation import NeoInputDims
-from training.losses import create_loss
+from training.losses.factory import create_loss
 from training.training.outputs import LossOutput, ModelOutput
 
 
@@ -92,7 +92,7 @@ class TreeConvolution(nn.Module):
         return ModelOutput(plan_predictions=out)
 
     def compute_loss(
-        self, output: ModelOutput, query_stats: dict, labels: torch.Tensor
+        self, output: ModelOutput, query_stats: dict, labels: torch.Tensor, **kwargs
     ) -> LossOutput:
         # Loss computation
         plan_predictions = output.plan_predictions
@@ -156,7 +156,7 @@ class TreeConv1d(nn.Module):
             torch.gather(data, 2, indexes.expand(-1, -1, self._in_dims).transpose(1, 2))
         )
         zeros = torch.zeros(
-            (data.shape[0], self._out_dims), device=self.device
+            (data.shape[0], self._out_dims), device=data.device
         ).unsqueeze(2)
         feats = torch.cat((zeros, feats), dim=2)
         return feats, indexes

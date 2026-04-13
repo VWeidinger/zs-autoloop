@@ -49,11 +49,14 @@ class ModelName:
 
     MAMBA_RANKING = Name("mamba_rank", "Mamba (Ranking)")
 
-    SUMO = Name("zs_sumo", "Sum of Operators")
+    SUMO = Name("zs_sumo_enc", "Sum of Operators")
     SUMO_RELEVANCY = Name("zs_sumo_rl", "Sum of Operators (Relevancy)")
     SUM_OF_OPERATORS = Name("zs_sop", "Sum of Operators")
     SUM_OF_OPERATORS_RELEVANCY = Name("zs_sop_rl", "Sum of Operators (Relevancy)")
     SUM_OF_OPERATORS_NO_CARD = Name("zs_sop_nc", "Sum of Operators (No Card)")
+    SUM_OF_OPERATORS_NO_RANKING = Name("zs_sop_nr", "Sum of Operators (No Ranking)")
+    SUM_OF_OPERATORS_LOOP = Name("zs_sop_loop", "Sum of Operators (Loop-aware)")
+    SUMO_BASELINE = Name("zs_sumo", "Sum of Operators (Baseline)")
     MAMBA_SUM_OF_OPERATORS = Name("mamba_sop", "Mamba (Sum of Operators)")
 
     ZS_LOW_MIN = Name("zs_low_min", "Zero-Shot (low min)")

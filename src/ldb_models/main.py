@@ -1,15 +1,20 @@
 import argparse
 import copy
 import functools
+import os
+
+os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
 import random
 from datetime import datetime
 from pathlib import Path
+from pprint import pprint
 from typing import Dict, List, Optional, Tuple
 
 import attrs as attrs
 import numpy as np
 import torch
 import torch.optim as opt
+import wandb
 from classes import (
     CascadeRankingModelConfig,
     DACEModelConfig,
@@ -44,6 +49,7 @@ from models.qppnet.qppnet_dataloader import create_qppnet_dataloader
 from models.qppnet.qppnet_model import QPPNet
 from models.query_former.model import QueryFormer
 from models.ranking.ranking import RankModel
+from models.sum_of_operators import SumOfOperatorsModel
 from models.sumo.sumo import SUMO
 from models.tabular.train_tabular_baseline import (
     predict_tabular_model,
@@ -58,21 +64,21 @@ from models.zeroshot.specific_models.postgres_zero_shot import PostgresZeroShotM
 from models.zeroshot.specific_models.postgres_zero_shot_vae import (
     PostgresZeroShotModelVAE,
 )
-from models.zeroshot.specific_models.sum_of_operators import SumOfOperatorsModel
 from schedulefree import AdamWScheduleFree
 from torch import nn
 from torch.optim.optimizer import Optimizer
 from torch.utils.data import DataLoader
 from train import train_model
 from training.bound_predictions_with_history import PredictionBounder
-from training.dataset.dataset_creation import create_zeroshot_dataloader
+from training.dataset.dataset_creation import (
+    DataloaderOutputKwargs,
+    create_zeroshot_dataloader,
+)
 from training.dataset.plan_dataset import OHEMPlanDataset
 from training.scheduler import init_scheduler
 from training.training.checkpoint import load_checkpoint
 from training.training.metrics import Metric, init_metrics
 from training.training.test import test_model
-
-import wandb
 from wandb.apis.public import Run
 
 
@@ -92,15 +98,22 @@ def init_model(
             config.shuffle_train_data if hasattr(config, "shuffle_train_data") else True
         )
 
-        label_norm, feature_statistics, train_loader, val_loader, test_loaders = (
-            create_zeroshot_dataloader(
-                workload_runs=workload_runs,
-                statistics_file=statistics_file,
-                model_config=config,
-                data_loader_options=DataLoaderOptions(shuffle=shuffle),
-                quick_run=quick_run,
-                assemble_graphs_up_front=assemble_data_up_front,
-            )
+        # dataloader_output contains single_plan_mask, query_min_tensor, query_max_tensor
+        dataloader_output = DataloaderOutputKwargs()
+        (
+            label_norm,
+            feature_statistics,
+            train_loader,
+            val_loader,
+            test_loaders,
+            dataloader_output,
+        ) = create_zeroshot_dataloader(
+            workload_runs=workload_runs,
+            statistics_file=statistics_file,
+            model_config=config,
+            data_loader_options=DataLoaderOptions(shuffle=shuffle),
+            quick_run=quick_run,
+            assemble_graphs_up_front=assemble_data_up_front,
         )
 
         print(f"Model device: {config.device}", flush=True)
@@ -144,7 +157,9 @@ def init_model(
                     f"Cascade filter model type '{config.cascade_filter_model_type}' is not supported."
                 )
             filter_model_shell = RankModel(
-                model=filter_model_shell, model_config=filter_model_config
+                model=filter_model_shell,
+                model_config=filter_model_config,
+                **dataloader_output.as_kwargs(),
             )
 
             print(
@@ -163,7 +178,10 @@ def init_model(
             loaded_filter_model.eval()
 
             model = RankModel(
-                model=ZSmodel, model_config=config, filter_model=loaded_filter_model
+                model=ZSmodel,
+                model_config=config,
+                filter_model=loaded_filter_model,
+                **dataloader_output.as_kwargs(),
             )
 
         elif isinstance(config, SUMOModelConfig):
@@ -172,31 +190,51 @@ def init_model(
                 feature_statistics=feature_statistics,
                 label_norm=label_norm,
             )
-            model: nn.Module = RankModel(model=ZSmodel, model_config=config)
+            model: nn.Module = RankModel(
+                model=ZSmodel,
+                model_config=config,
+                **dataloader_output.as_kwargs(),
+            )
         elif isinstance(config, SumOfOperatorsModelConfig):
             ZSmodel: nn.Module = SumOfOperatorsModel(
                 model_config=config,
                 feature_statistics=feature_statistics,
                 label_norm=label_norm,
             )
-            model: nn.Module = RankModel(model=ZSmodel, model_config=config)
+            model: nn.Module = RankModel(
+                model=ZSmodel,
+                model_config=config,
+                **dataloader_output.as_kwargs(),
+            )
         elif isinstance(config, MambaSumOfOperatorsModelConfig):
             ZSmodel: nn.Module = MambaSumOfOperatorsModel(
                 model_config=config, feature_statistics=feature_statistics
             )
-            model: nn.Module = RankModel(model=ZSmodel, model_config=config)
+            model: nn.Module = RankModel(
+                model=ZSmodel,
+                model_config=config,
+                **dataloader_output.as_kwargs(),
+            )
         elif isinstance(config, MambaRankingModelConfig):
             ZSmodel: nn.Module = MambaModel(
                 model_config=config, feature_statistics=feature_statistics
             )
-            model: nn.Module = RankModel(model=ZSmodel, model_config=config)
+            model: nn.Module = RankModel(
+                model=ZSmodel,
+                model_config=config,
+                **dataloader_output.as_kwargs(),
+            )
         elif isinstance(config, ZeroShotRankingModelBaseConfig):
             ZSmodel: nn.Module = PostgresZeroShotModel(
                 model_config=config,
                 feature_statistics=feature_statistics,
                 label_norm=label_norm,
             )
-            model: nn.Module = RankModel(model=ZSmodel, model_config=config)
+            model: nn.Module = RankModel(
+                model=ZSmodel,
+                model_config=config,
+                **dataloader_output.as_kwargs(),
+            )
         elif isinstance(config, ZeroShotVAEModelConfig):
             model: nn.Module = PostgresZeroShotModelVAE(
                 model_config=config,
@@ -369,6 +407,7 @@ def use_model(
     pt_profiler: bool,
     bound_predictions: bool,
     is_pretrained: bool,
+    enable_checkpoint_loading: bool = False,
     run_qo_test_pipeline_after_each_epoch: bool = True,
     pretrained_model_dir: Optional[str] = None,
     pretrained_model_name: Optional[str] = None,
@@ -376,10 +415,33 @@ def use_model(
     assemble_data_up_front: bool = False,
 ):
     # Seed for reproducibility
-    print(f"Found model config {config}")
+    print("Found model config:")
+    pprint(attrs.asdict(config), sort_dicts=True)
+    # basic seeds
     torch.manual_seed(config.seed)
     np.random.seed(config.seed)
     random.seed(config.seed)
+
+    # hash seed for Python hashing (affects some randomized containers)
+    os.environ["PYTHONHASHSEED"] = str(config.seed)
+
+    # ADD dgl seed!
+    try:
+        import dgl
+
+        dgl.seed(config.seed)
+        dgl.random.seed(config.seed)
+    except ImportError:
+        pass
+
+    try:
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
+        # newer API
+        torch.use_deterministic_algorithms(True)
+    except Exception:
+        # best-effort: if the runtime doesn't support this, continue
+        pass
 
     # Add test workloads to workload_runs
     wl_runs.update_test_workloads(target_dir, config.seed, config.version)
@@ -440,6 +502,7 @@ def use_model(
         print(f"Model device: {model.device}", flush=True)
         model = model.to(model.device)
         print(f"Model is now on device: {next(model.parameters()).device}", flush=True)
+        print(f"Optimizer kwargs: {config.optimizer_kwargs}", flush=True)
 
         # Init optimizer
         if config.optimizer_class_name == "AdamWScheduleFree":
@@ -453,38 +516,47 @@ def use_model(
 
         scheduler, target_epochs = init_scheduler(config, optimizer)
 
+        has_pretrained_model_dir = (
+            pretrained_model_dir is not None and pretrained_model_name is not None
+        )
+
         print(
-            f"Try to load model with name {config.name.NAME} and seed {config.seed} from {model_dir}",
-            flush=True,
+            f"enable_checkpoint_loading={enable_checkpoint_loading}, has_pretrained_model_dir={has_pretrained_model_dir}"
         )
-        (
-            csv_stats,
-            epochs_wo_improvement,
-            epoch,
-            model,
-            optimizer,
-            metrics,
-            finished,
-            found,
-            rank_found,
-        ) = load_checkpoint(
-            model=model,
-            target_path=model_dir
-            if not quick_run
-            else None,  # do not load checkpoint in quick_run
-            config=config,
-            optimizer=optimizer,
-            metrics=metrics,
-            filetype=".pt",
-            load_last_checkpoint=True,
-        )
+        if has_pretrained_model_dir:
+            print(
+                f"Pretrained model specified: {pretrained_model_name} in {pretrained_model_dir}"
+            )
 
-        if rank_found:
-            print("Found pretrained model (trained with ranking)", flush=True)
-        if found:
-            print("Found pretrained model", flush=True)
-
-        if not found and pretrained_model_dir is not None:
+        if enable_checkpoint_loading and not has_pretrained_model_dir:
+            # for continuing training from a checkpoint of the same experiment, we look for checkpoints in model_dir
+            print(
+                f"Try to load model with name {config.name.NAME} and seed {config.seed} from {model_dir}",
+                flush=True,
+            )
+            (
+                csv_stats,
+                epochs_wo_improvement,
+                epoch,
+                model,
+                optimizer,
+                metrics,
+                finished,
+                found,
+                rank_found,
+            ) = load_checkpoint(
+                model=model,
+                target_path=(
+                    model_dir if not quick_run else None
+                ),  # do not load checkpoint in quick_run
+                config=config,
+                optimizer=optimizer,
+                metrics=metrics,
+                filetype=".pt",
+                load_last_checkpoint=True,
+            )
+        elif has_pretrained_model_dir:
+            # for loading a pretrained model (potentially trained in a different experiment), we look for checkpoints in the specified pretrained_model_dir
             # no checkpoint found, try to load the model from the pretrained_model_dir
             print(
                 f"Try to initialize model from {pretrained_model_dir}/{pretrained_model_name}",
@@ -509,6 +581,22 @@ def use_model(
             assert found, (
                 f"Pretrained model not found in {pretrained_model_dir}/{pretrained_model_name}"
             )
+        else:
+            print(
+                "Skipping loading of checkpoint as per enable_checkpoint_loading flag",
+                flush=True,
+            )
+            csv_stats = []
+            epochs_wo_improvement = 0
+            epoch = 0
+            finished = False
+            found = False
+            rank_found = False
+
+        if rank_found:
+            print("Found pretrained model (trained with ranking)", flush=True)
+        if found:
+            print("Found pretrained model", flush=True)
 
     if is_pretrained and not isinstance(config, TabularModelConfig):
         assert found
@@ -706,6 +794,8 @@ if __name__ == "__main__":
     parser.add_argument("--pretrained_model_dir", default=None)
     parser.add_argument("--pretrained_model_name", default=None)
 
+    parser.add_argument("--enable_checkpoint_loading", action="store_true")
+
     # assemble data up front
     parser.add_argument("--assemble_data_up_front", action="store_true")
 
@@ -795,8 +885,16 @@ if __name__ == "__main__":
             wandb_name = f"quick_{wandb_name}"
 
         config_dict = attrs.asdict(model_config)
+        # add wandb-visible name and model_type
         config_dict["name"] = wandb_name
         config_dict["model_type"] = model_type
+        # expose the base config name (for parameterized models 'pm-<base>-...')
+        full_model_name = model_config.name.NAME
+        if full_model_name.startswith("pm-"):
+            base_config_name = full_model_name[3:].split("-")[0]
+        else:
+            base_config_name = full_model_name.split("-")[0]
+        config_dict["base_config_name"] = base_config_name
         config_dict["seed"] = args.seed
         config_dict["version"] = args.version
         config_dict["quick_run"] = args.quick_run
@@ -832,6 +930,7 @@ if __name__ == "__main__":
         else None,
         pt_profiler=args.pt_profiler,
         bound_predictions=args.bound_predictions,
+        enable_checkpoint_loading=args.enable_checkpoint_loading,
         wandb_run=wandb_run,
         run_qo_test_pipeline_after_each_epoch=args.qo_eval_after_each_epoch,
         is_pretrained=args.is_pretrained,

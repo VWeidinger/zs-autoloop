@@ -4,8 +4,13 @@ from enum import Enum
 class Operator(Enum):
     NEQ = "!="
     EQ = "="
+
+    LT = "<"
+    GT = ">"
+
     LEQ = "<="
     GEQ = ">="
+
     LIKE = "LIKE"
     NOT_LIKE = "NOT LIKE"
     IS_NOT_NULL = "IS NOT NULL"

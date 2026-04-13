@@ -1,12 +1,15 @@
 import concurrent.futures
 import functools
 import math
+import random
 import time
+from dataclasses import dataclass
 from json import JSONDecodeError
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
+import torch
 from classes import (
     DataLoaderOptions,
     InputFormats,
@@ -22,12 +25,7 @@ from ldb_schema.load_schema import get_json_schema, load_json
 from models.white_mamba.mamba_dataset import (
     augment_feature_stats_for_mamba,
 )
-from models.zeroshot.postgres_plan_batching import add_numerical_scalers
-from models.zeroshot.query_batch_sampler import (
-    AllPlansForQuerySampler,
-    BatchByQuerySampler,
-    SimilarSampler,
-)
+from models.zeroshot.encoding import add_numerical_scalers
 from sklearn import preprocessing
 from sklearn.pipeline import Pipeline
 from torch.utils.data import DataLoader
@@ -39,7 +37,25 @@ from training.dataset.plan_dataset import (
     PreBatchedDataset,
 )
 from training.dataset.pushdown_projections import apply_projection_pushdown
+from training.dataset.query_batch_sampler import (
+    AllPlansForQuerySampler,
+    SimilarSampler,
+)
 from training.dataset.statification import stratify_plans
+
+
+@dataclass
+class DataloaderOutputKwargs:
+    single_plan_mask: Optional[torch.Tensor] = None
+    query_min_tensor: Optional[torch.Tensor] = None
+    query_max_tensor: Optional[torch.Tensor] = None
+
+    def as_kwargs(self) -> Dict:
+        return {
+            "single_plan_mask": self.single_plan_mask,
+            "query_min_tensor": self.query_min_tensor,
+            "query_max_tensor": self.query_max_tensor,
+        }
 
 
 # worker fn to read a file
@@ -56,6 +72,21 @@ def read_fn(
         return None
 
     return run
+
+
+# Worker init factory for reproducible dataloader workers
+def _worker_init_fn_factory(seed: int):
+    def _worker_init_fn(worker_id: int):
+        worker_seed = seed + worker_id
+        # numpy and python random
+        np.random.seed(worker_seed % (2**32 - 1))
+        random.seed(worker_seed)
+        try:
+            torch.manual_seed(worker_seed)
+        except Exception:
+            pass
+
+    return _worker_init_fn
 
 
 def recursively_rewrite_inlj_to_nlj(plan: Dict):
@@ -81,6 +112,7 @@ def read_workload_runs(
     limit_plans_per_file: int,
     limit_plans_overall: int,
     input_format: InputFormats = InputFormats.parsed,
+    shuffle_before_limiting: bool = False,
     include_timeout_queries: bool = False,
     include_hint_not_obeyed_queries: bool = False,
     include_zero_card_queries: bool = False,
@@ -94,6 +126,7 @@ def read_workload_runs(
     apply_card_correction_logic: bool = False,
     card_correction_logic_params: Optional[str] = None,
 ) -> Tuple[List[dict], dict]:
+    print(f"Shuffle before limiting: {shuffle_before_limiting}", flush=True)
     # reads several workload runs
     plans = []
     database_statistics = dict()
@@ -260,17 +293,18 @@ def read_workload_runs(
 
             per_file_plans.append(plan)
 
-            if (
-                limit_plans_per_file is not None
-                and len(per_file_plans) >= limit_plans_per_file
-                and not file_in_limit_blacklist
-            ):
-                print(
-                    f"Limiting plans per file to {limit_plans_per_file} for {path}",
-                    flush=True,
-                )
-                break
-
+        if (
+            limit_plans_per_file is not None
+            and len(per_file_plans) >= limit_plans_per_file
+            and not file_in_limit_blacklist
+        ):
+            print(
+                f"Limiting plans per file to {limit_plans_per_file} for {path}",
+                flush=True,
+            )
+            if shuffle_before_limiting:
+                np.random.shuffle(per_file_plans)
+            per_file_plans = per_file_plans[:limit_plans_per_file]
         # extract the timeout thresholds used during query execution
         # per_file_timeout_thresholds = set([p['timeout_threshold'] for p in per_file_plans])  # in ms
         # if len(per_file_timeout_thresholds) != 1:
@@ -324,13 +358,11 @@ def read_workload_runs(
         #        print_distr_stats=True, shuffle_before=True
         #    )
 
-        """
         print(
             f"Loaded {len(per_file_plans)}/{len(file_plans)} plans from {path} (include timeout: {include_timeout_queries} (excluded: {timeout_ctr}), "
             f" include invalid hint: {include_hint_not_obeyed_queries} (excluded: {hint_not_obeyed_ctr}), include zero card: {include_zero_card_queries} (excluded: {include_zero_card_queries_ctr}), file in limit blacklist: {file_in_limit_blacklist}, limit file: {limit_plans_per_file})",
             flush=True,
         )
-        """
 
         if return_per_file:
             plans.append(per_file_plans)
@@ -528,6 +560,7 @@ def create_datasets(
             if not do_not_limit_file and not apply_ohem
             else None,
             input_format=model_config.input_format,
+            shuffle_before_limiting=model_config.shuffle_before_limiting,
             include_timeout_queries=model_config.include_timeout_queries
             and not is_test_dataset,
             include_zero_card_queries=include_zero_card_queries,
@@ -702,7 +735,10 @@ def create_datasets(
                 dataset = PreBatchedDataset(batches=batches, batch_size=batch_size)
             else:
                 # apply gather operation on the plans - necessary for replication / shuffling (see above)
-                dataset = PlanDataset([plans[i] for i in indexes], indexes)
+                # We use local indices (0..N-1) for the dataset content to ensure alignment with
+                # samplers like SimilarSampler that generate masks based on the dataset content.
+                final_plans = [plans[i] for i in indexes]
+                dataset = PlanDataset(final_plans, list(range(len(final_plans))))
 
         return dataset
 
@@ -773,22 +809,25 @@ def create_zeroshot_dataloader(
     # requires both database statistics but also feature statistics
     label_norm = Optional[Pipeline]
 
+    subplan_estimation = (
+        model_config.subplan_estimation
+        if hasattr(model_config, "subplan_estimation")
+        else False
+    )
+    cardinality_estimation = (
+        model_config.cardinality_estimation
+        if hasattr(model_config, "cardinality_estimation")
+        else False
+    )
+    use_relevancy_generator = (
+        hasattr(model_config, "use_relevancy_generator")
+        and model_config.use_relevancy_generator
+    )
+    dataloader_output_kwargs = DataloaderOutputKwargs()
+
     group_similar = (
         hasattr(model_config, "group_similar") and model_config.group_similar
     )
-    batch_by_query = (
-        hasattr(model_config, "batch_by_query") and model_config.batch_by_query
-    )
-
-    if batch_by_query:
-        # This custom batching is not compatible with pre-batching or OHEM.
-        assert not assemble_graphs_up_front, (
-            "batch_by_query is not compatible with assemble_graphs_up_front=True"
-        )
-        assert (
-            not hasattr(model_config, "online_hard_example_mining")
-            or not model_config.online_hard_example_mining
-        ), "batch_by_query is not compatible with online_hard_example_mining"
 
     feature_statistics = load_json(str(statistics_file), namespace=False)
     assert feature_statistics != {}, "Feature statistics file is empty!"
@@ -817,6 +856,25 @@ def create_zeroshot_dataloader(
             feature_statistics["operator"]["value_dict"]["OR"] = 3
         if "AND" not in feature_statistics["operator"]["value_dict"]:
             feature_statistics["operator"]["value_dict"]["AND"] = 3
+    if getattr(model_config, "do_operator_rewriting", False):
+        feature_statistics["operator"]["value_dict"]["<"] = feature_statistics[
+            "operator"
+        ]["value_dict"]["<="]
+        feature_statistics["operator"]["value_dict"][">"] = feature_statistics[
+            "operator"
+        ]["value_dict"][">="]
+        # Compact the operator value_dict: drop any indices that are now unreachable
+        # (i.e., original IDs that <, > pointed to before the rewrite).
+        # Rebuild a contiguous 0-based index mapping and update no_vals accordingly.
+        op_value_dict = feature_statistics["operator"]["value_dict"]
+        unique_ids_sorted = sorted(set(op_value_dict.values()))
+        if unique_ids_sorted != list(range(len(unique_ids_sorted))):
+            # There are gaps – remap to consecutive indices
+            id_remap = {old: new for new, old in enumerate(unique_ids_sorted)}
+            feature_statistics["operator"]["value_dict"] = {
+                k: id_remap[v] for k, v in op_value_dict.items()
+            }
+        feature_statistics["operator"]["no_vals"] = len(unique_ids_sorted)
 
     dataloader_args = dict(
         batch_size=model_config.batch_size,
@@ -825,7 +883,23 @@ def create_zeroshot_dataloader(
         pin_memory=data_loader_options.pin_memory,
     )
 
-    collator_args = {"scaler_type": model_config.scaler_type}
+    # Attach deterministic worker init and generator for reproducibility.
+    base_seed = getattr(model_config, "seed", 0)
+    try:
+        dataloader_args["worker_init_fn"] = _worker_init_fn_factory(int(base_seed))
+        gen = torch.Generator()
+        gen.manual_seed(int(base_seed))
+        dataloader_args["generator"] = gen
+    except Exception:
+        # best-effort; if Generator not supported, continue without it
+        pass
+
+    collator_args = {
+        "subplan_estimation": subplan_estimation,
+        "cardinality_estimation": cardinality_estimation,
+        # Keep scaler_type in collator kwargs for collators that normalize labels/features.
+        "scaler_type": model_config.scaler_type,
+    }
     if isinstance(
         model_config,
         (ZeroShotModelConfig, ZeroShotRankingModelConfig, SumOfOperatorsModelConfig),
@@ -845,6 +919,18 @@ def create_zeroshot_dataloader(
         collator_args["use_log_input_card"] = (
             hasattr(model_config, "use_log_input_card")
             and model_config.use_log_input_card
+        )
+        # SUMO-LOOP: Pass loop-aware prediction flag if available
+        collator_args["sumo_loop"] = (
+            hasattr(model_config, "sumo_loop") and model_config.sumo_loop
+        )
+        collator_args["sumo_loop_multiply_est_error"] = (
+            hasattr(model_config, "sumo_loop_multiply_est_error")
+            and model_config.sumo_loop_multiply_est_error
+        )
+        collator_args["sumo_loop_loss_on_scaled"] = (
+            hasattr(model_config, "sumo_loop_loss_on_scaled")
+            and model_config.sumo_loop_loss_on_scaled
         )
 
     elif isinstance(model_config, (MambaModelConfig, MambaRankingModelConfig)):
@@ -923,9 +1009,20 @@ def create_zeroshot_dataloader(
             train_loader_args.pop("shuffle", None)
             train_loader_args.pop("drop_last", None)
             key = (
-                getattr(model_config, "group_by", "plan_runtime_ms")
+                getattr(model_config, "group_by", "sql")
                 if hasattr(model_config, "group_by")
                 else "plan_runtime_ms"
+            )
+            # Check if we need to compute query_min for relevancy generation
+            compute_query_min = (
+                use_relevancy_generator
+                and model_config.relevancy_generator_args.get("rl_scope") == "query"
+            )
+            compute_single_plan_mask = (
+                use_relevancy_generator
+                and model_config.relevancy_generator_args.get(
+                    "mask_single_plan_queries", True
+                )
             )
             train_batch_sampler = SimilarSampler(
                 plans=train_dataset.plans,
@@ -933,23 +1030,26 @@ def create_zeroshot_dataloader(
                 key=key,
                 random_percentage=getattr(model_config, "random_percentage", 0.1),
                 group_size=getattr(model_config, "group_size", 16),
+                compute_query_min=compute_query_min,
+                compute_single_plan_mask=compute_single_plan_mask,
             )
-            train_loader_args["batch_sampler"] = train_batch_sampler
-            train_loader_args["collate_fn"] = train_collate_fn
-        elif batch_by_query:
-            # Custom batching with QueryBatchSampler.
-            train_loader_args.pop("batch_size", None)
-            train_loader_args.pop("shuffle", None)
-            train_loader_args.pop("drop_last", None)
+            # Create custom collate_fn that includes query_min_tensor and query_max_tensor
+            dataloader_output_kwargs.single_plan_mask = (
+                train_batch_sampler.single_plan_mask
+            )
+            dataloader_output_kwargs.query_min_tensor = (
+                train_batch_sampler.query_min_tensor
+            )
+            dataloader_output_kwargs.query_max_tensor = (
+                train_batch_sampler.query_max_tensor
+            )
 
-            train_batch_sampler = BatchByQuerySampler(
-                plans=train_dataset.plans, max_batch_size=model_config.batch_size
-            )
             train_loader_args["batch_sampler"] = train_batch_sampler
             train_loader_args["collate_fn"] = train_collate_fn
         else:
             # Standard batching.
             train_loader_args["collate_fn"] = train_collate_fn
+        # print(f"Training DataLoader args: {train_loader_args}")
 
         train_loader: DataLoader = DataLoader(train_dataset, **train_loader_args)
 
@@ -967,7 +1067,7 @@ def create_zeroshot_dataloader(
                 valid_loader_args["collate_fn"] = valid_collate_fn
 
             val_loader = DataLoader(val_dataset, **valid_loader_args)
-
+        # print(f"Validation DataLoader args: {valid_loader_args}")
         # 3. Configure and create the Validation DataLoader
         val_loader = None
         if val_dataset:
@@ -1050,23 +1150,33 @@ def create_zeroshot_dataloader(
                 db_statistics=test_database_statistics,
                 db_schema_info=test_db_schema_info,
             )
-            test_loader_args["collate_fn"] = test_collate_fn
+
             if all_same_batch_sampler:
                 test_loader_args.pop("batch_size", None)
                 test_loader_args.pop("shuffle", None)
                 test_loader_args.pop("drop_last", None)
 
+                # Check if we need to compute query_min for relevancy generation
                 test_batch_sampler = AllPlansForQuerySampler(
-                    plans=test_dataset.plans, batch_size=model_config.batch_size
+                    plans=test_dataset.plans,
+                    batch_size=model_config.batch_size,
                 )
                 test_loader_args["batch_sampler"] = test_batch_sampler
+
+                # Create custom collate_fn that includes query_min_tensor
+                test_loader_args["collate_fn"] = test_collate_fn
             elif assemble_graphs_up_front:
                 # overwrite batch size to 1 - since we have already pre-batched everything
                 test_loader_args["batch_size"] = None
+                test_loader_args["collate_fn"] = test_collate_fn
+            else:
+                test_loader_args["collate_fn"] = test_collate_fn
 
             # turn off shuffle for test set
             test_loader_args["shuffle"] = False
             test_loader_args["drop_last"] = False
+
+            # print(f"Test DataLoader args: {test_loader_args}")
 
             test_loader = DataLoader(test_dataset, **test_loader_args)
             test_loaders.append(test_loader)
@@ -1082,4 +1192,11 @@ def create_zeroshot_dataloader(
     else:
         test_loaders = None
 
-    return label_norm, feature_statistics, train_loader, val_loader, test_loaders
+    return (
+        label_norm,
+        feature_statistics,
+        train_loader,
+        val_loader,
+        test_loaders,
+        dataloader_output_kwargs,
+    )

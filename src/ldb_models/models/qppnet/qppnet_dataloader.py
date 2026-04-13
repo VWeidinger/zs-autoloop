@@ -7,6 +7,7 @@ import numpy as np
 from classes import DataLoaderOptions, ModelConfig, QPPNetModelConfig
 from classes.workload_runs import WorkloadRuns
 from ldb_schema.load_schema import get_json_schema, load_json
+from models.utils import get_general_table_col_to_ids_dict
 from models.white_mamba.extract_query_stats import extract_query_stats_for_plan
 from models.zeroshot.annotate_additional_plan_info import assign_additional_plan_info
 from sklearn.pipeline import Pipeline
@@ -76,6 +77,11 @@ def create_qppnet_dataloader(
         # remove timeout entries from test_dataset
         test_dataset = test_dataset.remove_timeouts()
 
+        # create run_id independent mapping of table names to ids (global mapping)
+        table_id_dict, col_id_dict = get_general_table_col_to_ids_dict(
+            database_statistics
+        )
+
         train_collate_fn = functools.partial(
             plan_collator,
             db_statistics=database_statistics,
@@ -83,6 +89,8 @@ def create_qppnet_dataloader(
             feature_statistics=feature_statistics,
             column_statistics=column_statistics,
             plan_featurization=model_config.featurization,
+            table_id_dict=table_id_dict,
+            col_id_dict=col_id_dict,
         )
 
         dataloader_args.update(collate_fn=train_collate_fn)
@@ -103,6 +111,10 @@ def create_qppnet_dataloader(
                 stratify_per_wl_file=data_loader_options.stratify_per_wl_file,
             )
 
+            # For test workloads compute global mapping for consistency
+            table_id_dict, col_id_dict = get_general_table_col_to_ids_dict(
+                database_statistics
+            )
             train_collate_fn = functools.partial(
                 plan_collator,
                 db_statistics=database_statistics,
@@ -110,6 +122,8 @@ def create_qppnet_dataloader(
                 column_statistics=column_statistics,
                 plan_featurization=model_config.featurization,
                 db_schema_info=db_schema_info,
+                table_id_dict=table_id_dict,
+                col_id_dict=col_id_dict,
             )
 
             dataloader_args.update(collate_fn=train_collate_fn)
@@ -192,6 +206,8 @@ def qppnet_collator(
     db_schema_info: Dict = None,
     column_statistics: Dict = None,
     plan_featurization=None,
+    table_id_dict: Dict = None,
+    col_id_dict: Dict = None,
 ):
     labels = []
     query_plans = []

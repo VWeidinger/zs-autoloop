@@ -12,7 +12,7 @@ from .constants import InputFormats, ModelType, Name
 def shorten_model_name(name: str) -> str:
     # shorten wandb name
     name = name.replace("include_complex_workloads", "complex")
-    name = name.replace("include_pg_opt_workloads", "pgopt")
+    name = name.replace("include_pg_opt_workloads", "pg_opt")
     name = name.replace("include_hint_workloads", "hint")
     name = name.replace("include_hint_idx_workloads", "hi")
     name = name.replace("include_complex_ranking_workloads", "cr")
@@ -22,7 +22,9 @@ def shorten_model_name(name: str) -> str:
 
     name = name.replace("train_on_subplans", "subplans")
     name = name.replace("PostgresEstWithIsIndexCond", "FeatPGEstIsIdxC")
-    name = name.replace("PostgresEstWithNumLoops", "FTEstLoops")
+    name = name.replace("PostgresEstWithNumLoops", "EstLoops")
+    name = name.replace("PostgresEstSystemCardDetail", "NoLoops")
+
     name = name.replace("limit_plans_per_file", "limitpf")
     name = name.replace("PostgresEstWithIsJoinCond", "isjoincond")
     name = name.replace("filter_inline_col_featsFalse", "nofiltercolinline")
@@ -32,9 +34,9 @@ def shorten_model_name(name: str) -> str:
     name = name.replace("ohem_initialize_difficulty", "ohem_init")
     name = name.replace("tablecardatscan", "tcardscan")
     name = name.replace("PostgresEstWithAdditionalFeats", "addfeats")
-    name = name.replace("batch_by_query", "BBQ")
     name = name.replace("cardinality_estimation", "CAE")
-    name = name.replace("use_card_feature", "CF")
+    name = name.replace("log_transform_card_labels", "LCL")
+    name = name.replace("dont_log_if_log_transformed", "DLT")
     name = name.replace("use_runtime_feature", "RF")
 
     name = name.replace("group_similar", "gs")
@@ -44,11 +46,17 @@ def shorten_model_name(name: str) -> str:
     name = name.replace("enable_bottom_up", "EBU")
     name = name.replace("update_est_loops", "UEL")
 
+    name = name.replace("sumo_loop_multiply_est_error", "MEST")
+    name = name.replace("sumo_loop_loss_on_scaled", "LOS")
+
     name = name.replace("join_repr_mode", "JOIN")
+    name = name.replace("use_per_child_join_aggregation", "PCJOIN")
 
     name = name.replace("use_pretrained_embeddings", "PTE")
     name = name.replace("latent_strategy", "LS")
 
+    name = name.replace("use_relevancy_generator", "REL")
+    name = name.replace("mask_single_plan_queries", "MSPQ")
     name = name.replace("rl_scalar", "s")
     name = name.replace("rl_log_degree", "ld")
 
@@ -58,20 +66,29 @@ def shorten_model_name(name: str) -> str:
     name = name.replace("batch_group_size", "bgs")
     name = name.replace("group_size", "gs")
 
-    name = name.replace("use_relevancy_generator", "REL")
+    name = name.replace("stable_layernorm", "sLN")
+    name = name.replace("stable_dropout", "sDO")
+    name = name.replace("stable_residual", "sRE")
 
+    # loss weights
     name = name.replace("regression_weight", "regrW")
     name = name.replace("ranking_weight", "rankW")
     name = name.replace("subplan_weight", "subpW")
     name = name.replace("cardinality_weight", "cardW")
 
+    # lambdaloss options
+    name = name.replace("weighing_scheme", "WS")
+
+    # scheduler names
     name = name.replace("CosineAnnealingLR", "CosA")
     name = name.replace("CosineAnnealingWarmRestarts", "CosAWR")
     name = name.replace("NoScheduler", "NoSch")
 
+    # loss names
     name = name.replace("loss_class_name", "")
     name = name.replace("regression_loss_name", "")
     name = name.replace("ranking_loss_name", "")
+
     name = name.replace("layer_norm", "layern")
     name = name.replace("add_child_type_info_to_messages", "childtypeinfo")
     name = name.replace("filter_condense_operators", "filtercondensed")
@@ -104,7 +121,7 @@ class ModelConfig:
     optimizer_kwargs: dict = dict(lr=1e-3)
     batch_size: int = 64
     seed: int = field(default=0)
-    version: int = field(default=0)
+    version: int = field(default=1)
     epochs: int = field(default=200)
     early_stopping_patience: int = 20
     num_workers: int = field(default=20)
@@ -131,6 +148,7 @@ class ModelConfig:
     include_complex_ranking_workloads: bool = False
     include_complex_many_joins_workloads: bool = False
     shuffle_train_data: bool = field(default=False)
+    shuffle_before_limiting: bool = field(default=False)
     wandb_group: str = field(default=None)
     merge_nlj_and_inlj_to_same_op: bool = False  # merge NLJ and INLJ to the same operator / do not differentiate between them
     remove_join_cond_from_plan: bool = False  # remove join conditions from the plan / i.e. train without join conditions
@@ -148,7 +166,6 @@ class ModelConfig:
     warmup_epochs: int = 0
 
     # whether to batch plans by query
-    batch_by_query: bool = False  # all plans for a query are in the same batch
     all_same_batch_sampler: bool = False  # all plans in a batch are from the same query (only for testing/evaluation, not training)
     group_similar: bool = (
         False  # group plans with similar runtimes in the same batch (only for training)
@@ -168,6 +185,24 @@ class ModelConfig:
     # apply cardinality estimation correction logic
     apply_cardinality_estimation_correction_logic: bool = False
     cardinality_estimation_correction_logic_params: str | None = None
+
+    # parsed plans and feature statistics version mapping
+    # Version 2: parsed_plans2, feature_stats _v20260107
+    # Version 3: parsed_plans3, feature_stats _v20260309
+    parsed_plans_version: int = field(default=3)
+
+    def get_feature_stats_suffix(self) -> str:
+        """Map parsed_plans_version to the corresponding feature stats suffix."""
+        version_suffix_map = {
+            2: "_v20260107",
+            3: "_v20260309",
+        }
+        if self.parsed_plans_version not in version_suffix_map:
+            raise ValueError(
+                f"Unknown parsed_plans_version: {self.parsed_plans_version}. "
+                f"Supported versions: {list(version_suffix_map.keys())}"
+            )
+        return version_suffix_map[self.parsed_plans_version]
 
     def get_model_dir(self, source_path: Paths, database: Dataset) -> Path:
         # shorten model name - otherwise we are hitting file-name limits
@@ -191,9 +226,19 @@ class ModelConfig:
             format = InputFormats.parsed
 
         if format == InputFormats.parsed:
-            format_str = ClusterPaths().Data.parsed_plans.name
+            # Use the appropriate parsed_plans path based on version
+            if self.parsed_plans_version == 2:
+                parsed_plans_path = source_path.Data.parsed_plans2
+            elif self.parsed_plans_version == 3:
+                parsed_plans_path = source_path.Data.parsed_plans3
+            else:
+                raise ValueError(
+                    f"Unknown parsed_plans_version: {self.parsed_plans_version}. "
+                    f"Supported versions: 2, 3"
+                )
+            format_str = parsed_plans_path.name
         elif format == InputFormats.json:
-            format_str = ClusterPaths().Data.json_plans.name
+            format_str = source_path.Data.json_plans.name
         else:
             raise Exception(f"Unknown input format: {format}")
 
@@ -270,10 +315,12 @@ class ModelConfig:
             workload_names.append("scan_only_s1_access_path_hints_stratified")
 
         if self.include_complex_ranking_workloads:
-            workload_names.append("complex_workload_200k_s1")
+            workload_names.append("full_qo_complex_workload_200k_s1")
 
         if self.include_complex_many_joins_workloads:
             workload_names.append("complex_workload_many_joins_hints")
+
+        print(f"Using training workloads: {workload_names}")
 
         if self.type == ModelType.WL_AGNOSTIC:
             training_workloads: list[str] = []
@@ -371,7 +418,14 @@ class ModelConfig:
             if self.input_format == InputFormats.baseline_parsed:
                 return ClusterPaths().Data.augmented_plans
             elif self.input_format == InputFormats.parsed:
-                return ClusterPaths().Data.parsed_plans_stratified
+                if self.parsed_plans_version == 2:
+                    return ClusterPaths().Data.parsed_plans_stratified2
+                elif self.parsed_plans_version == 3:
+                    return ClusterPaths().Data.parsed_plans_stratified3
+                else:
+                    raise ValueError(
+                        f"Unknown parsed_plans_version: {self.parsed_plans_version}. Supported versions: 2, 3"
+                    )
             elif self.input_format == InputFormats.json:
                 return ClusterPaths().Data.json_plans_stratified
             else:
@@ -381,7 +435,14 @@ class ModelConfig:
                 return ClusterPaths().Data.augmented_plans
             elif self.input_format == InputFormats.parsed:
                 if not romans_runs:
-                    return ClusterPaths().Data.parsed_plans
+                    if self.parsed_plans_version == 2:
+                        return ClusterPaths().Data.parsed_plans2
+                    elif self.parsed_plans_version == 3:
+                        return ClusterPaths().Data.parsed_plans3
+                    else:
+                        raise ValueError(
+                            f"Unknown parsed_plans_version: {self.parsed_plans_version}. Supported versions: 2, 3"
+                        )
                 else:
                     return ClusterPaths().Data.root / "runs_roman" / "parsed_plans"
             elif self.input_format == InputFormats.json:

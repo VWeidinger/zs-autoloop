@@ -1,12 +1,11 @@
 import torch
-from torch import nn
-from torch.nn import ReLU
-
 from classes import MSCNModelConfig
 from models.workload_driven.dataset.dataset_creation import MSCNInputDims
-from models.zeroshot.message_aggregators.pooling import PoolingType, PoolingConv
+from models.zeroshot.message_aggregators.pooling import PoolingConv, PoolingType
 from models.zeroshot.zero_shot_model import PassDirection
-from training.losses import create_loss
+from torch import nn
+from torch.nn import ReLU
+from training.losses.factory import create_loss
 from training.training.outputs import LossOutput, ModelOutput
 
 
@@ -82,7 +81,7 @@ class MSCNModel(nn.Module):
         return ModelOutput(plan_predictions=out)
 
     def compute_loss(
-        self, output: ModelOutput, query_stats: dict, labels: torch.Tensor
+        self, output: ModelOutput, query_stats: dict, labels: torch.Tensor, **kwargs
     ) -> LossOutput:
         plan_predictions = output.plan_predictions
         assert len(plan_predictions) == len(labels), (

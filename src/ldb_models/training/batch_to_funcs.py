@@ -78,23 +78,26 @@ def zs_batch_to(batch, device, label_norm):
     label = label.reshape(-1)
     label_tensor = torch.as_tensor(label, device=device, dtype=torch.float)
     if "subplan_labels" in query_stats:
-        query_stats["subplan_labels"] = query_stats["subplan_labels"].reshape(-1)
         query_stats["subplan_labels"] = torch.as_tensor(
-            query_stats["subplan_labels"], device=device, dtype=torch.float
+            query_stats["subplan_labels"].reshape(-1), device=device, dtype=torch.float
         )
     if "subplan_card_labels" in query_stats:
-        query_stats["subplan_card_labels"] = query_stats["subplan_card_labels"].reshape(
-            -1
-        )
         query_stats["subplan_card_labels"] = torch.as_tensor(
-            query_stats["subplan_card_labels"], device=device, dtype=torch.float
+            query_stats["subplan_card_labels"].reshape(-1),
+            device=device,
+            dtype=torch.float,
         )
     if "subplan_est_card_labels" in query_stats:
-        query_stats["subplan_est_card_labels"] = query_stats[
-            "subplan_est_card_labels"
-        ].reshape(-1)
         query_stats["subplan_est_card_labels"] = torch.as_tensor(
-            query_stats["subplan_est_card_labels"], device=device, dtype=torch.float
+            query_stats["subplan_est_card_labels"].reshape(-1),
+            device=device,
+            dtype=torch.float,
+        )
+    if "relevancy_scores" in query_stats:
+        query_stats["relevancy_scores"] = torch.as_tensor(
+            query_stats["relevancy_scores"].reshape(-1),
+            device=device,
+            dtype=torch.float,
         )
     features = recursive_to(features, device)
     label_tensor = recursive_to(label_tensor, device)

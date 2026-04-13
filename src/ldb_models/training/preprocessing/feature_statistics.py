@@ -145,7 +145,9 @@ def gather_feature_statistics(workload_run_paths, target):
             statistics_dict[k] = {
                 "no_vals": len(unique_values),
                 "type": str(FeatureType.categorical),
-                "value_dict": {v: id for id, v in enumerate(unique_values)},
+                "value_dict": {
+                    v: id for id, v in enumerate(sorted(unique_values, key=str))
+                },
             }
 
     # save as json

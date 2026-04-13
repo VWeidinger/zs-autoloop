@@ -10,8 +10,9 @@ from torch import nn
 from torch.optim import Optimizer
 from torch.utils.data import DataLoader
 from tqdm import tqdm
+from training.training.metrics import EpochMetrics
 from training.training.outputs import LossOutput, ModelOutput
-from training.training.rank_utils import print_debug_table, q_error
+from training.training.utils import print_debug_table, q_error
 
 
 def train_epoch(
@@ -30,14 +31,10 @@ def train_epoch(
         optimizer.train()
     # torch.autograd.set_detect_anomaly(True)
     train_start_t = time.perf_counter()
-    losses, plan_losses, subplan_losses, card_losses, monotonicity_losses = (
-        [],
-        [],
-        [],
-        [],
-        [],
-    )
-    errs, est_card_q_error_list, pred_card_q_error_list = [], [], []
+
+    # Generic metric collection
+    epoch_metrics = EpochMetrics()
+    errs = []
 
     pbar = tqdm(train_loader, desc="Training", dynamic_ncols=True)
 
@@ -59,15 +56,13 @@ def train_epoch(
         # Forward pass
         output: ModelOutput = model(
             inputs,
-            plan_dict=query_stats.get("plan_dict", None),
             debug=debug,
             plan_labels=labels,
-            subplan_labels=query_stats.get("subplan_labels", None),
-            card_labels=query_stats.get("subplan_card_labels", None),
+            **query_stats,
         )
         # Calculate loss
         loss_output: LossOutput = model.compute_loss(
-            output=output, query_stats=query_stats, labels=labels
+            output=output, query_stats=query_stats, labels=labels, debug=debug
         )
         # check for nan loss
         if torch.isnan(loss_output.loss):
@@ -80,61 +75,79 @@ def train_epoch(
         optimizer.step() if not isinstance(model, QPPNet) else model.backward()
         # print debug table
         if debug:
-            print_debug_table(
-                batch_idx, loss_output, output, labels, query_stats, model
-            )
+            print_debug_table(batch_idx, loss_output, output, labels, query_stats)
+
         # collect stats
         err = (output.plan_predictions - labels).detach().cpu().numpy().reshape(-1)
         errs = np.concatenate((errs, err))
-        losses.append(loss_output.loss.item())
-        pbar_desc = f"Loss: {loss_output.loss.item():.2f}"
-        if loss_output.plan_loss is not None:
-            plan_losses.append(loss_output.plan_loss.item())
-            pbar_desc += f", Plan: {loss_output.plan_loss.item():.2f}"
-        if loss_output.subplan_loss is not None:
-            subplan_losses.append(loss_output.subplan_loss.item())
-            pbar_desc += f", Subplan: {loss_output.subplan_loss.item():.2f}"
-        if loss_output.monotonicity_loss is not None:
-            monotonicity_losses.append(loss_output.monotonicity_loss.item())
-            pbar_desc += f", Mono: {loss_output.monotonicity_loss.item():.2f}"
+
+        epoch_metrics.append("loss", loss_output.loss.item())
+
+        # Collect detailed breakdown metrics
+        breakdown = getattr(loss_output, "loss_breakdown", {})
+        for k, v in breakdown.items():
+            epoch_metrics.append(k, v)
+
+        # Fallback/Legacy for main loss components if not in breakdown
+        if loss_output.plan_loss is not None and "plan_loss" not in breakdown:
+            epoch_metrics.append("plan_loss", loss_output.plan_loss.item())
+
+        if loss_output.subplan_loss is not None and "subplan_loss" not in breakdown:
+            epoch_metrics.append("subplan_loss", loss_output.subplan_loss.item())
+
         if loss_output.card_loss is not None:
-            card_losses.append(loss_output.card_loss.item())
-            pbar_desc += f", Card: {loss_output.card_loss.item():.2f}"
-            est_card_q_error_list.append(
+            if "card_loss" not in breakdown:
+                epoch_metrics.append("card_loss", loss_output.card_loss.item())
+
+            # Card Q-Errors - keep specific logic
+            epoch_metrics.append(
+                "est_card_q_error",
                 q_error(
                     query_stats["subplan_est_card_labels"],
                     query_stats["subplan_card_labels"],
-                )
+                ),
             )
-            pred_card_q_error_list.append(
+            epoch_metrics.append(
+                "pred_card_q_error",
                 q_error(
                     output.subplan_card_predictions, query_stats["subplan_card_labels"]
-                )
+                ),
             )
+
+        if loss_output.monotonicity_loss is not None:
+            epoch_metrics.append(
+                "monotonicity_loss", loss_output.monotonicity_loss.item()
+            )
+
+        # Update progress bar
+        pbar_desc = f"Loss: {loss_output.loss.item():.2f}"
+        if len(epoch_metrics.values.get("plan_loss", [])) > 0:
+            pbar_desc += f", Plan: {epoch_metrics.values['plan_loss'][-1]:.2f}"
+        if len(epoch_metrics.values.get("subplan_loss", [])) > 0:
+            pbar_desc += f", Sub: {epoch_metrics.values['subplan_loss'][-1]:.2f}"
         pbar.set_description(pbar_desc)
+
         # step profiler
         if profiler is not None:
             profiler.step()
+
     # Update epoch statistics
     epoch_stats.update(
         train_time=time.perf_counter() - train_start_t,
-        mean_train_loss=np.mean(losses),
+        mean_train_loss=epoch_metrics.mean("loss"),
         mean_rmse=np.sqrt(np.mean(np.square(errs))),
-        mean_train_plan_loss=np.mean(plan_losses) if len(plan_losses) > 0 else None,
-        mean_train_subplan_loss=np.mean(subplan_losses)
-        if len(subplan_losses) > 0
-        else None,
-        mean_train_card_loss=np.mean(card_losses) if len(card_losses) > 0 else None,
-        mean_train_monotonicity_loss=np.mean(monotonicity_losses)
-        if len(monotonicity_losses) > 0
-        else None,
-        mean_train_est_card_q_error=np.mean(np.concatenate(est_card_q_error_list))
-        if len(est_card_q_error_list) > 0
-        else None,
-        mean_train_pred_card_q_error=np.mean(np.concatenate(pred_card_q_error_list))
-        if len(pred_card_q_error_list) > 0
-        else None,
+        # Keep explicit legacy keys for dashboards and backward compatibility.
+        mean_train_plan_loss=epoch_metrics.mean("plan_loss"),
+        mean_train_subplan_loss=epoch_metrics.mean("subplan_loss"),
+        mean_train_card_loss=epoch_metrics.mean("card_loss"),
+        mean_train_monotonicity_loss=epoch_metrics.mean("monotonicity_loss"),
+        mean_train_est_card_q_error=epoch_metrics.mean("est_card_q_error"),
+        mean_train_pred_card_q_error=epoch_metrics.mean("pred_card_q_error"),
     )
+
+    # Generic calculation of means for all collected metrics
+    epoch_stats.update(epoch_metrics.means_with_prefix(prefix="mean_train_"))
+
     if isinstance(optimizer, AdamWScheduleFree):
         # deactivate train mode
         optimizer.eval()

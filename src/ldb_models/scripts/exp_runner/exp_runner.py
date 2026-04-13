@@ -20,7 +20,7 @@ class TrainingServers:
     # Resolve the file location relative to this script and climb up to the repo root.
     env_path = Path(__file__).resolve().parents[4] / ".env"
     load_dotenv(env_path.as_posix(), override=True, verbose=True)
-    # NODE00 = ast.literal_eval(os.getenv("NODE00"))
+    NODE00 = ast.literal_eval(os.getenv("NODE00"))
     NODE01 = ast.literal_eval(os.getenv("NODE01"))
     NODE02 = ast.literal_eval(os.getenv("NODE02"))
     NODE03 = ast.literal_eval(os.getenv("NODE03"))

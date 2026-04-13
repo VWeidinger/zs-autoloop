@@ -6,7 +6,7 @@ from models.zeroshot.specific_models.postgres_zero_shot import (
 )
 from models.zeroshot.utils.fc_out_model import FcOutModel
 from models.zeroshot.zero_shot_model import PassDirection
-from training.losses import create_loss
+from training.losses.factory import create_loss
 from training.training.outputs import ModelOutput
 
 
@@ -158,12 +158,18 @@ class SUMOEncoder(PostgresZeroShotModelEncoder):
 
         # This encoder only predicts operator time, not total time.
         self.prediction_heads["op_time"] = FcOutModel(
-            output_dim=1, input_dim=runtime_input_dim, **model_config.final_mlp_kwargs
+            output_dim=1,
+            input_dim=runtime_input_dim,
+            final_out_layer=True,
+            **model_config.final_mlp_kwargs,
         )
 
         if self.predict_cardinality:
             self.prediction_heads["cardinality"] = FcOutModel(
-                output_dim=1, input_dim=self.hidden_dim, **model_config.final_mlp_kwargs
+                output_dim=1,
+                input_dim=self.hidden_dim,
+                final_out_layer=True,
+                **model_config.final_mlp_kwargs,
             )
 
     def _flatten_predictions(self, g, preds_dict, num_total_nodes):

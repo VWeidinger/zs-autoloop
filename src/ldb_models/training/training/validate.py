@@ -16,7 +16,7 @@ from training.bound_predictions_with_history import (
     bound_predictions_helper,
 )
 from training.training.checkpoint import save_csv
-from training.training.metrics import Metric, QError
+from training.training.metrics import EpochMetrics, Metric, QError
 from training.training.outputs import LossOutput, ModelOutput
 
 
@@ -43,13 +43,7 @@ def validate_model(
     model.eval()
 
     with torch.autograd.no_grad():
-        losses = {
-            "val_loss": 0,
-            "plan_loss": 0,
-            "subplan_loss": 0,
-            "monotonicity_loss": 0,
-            "card_loss": 0,
-        }
+        epoch_metrics = EpochMetrics()
 
         # Collect as tensors for efficiency
         labels = []
@@ -89,25 +83,24 @@ def validate_model(
             # forward pass
             output: ModelOutput = model(
                 input_model,
-                plan_dict=query_stats.get("plan_dict", None),
                 debug=debug,
                 plan_labels=label,
-                subplan_labels=query_stats.get("subplan_labels", None),
-                card_labels=query_stats.get("subplan_card_labels", None),
-                num_samples=model_config.num_samples
-                if hasattr(model_config, "num_samples")
-                else None,
+                **query_stats,
             )
             # compute loss
             loss_output: LossOutput = model.compute_loss(
                 output=output, query_stats=query_stats, labels=label
             )
             # accumulate losses
-            losses["val_loss"] += loss_output.loss.detach().cpu().item()
-            losses["plan_loss"] += loss_output.plan_loss.detach().cpu().item()
+            epoch_metrics.append("loss", loss_output.loss.detach().cpu().item())
+            if loss_output.plan_loss is not None:
+                epoch_metrics.append(
+                    "plan_loss", loss_output.plan_loss.detach().cpu().item()
+                )
             if loss_output.monotonicity_loss is not None:
-                losses["monotonicity_loss"] += (
-                    loss_output.monotonicity_loss.detach().cpu().item()
+                epoch_metrics.append(
+                    "monotonicity_loss",
+                    loss_output.monotonicity_loss.detach().cpu().item(),
                 )
             # inverse transform the predictions and labels
             curr_pred = output.plan_predictions.cpu().numpy()
@@ -120,8 +113,19 @@ def validate_model(
             preds.append(curr_pred.reshape(-1))
             labels.append(curr_label.reshape(-1))
             # add all info to query stats dict
+            # Skip metadata keys that aren't per-sample data
+            skip_keys = {
+                "group_size",
+                "single_plan_mask",
+                "query_min_tensor",
+                "query_boundaries",
+                "plan_dict",
+            }
             for key, value in query_stats.items():
-                if key in ["subplan_est_card_labels", "subplan_card_labels"]:
+                if key in skip_keys:
+                    # Skip metadata entirely
+                    continue
+                elif key in ["subplan_est_card_labels", "subplan_card_labels"]:
                     # keep as list of lists
                     query_stats_dict[key].extend(
                         [v.cpu().numpy().tolist() for v in value]
@@ -130,7 +134,10 @@ def validate_model(
                     query_stats_dict[key].extend(value)
             # collect subplan predictions if available
             if subplan_estimation:
-                losses["subplan_loss"] += loss_output.subplan_loss.detach().cpu().item()
+                if loss_output.subplan_loss is not None:
+                    epoch_metrics.append(
+                        "subplan_loss", loss_output.subplan_loss.detach().cpu().item()
+                    )
                 subplan_preds_list.extend(
                     [
                         t.cpu().numpy().tolist()
@@ -140,7 +147,10 @@ def validate_model(
                     ]
                 )
             if cardinality_estimation:
-                losses["card_loss"] += loss_output.card_loss.detach().cpu().item()
+                if loss_output.card_loss is not None:
+                    epoch_metrics.append(
+                        "card_loss", loss_output.card_loss.detach().cpu().item()
+                    )
                 subplan_pred_card_list.extend(
                     [
                         t.cpu().numpy().tolist()
@@ -162,21 +172,21 @@ def validate_model(
         if epoch_stats is not None:
             epoch_stats[f"{log_prefix}_time"] = time.perf_counter() - test_start_t
             epoch_stats[f"{log_prefix}_num_tuples"] = val_num_tuples
-            length = len(val_loader)
-            for key, value in losses.items():
-                if value > 0:
-                    epoch_stats[f"{log_prefix}_{key}"] = value / length
+            epoch_stats.update(epoch_metrics.means_with_prefix(prefix=f"{log_prefix}_"))
 
             if (
                 "subplan_card_labels" in query_stats_dict
                 and "subplan_est_card_labels" in query_stats_dict
             ):
+                log_transform = (
+                    model_config.log_transform_card_labels
+                    if hasattr(model_config, "log_transform_card_labels")
+                    else False
+                )
                 est_metrics = compute_card_qerror_metrics(
                     actual=query_stats_dict["subplan_card_labels"],
                     compared=query_stats_dict["subplan_est_card_labels"],
-                    log_scale=model_config.log_transform_card_labels
-                    if hasattr(model_config, "log_transform_card_labels")
-                    else False,
+                    log_scale=log_transform,
                 )
                 for k, v in est_metrics.items():
                     epoch_stats[f"{log_prefix}_est_card_qerror_{k}"] = v
@@ -187,9 +197,7 @@ def validate_model(
                     pred_metrics = compute_card_qerror_metrics(
                         actual=query_stats_dict["subplan_card_labels"],
                         compared=flat_pred_cards,
-                        log_scale=model_config.log_transform_card_labels
-                        if hasattr(model_config, "log_transform_card_labels")
-                        else False,
+                        log_scale=log_transform,
                     )
                     for k, v in pred_metrics.items():
                         epoch_stats[f"{log_prefix}_pred_card_qerror_{k}"] = v
@@ -236,12 +244,12 @@ def validate_model(
         for key, value in metrics_dict.items():
             epoch_stats[f"{log_prefix}_{key}"] = value
 
-        # drop the query stats that are not available for all queries (plan_dict, subplan_labels))
+        # drop the query stats that are not available for all queries
         drop_keys = [
-            "plan_dict",
             "subplan_labels",
             "subplan_card_labels",
             "subplan_est_card_labels",
+            "loop_multiplier_map",
         ]
         for key in drop_keys:
             if key in query_stats_dict:
@@ -358,12 +366,12 @@ def compute_card_qerror_metrics(actual: List, compared: List, log_scale=False) -
     Compute richer q-error metrics when values are on a log scale.
 
     Parameters
-    - actual: array-like or torch.Tensor of ground-truth values on the log(scale) (e.g., log1p(card))
+    - actual: array-like or torch.Tensor of ground-truth values on the log scale (e.g., log1p(card))
     - compared: array-like or torch.Tensor of predicted/estimated values on the same log scale
+    - log_scale: if True, actual and compared are in log1p space and will be converted back
 
-    q-error for each item is computed as: np.expm1(np.maximum(actual - compared, compared - actual))
-    (equivalently: np.expm1(np.abs(actual - compared))). This converts the log-difference
-    back into a multiplicative q-error on the original scale.
+    q-error is always computed on the original scale as: max(actual/compared, compared/actual)
+    If log_scale=True, values are first converted back using expm1.
 
     Returns a dict with keys:
     - "mean": mean q-error
@@ -381,15 +389,15 @@ def compute_card_qerror_metrics(actual: List, compared: List, log_scale=False) -
             f"actual and compared must have the same length: {actual.size} != {compared.size}"
         )
     if log_scale:
-        # compute q-errors from log-scale differences
-        log_abs_diff = np.abs(actual - compared)
-        qerrors = np.exp(log_abs_diff)
-    else:
-        # compute standard q-errors
-        qerrors = np.maximum(
-            actual / np.clip(compared, a_min=1e-10, a_max=None),
-            compared / np.clip(actual, a_min=1e-10, a_max=None),
-        )
+        # Values are in log1p space, convert back to original scale
+        actual = np.expm1(actual)
+        compared = np.expm1(compared)
+
+    # compute standard q-errors on original scale
+    qerrors = np.maximum(
+        actual / np.clip(compared, a_min=1e-10, a_max=None),
+        compared / np.clip(actual, a_min=1e-10, a_max=None),
+    )
     # remove NaNs/Infs just in case
     mask = np.isfinite(qerrors)
     qerrors = qerrors[mask]

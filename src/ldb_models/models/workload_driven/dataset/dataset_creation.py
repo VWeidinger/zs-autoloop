@@ -1,4 +1,7 @@
 import functools
+import os
+import time
+import traceback
 from pathlib import Path
 from typing import Dict, Tuple
 
@@ -26,6 +29,34 @@ from models.workload_driven.dataset.plan_tree_batching import (
 )
 from torch.utils.data import DataLoader
 from training.dataset.dataset_creation import create_datasets
+
+
+class CollateLogger:
+    """Callable wrapper around a collate function that logs exceptions to a file.
+
+    Implemented as a top-level class so instances are picklable for DataLoader workers.
+    """
+
+    def __init__(self, fn):
+        self.fn = fn
+
+    def __call__(self, batch):
+        try:
+            return self.fn(batch)
+        except Exception:
+            tb = traceback.format_exc()
+            print("---\n")
+            print(f"Time: {time.strftime('%Y-%m-%d %H:%M:%S')}")
+            print(f"PID: {os.getpid()}")
+            print("Traceback:")
+            print(tb)
+            print("Batch preview:")
+            try:
+                print(str(batch[:5]))
+            except Exception:
+                print("(could not stringify batch)")
+            print("---")
+            raise
 
 
 class InputDims:
@@ -192,6 +223,8 @@ def get_collate_func(
         raise NotImplementedError
 
     collate_fn = functools.partial(plan_collator_func, **collate_kwargs)
+    # Wrap collate function with CollateLogger so worker exceptions are logged to disk
+    collate_fn = CollateLogger(collate_fn)
     return collate_fn, input_dims
 
 

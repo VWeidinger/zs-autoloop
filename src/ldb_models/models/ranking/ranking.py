@@ -10,15 +10,22 @@ from models.ranking.latent_ranker import (
     TournamentAttentionRanker,
     UnifiedAttentionRanker,
 )
-from models.ranking.relevancy_generator import RelevancyGenerator
-from training.losses import create_loss
+from models.zeroshot.relevancy_generator import RelevancyGenerator
+from training.losses.factory import create_loss
 from training.training.outputs import LossOutput, ModelOutput
 
 
 class RankModel(nn.Module):
-    """"""
+    """
+    Wrapper class for ranking models.
+    """
 
-    def __init__(self, model, model_config: ModelConfig, **kwargs):
+    def __init__(
+        self,
+        model,
+        model_config: ModelConfig,
+        **kwargs,
+    ):
         super(RankModel, self).__init__()
         self.model = model
         self.device = model.device
@@ -29,18 +36,32 @@ class RankModel(nn.Module):
         self.batch_group_size = model_config.batch_group_size
         self.batch_size = model_config.batch_size
 
-        if (
+        self.use_relevancy_generator = (
             hasattr(model_config, "use_relevancy_generator")
             and model_config.use_relevancy_generator
-        ):
-            self.predict_relevancy_scores = model_config.predict_relevancy_scores
-            self.use_relevancy_generator = model_config.use_relevancy_generator
-            self.relevancy_generator = RelevancyGenerator(
-                model_config.relevancy_generator_args, device=self.device
+        )
+        if self.use_relevancy_generator:
+            # add group size and single plan mask to model config for use in relevancy generator
+            relevancy_generator_train_args = (
+                model_config.relevancy_generator_args.copy()
             )
+            relevancy_generator_train_args["group_size"] = self.group_size
+            self.relevancy_generator_train = RelevancyGenerator(
+                relevancy_generator_train_args,
+                device=self.device,
+                single_plan_mask=kwargs.get("single_plan_mask", None),
+                query_min_tensor=kwargs.get("query_min_tensor", None),
+                query_max_tensor=kwargs.get("query_max_tensor", None),
+            ).to(self.device)
+            relevancy_generator_eval_args = relevancy_generator_train_args.copy()
+            relevancy_generator_eval_args["rl_scope"] = "global"
+            relevancy_generator_eval_args["mask_single_plan_queries"] = False
+            self.relevancy_generator_eval = RelevancyGenerator(
+                relevancy_generator_eval_args, device=self.device
+            ).to(self.device)
         else:
-            self.predict_relevancy_scores = False
-            self.use_relevancy_generator = False
+            self.relevancy_generator_train = None
+            self.relevancy_generator_eval = None
 
         self.cardinality_estimation = (
             getattr(model_config, "cardinality_estimation", False)
@@ -51,6 +72,17 @@ class RankModel(nn.Module):
             getattr(model_config, "cardinality_weight", 0.0)
             if hasattr(model_config, "cardinality_weight")
             else 0.0
+        )
+
+        self.log_transform_card_labels = (
+            getattr(model_config, "log_transform_card_labels", True)
+            if hasattr(model_config, "log_transform_card_labels")
+            else True
+        )
+        self.dont_log_if_log_transformed = (
+            getattr(model_config, "dont_log_if_log_transformed", True)
+            if hasattr(model_config, "dont_log_if_log_transformed")
+            else True
         )
 
         self.subplan_estimation = (
@@ -110,18 +142,14 @@ class RankModel(nn.Module):
             model_config.loss_class_name, loss_kwargs=loss_kwargs
         )
 
-    def forward(self, x, plan_dict=None, debug=False, **kwargs) -> ModelOutput:
+    def forward(self, x, debug=False, **kwargs) -> ModelOutput:
         # Execute forward pass based on model type
         # CASCADE RANKING MODEL
         if self.cascade:
-            model_output: ModelOutput = self.cascade_forward(
-                x, debug=debug, plan_dict=plan_dict, **kwargs
-            )
+            model_output: ModelOutput = self.cascade_forward(x, debug=debug, **kwargs)
         # LATENT RANKING MODEL
         elif self.latent:
-            latent_reps = self.model.get_representation(
-                x, subplan=False, plan_dict=plan_dict
-            )
+            latent_reps = self.model.get_representation(x, subplan=False, **kwargs)
             model_output: ModelOutput = self.rank_model(
                 latent_representations=latent_reps,
                 tournament_selection=not self.training,
@@ -131,15 +159,8 @@ class RankModel(nn.Module):
         else:
             model_output: ModelOutput = self.model(
                 x,
-                plan_dict=plan_dict,
                 debug=debug,
-                subplan_labels=kwargs.get("subplan_labels", None),
-                card_labels=kwargs.get("card_labels", None),
-            )
-        # Revert predictions if predicting relevancy scores
-        if self.predict_relevancy_scores and not self.training:
-            model_output.plan_predictions = self.relevancy_generator.revert(
-                model_output.plan_predictions
+                **kwargs,
             )
         return model_output
 
@@ -168,58 +189,108 @@ class RankModel(nn.Module):
         return tensor[: n * self.group_size].view(n, self.group_size)
 
     def compute_loss(
-        self, output: ModelOutput, labels: torch.Tensor, query_stats: dict
+        self,
+        output: ModelOutput,
+        labels: torch.Tensor,
+        query_stats: dict,
+        debug=False,
     ) -> LossOutput:
         loss = plan_loss = subplan_loss = card_loss = None
-        # Form groups for ranking loss
-        grouped_output = self.group_tensor(output.plan_predictions)
-        grouped_labels = self.group_tensor(labels)
-        # Compute relevancy scores if required
-        relevancy_scores_output, relevancy_scores_labels = None, None
+        loss_breakdown = {}
+
+        # Compute relevancy scores for both labels and predictions if using relevancy generator
+        relevancy_scores = None
+        relevancy_scores_output = None
         if self.use_relevancy_generator:
-            relevancy_scores_labels = self.relevancy_generator(grouped_labels)
-            if self.predict_relevancy_scores:
-                relevancy_scores_output = grouped_output
-                grouped_output = self.relevancy_generator.revert(grouped_output)
+            # Compute relevancy for labels (targets)
+            if self.training:
+                relevancy_scores = self.relevancy_generator_train(
+                    labels,
+                    query_stats=query_stats,
+                )
+                # Compute relevancy for predictions
+                relevancy_scores_output = self.relevancy_generator_train(
+                    output.plan_predictions, query_stats=query_stats
+                )
             else:
-                relevancy_scores_output = self.relevancy_generator(grouped_output)
+                relevancy_scores = self.relevancy_generator_eval(
+                    labels, query_stats=query_stats
+                )
+                relevancy_scores_output = self.relevancy_generator_eval(
+                    output.plan_predictions, query_stats=query_stats
+                )
+
         # Calculate main ranking loss
         # It uses relevancy scores for ranking and runtimes for regression
-        loss = plan_loss = self.loss_fxn(
-            grouped_output,
-            grouped_labels,
+        plan_loss = self.loss_fxn(
+            output.plan_predictions,
+            labels,
             relevancy_scores_output,
-            relevancy_scores_labels,
+            relevancy_scores,
+            group_function=self.group_tensor,
+            debug=debug,
         )
+        loss = plan_loss.clone()
+
+        if hasattr(self.loss_fxn, "last_breakdown"):
+            for k, v in self.loss_fxn.last_breakdown.items():
+                loss_breakdown[f"plan_{k}"] = v
+        loss_breakdown["plan_loss"] = plan_loss.item()
+
         # Calculate and add subplan operation time loss
         if self.subplan_estimation and output.subplan_predictions is not None:
-            grouped_subplan_output = self.group_tensor(output.subplan_predictions)
-            grouped_subplan_labels = self.group_tensor(query_stats["subplan_labels"])
-            subplan_loss = self.loss_fxn(
-                grouped_subplan_output,
-                grouped_subplan_labels,
+            raw_subplan_loss = self.loss_fxn(
+                output.subplan_predictions,
+                query_stats["subplan_labels"],
                 subplan=True,
-                only_regression=self.subplans_reg_loss,
+                only_regression_on_subplans=self.subplans_reg_loss,
+                group_function=self.group_tensor,
             )
-            loss += self.subplan_weight * subplan_loss
+            subplan_loss = raw_subplan_loss * self.subplan_weight
+            loss += subplan_loss
+
+            loss_breakdown["subplan_loss_unweighted"] = raw_subplan_loss.item()
+            loss_breakdown["subplan_loss"] = subplan_loss.item()
+            if hasattr(self.loss_fxn, "last_breakdown"):
+                for k, v in self.loss_fxn.last_breakdown.items():
+                    loss_breakdown[f"subplan_{k}"] = v
+
         # Calculate and add cardinality estimation loss
         if self.cardinality_estimation and output.subplan_card_predictions is not None:
-            grouped_card_output = self.group_tensor(output.subplan_card_predictions)
-            grouped_card_labels = self.group_tensor(query_stats["subplan_card_labels"])
-            card_loss = self.loss_fxn(
-                grouped_card_output,
-                grouped_card_labels,
+            raw_card_loss = self.loss_fxn(
+                output.subplan_card_predictions,
+                query_stats["subplan_card_labels"],
                 subplan=True,
-                only_regression=self.subplans_reg_loss,
+                only_regression_on_subplans=self.subplans_reg_loss,
+                inputs_are_already_log=self.log_transform_card_labels
+                and self.dont_log_if_log_transformed,
+                group_function=self.group_tensor,
             )
-            loss += self.cardinality_weight * card_loss
+            card_loss = raw_card_loss * self.cardinality_weight
+            loss += card_loss
+
+            loss_breakdown["card_loss_unweighted"] = raw_card_loss.item()
+            loss_breakdown["card_loss"] = card_loss.item()
+            if hasattr(self.loss_fxn, "last_breakdown"):
+                for k, v in self.loss_fxn.last_breakdown.items():
+                    loss_breakdown[f"card_{k}"] = v
+
         return LossOutput(
             loss=loss,
             plan_loss=plan_loss,
             subplan_loss=subplan_loss,
             card_loss=card_loss,
-            gouped_output=grouped_output,
-            grouped_labels=grouped_labels,
+            relevancy_scores_preds=(
+                relevancy_scores_output.detach().cpu()
+                if relevancy_scores_output is not None
+                else None
+            ),
+            relevancy_scores_labels=(
+                relevancy_scores.detach().cpu()
+                if relevancy_scores is not None
+                else None
+            ),
+            loss_breakdown=loss_breakdown,
         )
 
     def cascade_forward(self, x, debug=False, plan_dict=None, **kwargs) -> ModelOutput:
@@ -264,44 +335,3 @@ class RankModel(nn.Module):
             plans[top_k_indices] = r_hat
 
             return ModelOutput(plan_predictions=plans)
-
-    def _cascade_debug_print(self, top_k, top_k_indices, plans, y, r_hat, **kwargs):
-        print(f"Cascade Ranking - Filtered Top-{top_k}: ")
-        rows = []
-        ordered = r_hat.cpu().argsort().tolist()
-
-        for pos, idx in enumerate(top_k_indices):
-            filter_pred = float(plans[idx])
-            filter_rank = int(torch.argsort(plans).cpu().argsort()[idx])
-            rank_model_pred = float(y[pos])
-            rescaled_pred = float(r_hat[pos])
-            predicted_rank_in_batch = ordered.index(pos)
-
-            entry = {
-                "rescaled": rescaled_pred,
-                "filter_pred": filter_pred,
-                "filter_rank": filter_rank,
-                "final": rank_model_pred,
-                "pred_rank": predicted_rank_in_batch,
-            }
-
-            plan_labels = kwargs.get("plan_labels", None)
-            if plan_labels is not None:
-                true_label = float(plan_labels[idx])
-                true_rank = int(torch.argsort(plan_labels).cpu().argsort()[idx])
-                entry["true_label"] = true_label
-                entry["true_rank"] = true_rank
-
-            rows.append(entry)
-
-        for r in sorted(rows, key=lambda x: x["rescaled"]):
-            line = (
-                f"  rescaled={r['rescaled']:.3f}\t| "
-                f"filter={r['filter_pred']:.3f} | "
-                f"rank={r['filter_rank']}\t| "
-                f"final={r['final']:.3} | "
-                f"rank={r['pred_rank']}\t"
-            )
-            if "true_label" in r:
-                line += f"| true={r['true_label']:.3f} | rank={r['true_rank']}"
-            print(line)

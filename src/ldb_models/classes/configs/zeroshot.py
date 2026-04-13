@@ -61,6 +61,9 @@ class ZeroShotModelConfig(ModelConfig):
     # - 'per_dim_gate': use a per-dimension gating mechanism to aggregate child messages
     # - 'pad_single': pad a single child message with zeros to match expected dim
     join_repr_mode: str = "pad_single"
+    # when enabled, intra_plan join aggregation preserves individual child messages
+    # per destination node instead of pre-summing by source node type.
+    use_per_child_join_aggregation: bool = False
     batch_to_func: Callable = zs_batch_to
     collator_func: Callable = postgres_plan_collator
     input_format: InputFormats = InputFormats.parsed
@@ -71,6 +74,9 @@ class ZeroShotModelConfig(ModelConfig):
     filter_inline_col_feats: bool = (
         True  # by default zs is trained with inline column features
     )
+    # we have > and < in test data but not in training data, so by default we rewrite them to >= and <= to match the training data distribution.
+    # whether to rewrite operators to canonical forms (e.g. < to <=)
+    do_operator_rewriting: bool = True
     annotate_base_table_card_to_scan_op: bool = False  # annotate the base table card as children_card at scan ops (instead of setting it to 1 by default)
     subplan_monotonicity_loss: bool = False  # add a loss term that enforces the subplan runtime to be monotonically increasing
     subplan_monotonicity_loss_fn: str = "lt_loss"  # loss function for the subplan monotonicity loss - either lt_loss or relative_lt_loss
@@ -82,6 +88,74 @@ class ZeroShotModelConfig(ModelConfig):
     subplans_reg_loss: bool = False  # Only compute a regression loss on the subplans
 
     online_hard_example_mining: bool = False
+
+    stable: bool = False
+    stable_layernorm: bool = False
+    stable_residuals: bool = True
+    stable_dropout: bool = True
+
+    def __attrs_post_init__(self):
+        if self.stable:
+            # Apply stable defaults without overriding explicitly provided kwargs
+            # (e.g., values passed via manual config parsing / CLI overrides).
+            attr_defaults = {
+                attr.name: attr.default for attr in type(self).__attrs_attrs__
+            }
+            norm_class_name = "LayerNorm" if self.stable_layernorm else "Identity"
+            dropout = self.stable_dropout
+            residual = self.stable_residuals
+            stable_fc_out_defaults: dict = dict(
+                activation_class_name="LeakyReLU",
+                activation_class_kwargs={},
+                norm_class_name=norm_class_name,
+                norm_class_kwargs={},
+                residual=residual,
+                dropout=dropout,
+                p_dropout=0.1,
+                activation=True,
+                inplace=True,
+            )
+
+            default_fc_out_kwargs = attr_defaults.get("fc_out_kwargs")
+            default_node_type_kwargs = attr_defaults.get("node_type_kwargs")
+            default_tree_layer_kwargs = attr_defaults.get("tree_layer_kwargs")
+            default_final_mlp_kwargs = attr_defaults.get("final_mlp_kwargs")
+
+            fc_out_kwargs = dict(self.fc_out_kwargs)
+            fc_out_kwargs_is_default = self.fc_out_kwargs is default_fc_out_kwargs
+            for key, value in stable_fc_out_defaults.items():
+                if key not in fc_out_kwargs or fc_out_kwargs_is_default:
+                    fc_out_kwargs[key] = value
+
+            node_type_kwargs = dict(self.node_type_kwargs)
+            tree_layer_kwargs = dict(self.tree_layer_kwargs)
+            final_mlp_kwargs = dict(self.final_mlp_kwargs)
+            node_type_kwargs_is_default = (
+                self.node_type_kwargs is default_node_type_kwargs
+            )
+            tree_layer_kwargs_is_default = (
+                self.tree_layer_kwargs is default_tree_layer_kwargs
+            )
+            final_mlp_kwargs_is_default = (
+                self.final_mlp_kwargs is default_final_mlp_kwargs
+            )
+
+            for key, value in fc_out_kwargs.items():
+                if key not in node_type_kwargs or node_type_kwargs_is_default:
+                    node_type_kwargs[key] = value
+                if key not in tree_layer_kwargs or tree_layer_kwargs_is_default:
+                    tree_layer_kwargs[key] = value
+                if key not in final_mlp_kwargs or final_mlp_kwargs_is_default:
+                    final_mlp_kwargs[key] = value
+
+            object.__setattr__(self, "fc_out_kwargs", fc_out_kwargs)
+            object.__setattr__(self, "final_mlp_kwargs", final_mlp_kwargs)
+            object.__setattr__(self, "tree_layer_kwargs", tree_layer_kwargs)
+            object.__setattr__(self, "node_type_kwargs", node_type_kwargs)
+        if self.parsed_plans_version == 3:
+            object.__setattr__(self, "do_operator_rewriting", True)
+        else:
+            object.__setattr__(self, "do_operator_rewriting", False)
 
 
 @attrs.define(frozen=True, slots=False)

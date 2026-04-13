@@ -4,8 +4,8 @@ import torch
 import torch.nn as nn
 from classes import QPPNetModelConfig
 from classes.workload_runs import WorkloadRuns
-from models.zeroshot.postgres_plan_batching import add_numerical_scalers
-from training.losses import create_loss
+from models.zeroshot.encoding import add_numerical_scalers
+from training.losses.factory import create_loss
 from training.training.operator_tree import OperatorTree
 from training.training.outputs import LossOutput, ModelOutput
 
@@ -226,7 +226,7 @@ class QPPNet(nn.Module):
         return ModelOutput(plan_predictions=plan_predictions)
 
     def compute_loss(
-        self, output: ModelOutput, query_stats: dict, labels: torch.Tensor
+        self, output: ModelOutput, query_stats: dict, labels: torch.Tensor, **kwargs
     ) -> LossOutput:
         loss = self.loss_fxn(output.plan_predictions, labels)
         return LossOutput(loss=loss, plan_loss=loss)

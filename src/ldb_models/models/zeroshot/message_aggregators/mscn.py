@@ -19,11 +19,14 @@ class MscnConv(MessageAggregator):
         hidden_dim=0,
         layer_norm: bool = False,
         join_repr_mode: str = "sum",
+        use_per_child_join_aggregation: bool = False,
         **kwargs,
     ):
         # how to represent join / multi-child aggregations
-        # supported modes: 'sum' (default), 'proj_then_concat', 'concat_reduce', 'pad_single'
+        # supported modes: 'sum' (default), 'proj_then_concat', 'concat_reduce', 'pad_single', 'dot_gate', 'per_dim_gate'
         self.node_type = node_type
+        self.hidden_dim = hidden_dim
+        self.use_per_child_join_aggregation = use_per_child_join_aggregation
         if self.node_type == "intra_plan":
             self.join_repr_mode = join_repr_mode
         else:
@@ -69,9 +72,15 @@ class MscnConv(MessageAggregator):
         with graph.local_scope():
             graph.ndata["h"] = feat_dict
             if self.node_type == "intra_plan" and self.join_repr_mode is not None:
-                feat, out_node_types, rst = self.apply_join_method(
-                    graph, etypes, out_node_types
-                )
+                if self.use_per_child_join_aggregation:
+                    feat, out_node_types, rst = self.apply_join_method_per_child(
+                        graph, etypes, out_node_types
+                    )
+                else:
+                    # Vanilla zero-shot behavior: aggregate children by source node type first.
+                    feat, out_node_types, rst = self.apply_join_method(
+                        graph, etypes, out_node_types
+                    )
             else:
                 # standard message passing: sum up all messages per node type
                 graph.multi_update_all(
@@ -123,7 +132,8 @@ class MscnConv(MessageAggregator):
         for out_type in out_node_types:
             # collect child tensors per source type for this out_type
             child_tensors = []
-            for src in src_to_etypes.keys():
+            # Keep source traversal deterministic across runs/interpreters.
+            for src in sorted(src_to_etypes.keys()):
                 per_src_field = f"ft_{src}"
                 per_src_dict = graph.ndata.get(per_src_field, None)
                 if per_src_dict is None:
@@ -189,5 +199,112 @@ class MscnConv(MessageAggregator):
                 )
 
             rst[out_type] = combined
+
+        return feat, out_node_types, rst
+
+    def apply_join_method_per_child(
+        self,
+        graph: dgl.DGLGraph,
+        etypes,
+        out_node_types,
+    ):
+        feat = graph.ndata["h"]
+
+        rst = {}
+        for out_type in out_node_types:
+            if out_type not in feat:
+                continue
+
+            out_feat = feat[out_type]
+            num_dst = out_feat.shape[0]
+            device = out_feat.device
+            dtype = out_feat.dtype
+
+            # Preserve incoming children per destination node, instead of pre-summing by source type.
+            per_dst_children = [[] for _ in range(num_dst)]
+
+            for src, e_name, dst in etypes:
+                if dst != out_type:
+                    continue
+
+                src_ids, dst_ids = graph.edges(etype=(src, e_name, dst))
+                if src_ids.numel() == 0:
+                    continue
+
+                # Deterministic ordering for order-sensitive modes.
+                key = dst_ids * (feat[src].shape[0] + 1) + src_ids
+                order = torch.argsort(key)
+                src_ids = src_ids[order]
+                dst_ids = dst_ids[order]
+
+                msgs = feat[src][src_ids]
+                for i in range(dst_ids.shape[0]):
+                    per_dst_children[int(dst_ids[i].item())].append(msgs[i])
+
+            rows = []
+            for children in per_dst_children:
+                num_children = len(children)
+
+                if num_children == 0:
+                    if self.join_repr_mode == "pad_single":
+                        row = torch.zeros(
+                            2 * self.hidden_dim, device=device, dtype=dtype
+                        )
+                    else:
+                        row = torch.zeros(self.hidden_dim, device=device, dtype=dtype)
+                elif num_children == 1:
+                    if self.join_repr_mode == "pad_single":
+                        row = torch.cat(
+                            [children[0], torch.zeros_like(children[0])], dim=0
+                        )
+                    else:
+                        row = children[0]
+                elif num_children == 2:
+                    left, right = children[0], children[1]
+
+                    if self.join_repr_mode == "proj_then_concat":
+                        left_proj = self.child_proj(left.unsqueeze(0)).squeeze(0)
+                        right_proj = self.child_proj(right.unsqueeze(0)).squeeze(0)
+                        row = torch.cat([left_proj, right_proj], dim=0)
+                    elif self.join_repr_mode == "concat_reduce":
+                        row = self.concat_reduce(
+                            torch.cat([left, right], dim=0).unsqueeze(0)
+                        ).squeeze(0)
+                    elif self.join_repr_mode == "dot_gate":
+                        d = left.shape[0]
+                        score = (left * right).sum() / math.sqrt(max(1, d))
+                        alpha = torch.sigmoid(score)
+                        row = alpha * left + (1.0 - alpha) * right
+                    elif self.join_repr_mode == "per_dim_gate":
+                        gate = torch.sigmoid(left * right)
+                        row = gate * left + (1.0 - gate) * right
+                    elif self.join_repr_mode == "pad_single":
+                        row = torch.cat([left, right], dim=0)
+                    elif self.join_repr_mode == "sum":
+                        row = left + right
+                    else:
+                        raise ValueError(
+                            f"Unsupported join_repr_mode={self.join_repr_mode}"
+                        )
+                else:
+                    if self.join_repr_mode == "sum":
+                        row = torch.sum(torch.stack(children, dim=0), dim=0)
+                    else:
+                        child_shapes = [tuple(c.shape) for c in children]
+                        canonical = getattr(graph, "canonical_etypes", None)
+                        raise ValueError(
+                            "Unexpected number of child tensors: {} for out_type={}\\n".format(
+                                num_children, out_type
+                            )
+                            + f"child_shapes={child_shapes}\\n"
+                            + f"out_node_types={out_node_types}\\n"
+                            + f"current out_type={out_type}\\n"
+                            + f"etypes={etypes}\\n"
+                            + f"graph.canonical_etypes={canonical}\\n"
+                        )
+
+                rows.append(row)
+
+            rst[out_type] = torch.stack(rows, dim=0)
 
         return feat, out_node_types, rst

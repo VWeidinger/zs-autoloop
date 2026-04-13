@@ -8,8 +8,8 @@ import training.featurizations as fts
 from training.featurizations import Featurization
 
 import classes as cls
-from classes import ModelConfig, Name
-from classes.configs.base import shorten_model_name
+from classes.configs.base import ModelConfig, shorten_model_name
+from classes.configs.constants import Name
 
 
 def parameterized_config(base_config_name: str, **args):
@@ -170,6 +170,8 @@ def get_parameterized_model_config(model_name: str, m_args: Dict) -> ModelConfig
             "latent_strategy",
             "group_by",
             "cardinality_estimation_correction_logic_params",
+            "weighing_scheme",
+            "rl_scope",
         ]
         found = False
         for str_keyword in str_keywords:

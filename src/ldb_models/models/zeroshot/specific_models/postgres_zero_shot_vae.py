@@ -4,7 +4,7 @@ from models.zeroshot.subplan_runtime_helper import compute_subplan_runtimes
 from models.zeroshot.utils.fc_out_model import FcOutModel
 from models.zeroshot.zero_shot_model import ZeroShotModelEncoder
 from torch import nn
-from training.losses import create_loss
+from training.losses.factory import create_loss
 from training.training.outputs import LossOutput, ModelOutput
 
 
@@ -108,11 +108,12 @@ class PostgresZeroShotModelVAE(nn.Module):
         return ModelOutput(plan_predictions=predictions)
 
     def compute_loss(
-        self, output: ModelOutput, query_stats: dict, labels: torch.Tensor
+        self, output: ModelOutput, query_stats: dict, labels: torch.Tensor, **kwargs
     ) -> LossOutput:
         recon_loss = self.loss_fcn(output.plan_predictions, labels)
         kl_loss = -0.5 * torch.sum(1 + self.logvar - self.mu.pow(2) - self.logvar.exp())
-        return LossOutput(loss=recon_loss + self.beta * kl_loss)
+        loss = recon_loss + self.beta * kl_loss
+        return LossOutput(loss=loss, plan_loss=recon_loss)
 
 
 class PostgresZeroShotModelEncoder(ZeroShotModelEncoder):

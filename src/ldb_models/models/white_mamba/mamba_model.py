@@ -15,7 +15,11 @@ from models.zeroshot.subplan_runtime_helper import (
 from models.zeroshot.utils.fc_out_model import FcOutModel
 from models.zeroshot.zero_shot_model import NodeTypeEncoder
 from torch import nn
-from training.losses import LessThanLoss, RelativeLessThanLoss, create_loss
+from training.losses.factory import create_loss
+from training.losses.monotonicity import (
+    LessThanLoss,
+    RelativeLessThanLoss,
+)
 from training.preprocessing.feature_statistics import FeatureType
 from training.training.outputs import LossOutput, ModelOutput
 
@@ -449,7 +453,7 @@ class MambaModel(nn.Module):
             return ModelOutput(plan_predictions=outputs)
 
     def compute_loss(
-        self, output: ModelOutput, query_stats: dict, labels: torch.Tensor
+        self, output: ModelOutput, query_stats: dict, labels: torch.Tensor, **kwargs
     ) -> LossOutput:
         # Loss computation
         plan_predictions = output.plan_predictions

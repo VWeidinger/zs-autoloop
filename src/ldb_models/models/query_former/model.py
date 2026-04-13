@@ -5,7 +5,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from classes import QueryFormerModelConfig
 from models.workload_driven.dataset.dataset_creation import InputDims
-from training.losses import create_loss
+from training.losses.factory import create_loss
 from training.training.outputs import LossOutput, ModelOutput
 
 
@@ -283,7 +283,7 @@ class QueryFormer(nn.Module):
         return ModelOutput(plan_predictions=out)
 
     def compute_loss(
-        self, output: ModelOutput, query_stats: dict, labels: torch.Tensor
+        self, output: ModelOutput, query_stats: dict, labels: torch.Tensor, **kwargs
     ) -> LossOutput:
         plan_predictions = output.plan_predictions
         loss = self.loss_fxn(plan_predictions, labels)

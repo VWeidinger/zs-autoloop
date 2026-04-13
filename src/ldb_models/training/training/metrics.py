@@ -1,10 +1,44 @@
 import copy
+from collections import defaultdict
 from typing import List
 
 import numpy as np
 import scipy
 import sklearn
+import torch
 from sklearn.metrics import mean_squared_error, ndcg_score
+
+
+class EpochMetrics:
+    """Container for scalar/vector metric series collected during one epoch."""
+
+    def __init__(self):
+        self.values = defaultdict(list)
+
+    def append(self, name: str, value):
+        self.values[name].append(value)
+
+    def mean(self, name: str):
+        vals = self.values.get(name, [])
+        if len(vals) == 0:
+            return None
+        try:
+            if isinstance(vals[0], (np.ndarray, torch.Tensor, list)):
+                return float(
+                    np.mean(np.concatenate([np.array(x).flatten() for x in vals]))
+                )
+            return float(np.mean(vals))
+        except Exception as e:
+            print(f"Warning: Could not calculate mean for metric {name}: {e}")
+            return None
+
+    def means_with_prefix(self, prefix: str = "mean_train_"):
+        out = {}
+        for name in self.values.keys():
+            val = self.mean(name)
+            if val is not None:
+                out[f"{prefix}{name}"] = val
+        return out
 
 
 class Metric:

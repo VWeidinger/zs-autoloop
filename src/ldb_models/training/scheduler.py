@@ -14,12 +14,12 @@ def init_scheduler(config, optimizer):
             "CosineAnnealingWarmRestarts": {"T_0": 5, "T_mult": 2, "eta_min": 1e-6},
             "ReduceLROnPlateau": {
                 "mode": "min",
-                "factor": 0.75,
+                "factor": 0.5,
                 "patience": 10,
                 "threshold": 1e-4,
                 "min_lr": 1e-6,
             },
-            "CosineAnnealingLR": {"T_max": 155, "eta_min": 1e-6},
+            "CosineAnnealingLR": {"T_max": config.epochs, "eta_min": 1e-6},
             "MultiStepLR": {"milestones": [30, 70], "gamma": 0.3},
         }
         # 5+10+20+40+80 = 155  # T_max for CosineAnnealingLR, assuming 155 epochs in total
@@ -85,6 +85,3 @@ def step_scheduler(scheduler=None, epoch: int = 0, avg_loss: float = None):
         scheduler.step(metrics=avg_loss)
     else:
         scheduler.step()
-    print(
-        f"Scheduler stepped at epoch {epoch} current lr: {scheduler.get_last_lr() if hasattr(scheduler, 'get_last_lr') else scheduler.get_lr()}"
-    )

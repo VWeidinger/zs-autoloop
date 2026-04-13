@@ -20,7 +20,20 @@ def inference(
         )
 
         with torch.no_grad():
-            output = model(input_model)
+            # Extra kwargs are consumed by loop-aware variants;
+            # base zero-shot forward paths simply ignore optional kwargs they do not use.
+            model_kwargs = {
+                "plan_dict": query_stats.get("plan_dict", None),
+                "loop_multiplier_map": query_stats.get("loop_multiplier_map", None),
+            }
+            if "subplan_est_card_labels" in query_stats:
+                model_kwargs["subplan_est_card_labels"] = query_stats[
+                    "subplan_est_card_labels"
+                ]
+            output = model(
+                input_model,
+                **model_kwargs,
+            )
 
         if model.label_norm is not None:
             pred = model.label_norm.inverse_transform(output).to("cpu")

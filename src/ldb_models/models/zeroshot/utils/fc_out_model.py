@@ -38,9 +38,14 @@ class DynamicLayer(nn.Module):
             return self.act_class(**self.act_class_kwargs)
 
     def get_norm(self, num_feats):
-        return self.norm_class(
-            num_feats, inplace=self.inplace, **self.norm_class_kwargs
-        )
+        # Some norms (e.g., BatchNorm variants) expose `inplace`, while others
+        # (e.g., LayerNorm/Identity) do not; handle both signatures safely.
+        if "inplace" in self.norm_class.__init__.__code__.co_varnames:
+            return self.norm_class(
+                num_feats, inplace=self.inplace, **self.norm_class_kwargs
+            )
+        else:
+            return self.norm_class(num_feats, **self.norm_class_kwargs)
 
 
 # Residual block
@@ -53,13 +58,20 @@ class ResidualBlock(DynamicLayer):
         self,
         layer_in,
         layer_out,
-        norm=False,
+        norm: bool = None,
         activation=False,
         dropout=False,
         final_out_layer=False,
         **kwargs,
     ):
         super().__init__(**kwargs)
+        if norm is None:
+            # Interpret omitted `norm` as a boolean derived from configured norm class.
+            norm = kwargs.get("norm_class_name") is not None and not final_out_layer
+        if final_out_layer:
+            activation = False
+            dropout = False
+
         assert layer_out == layer_in
         hidden_dim = layer_in
 
@@ -74,7 +86,13 @@ class ResidualBlock(DynamicLayer):
 
         # if dropout:
         #     self.layers.append(nn.Dropout(self.p_dropout))
-        self.layers.append(nn.Linear(hidden_dim, hidden_dim))
+        last_linear = nn.Linear(hidden_dim, hidden_dim)
+        # Start residual branch near-identity; this can affect optimization speed,
+        # so keep an eye on convergence metrics when reusing this block in new setups.
+        torch.nn.init.zeros_(last_linear.weight)
+        if last_linear.bias is not None:
+            torch.nn.init.zeros_(last_linear.bias)
+        self.layers.append(last_linear)
         if norm:
             self.layers.append(self.get_norm(hidden_dim))
         if dropout and not final_out_layer:
@@ -106,13 +124,19 @@ class FcLayer(DynamicLayer):
         self,
         layer_in,
         layer_out,
-        norm=False,
+        norm: bool = None,
         activation=False,
         dropout=False,
         final_out_layer=False,
         **kwargs,
     ):
         super().__init__(**kwargs)
+        if norm is None:
+            # Interpret omitted `norm` as a boolean derived from configured norm class.
+            norm = kwargs.get("norm_class_name") is not None and not final_out_layer
+        if final_out_layer:
+            activation = False
+            dropout = False
 
         assert layer_out > 0, (
             "Output dimension must be greater than 0, but got 0. Check the model configuration."
@@ -147,6 +171,7 @@ class FcOutModel(DynamicLayer):
         task=None,
         **kwargs,
     ):
+        is_final_output_model = kwargs.pop("final_out_layer", False)
         super().__init__(**kwargs)
 
         assert output_dim > 0, (
@@ -180,10 +205,17 @@ class FcOutModel(DynamicLayer):
         )
 
         layers = []
-        for layer_in, layer_out in zip(layer_dims, layer_dims[1:]):
+        for idx, (layer_in, layer_out) in enumerate(zip(layer_dims, layer_dims[1:])):
+            # `len(layer_dims) - 2` is the final edge in the dims chain, i.e.,
+            # the last Linear mapping before output.
+            is_last_layer = idx == len(layer_dims) - 2
+            layer_kwargs = {
+                **kwargs,
+                "final_out_layer": is_final_output_model and is_last_layer,
+            }
             if not residual or layer_in != layer_out:
-                layers.append(FcLayer(layer_in, layer_out, **kwargs))
+                layers.append(FcLayer(layer_in, layer_out, **layer_kwargs))
             else:
-                layers.append(ResidualBlock(layer_in, layer_out, **kwargs))
+                layers.append(ResidualBlock(layer_in, layer_out, **layer_kwargs))
 
         self.fcout = nn.Sequential(*layers)

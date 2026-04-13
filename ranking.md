@@ -14,7 +14,6 @@ This is the foundational configuration class from which all other ranking config
     *   `batch_group_size: int = 16`: The number of such groups to include in a single training batch.
     *   `batch_size: int`: The total number of plans in a batch, automatically calculated as `group_size * batch_group_size`.
     *   `num_workers: int = 20`: The number of subprocesses to use for data loading.
-    *   `batch_by_query: bool = False`: If `True`, the data loader ensures that all plans for a single query are placed within the same batch, which is essential for certain ranking objectives.
     *   `include_W_workloads: bool = False`: Flag to include the "W" workloads in the training dataset.
 *   **Training Parameters:**
     *   `lr: float = 1e-3`: The learning rate for the optimizer.
@@ -48,9 +47,7 @@ This configuration tests a two-stage prediction process. Instead of predicting c
 #### `ZeroShotRankingModelConfigWithRelevancy`
 This configuration introduces the concept of transforming latency values into "relevancy scores" before computing the ranking loss.
 
-*   `adaptive_generator: bool = False`: If `True`, key parameters of the relevancy transformation become learnable `nn.Parameter`s.
 *   `use_relevancy_generator: bool = True`: Enables the `RelevancyGenerator` module for label transformation.
-*   `predict_relevancy_scores: bool = False`: If `True`, the model is trained to directly predict relevancy scores instead of latency. The loss is computed on these scores, and an inverse transformation is applied at inference time.
 *   `relevancy_generator_args: dict`: A dictionary containing hyperparameters for the `RelevancyGenerator`, such as data bounds and scaling factors.
 
 #### `ZeroShotRankingModelConfigWithSubplan`
@@ -86,8 +83,6 @@ This module addresses the highly skewed distribution of query execution times by
     2.  Applies a logarithmic function: `log(x + 1) / log(rl_log_degree)`.
     3.  Normalizes the result to a [0, 1] range.
     4.  Inverts and scales the result: `rl_scalar * (1 - normalized_value)`. This makes lower latencies correspond to higher relevancy scores.
-*   **Inverse Transformation (`revert` method)**: Reverses the process to convert predicted relevancy scores back into latency estimates for inference.
-*   **Adaptive Learning**: If `adaptive=True`, the `rl_scalar` and `rl_log_degree` parameters are `nn.Parameter`s that are updated during training via backpropagation, allowing the model to learn the optimal transformation.
 
 ### 2.3. Training Loop and Model Integration
 

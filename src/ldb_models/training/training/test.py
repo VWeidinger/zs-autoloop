@@ -41,17 +41,19 @@ def test_model(
 ):
     # initialize variables for aggregated reporting across all experiments
     job_total_selected_runtime = -1
-    job_total_slowdown = None
-    joblight_total_selected_runtime = -1
-    joblight_total_slowdown = None
-    jobcomplex_total_selected_runtime = -1
-    jobcomplex_total_slowdown = None
-    physop_total_selected_runtime = -1
-    physop_total_slowdown = None
-    physopidx_total_selected_runtime = -1
-    physopidx_total_slowdown = None
-    accesspath_total_selected_runtime = -1
-    accesspath_total_slowdown = None
+    job_avg_slowdown = None
+    job_light_total_selected_runtime = -1
+    job_light_avg_slowdown = None
+    job_complex_total_selected_runtime = -1
+    job_complex_avg_slowdown = None
+    physop_selected_runtime = -1
+    physop_avg_slowdown = None
+    physop_idx_selected_runtime = -1
+    physop_idx_avg_slowdown = None
+    accesspath_selected_runtime = -1
+    accesspath_avg_slowdown = None
+    accesspath_w_agg_selected_runtime = -1
+    accesspath_w_agg_avg_slowdown = None
 
     predictions_dicts = dict()
 
@@ -149,13 +151,13 @@ def test_model(
 
                         if wl_name == "job":
                             job_total_selected_runtime = rt
-                            job_total_slowdown = slowdown
+                            job_avg_slowdown = slowdown
                         elif wl_name == "job_light":
-                            joblight_total_selected_runtime = rt
-                            joblight_total_slowdown = slowdown
+                            job_light_total_selected_runtime = rt
+                            job_light_avg_slowdown = slowdown
                         elif wl_name == "job_complex":
-                            jobcomplex_total_selected_runtime = rt
-                            jobcomplex_total_slowdown = slowdown
+                            job_complex_total_selected_runtime = rt
+                            job_complex_avg_slowdown = slowdown
                         else:
                             raise ValueError(f"Unknown workload name: {wl_name}")
 
@@ -169,12 +171,11 @@ def test_model(
                         wandb_run=wandb_run,
                     )
                     if with_idxs:
-                        physopidx_total_selected_runtime = rt
-                        physopidx_total_slowdown = slowdown
+                        physop_idx_selected_runtime = rt
+                        physop_idx_avg_slowdown = slowdown
                     else:
-                        physop_total_selected_runtime = rt
-                        physop_total_slowdown = slowdown
-
+                        physop_selected_runtime = rt
+                        physop_avg_slowdown = slowdown
                 if "access_path_selection" in str(test_path):
                     if "with_aggregate" in str(test_path):
                         ap_w_aggregate = True
@@ -192,40 +193,116 @@ def test_model(
                     )
 
                     if not ap_w_aggregate:
-                        accesspath_total_selected_runtime, accesspath_total_slowdown = (
-                            res
-                        )
+                        (
+                            accesspath_selected_runtime,
+                            accesspath_avg_slowdown,
+                        ) = res
+                    else:
+                        (
+                            accesspath_w_agg_selected_runtime,
+                            accesspath_w_agg_avg_slowdown,
+                        ) = res
         else:
             print("Skipping saving the test stats")
 
     # aggregate metrics to qo_total
     if (
         job_total_selected_runtime != -1
-        and joblight_total_selected_runtime != -1
-        and physop_total_selected_runtime != -1
-        and physopidx_total_selected_runtime != -1
-        and accesspath_total_selected_runtime != -1
+        and job_light_total_selected_runtime != -1
+        and job_complex_total_selected_runtime != -1
+        and physop_selected_runtime != -1
+        and physop_idx_selected_runtime != -1
+        and accesspath_selected_runtime != -1
+        and accesspath_w_agg_selected_runtime != -1
     ):
+        print("Aggregating total selected runtimes and slowdowns across all workloads")
+        print(
+            "-job_total_selected_runtime:",
+            job_total_selected_runtime,
+            "\tAvg slowdown:",
+            job_avg_slowdown,
+        )
+        print(
+            "-job_light_total_selected_runtime:",
+            job_light_total_selected_runtime,
+            "\tAvg slowdown:",
+            job_light_avg_slowdown,
+        )
+        print(
+            "-job_complex_total_selected_runtime:",
+            job_complex_total_selected_runtime,
+            "\tAvg slowdown:",
+            job_complex_avg_slowdown,
+        )
+        print(
+            "-physop_selected_runtime:",
+            physop_selected_runtime,
+            "\tAvg slowdown:",
+            physop_avg_slowdown,
+        )
+        print(
+            "-physop_idx_selected_runtime:",
+            physop_idx_selected_runtime,
+            "\tAvg slowdown:",
+            physop_idx_avg_slowdown,
+        )
+        print(
+            "-accesspath_selected_runtime:",
+            accesspath_selected_runtime,
+            "\tAvg slowdown:",
+            accesspath_avg_slowdown,
+        )
+        print(
+            "-accesspath_w_agg_selected_runtime:",
+            accesspath_w_agg_selected_runtime,
+            "\tAvg slowdown:",
+            accesspath_w_agg_avg_slowdown,
+        )
         # if not all 5 workloads are present, do not aggregate
         assert job_total_selected_runtime is not None
-        assert joblight_total_selected_runtime is not None
-        assert physop_total_selected_runtime is not None
-        assert physopidx_total_selected_runtime is not None
-        assert accesspath_total_selected_runtime is not None
+        assert job_light_total_selected_runtime is not None
+        assert job_complex_total_selected_runtime is not None
+        assert physop_selected_runtime is not None
+        assert physop_idx_selected_runtime is not None
+        assert accesspath_selected_runtime is not None
+        assert accesspath_w_agg_selected_runtime is not None
+
+        join_order_total_selected_runtime = (
+            job_total_selected_runtime
+            + job_light_total_selected_runtime
+            + job_complex_total_selected_runtime
+        )
+        access_path_total_selected_runtime = (
+            accesspath_w_agg_selected_runtime + accesspath_selected_runtime
+        )
+        physop_total_selected_runtime = (
+            physop_selected_runtime + physop_idx_selected_runtime
+        )
+
+        jo_ap_po_total_selected_runtime = (
+            join_order_total_selected_runtime
+            + access_path_total_selected_runtime
+            + physop_total_selected_runtime
+        )
+
+        ac_po_total_selected_runtime = (
+            access_path_total_selected_runtime + physop_total_selected_runtime
+        )
 
         total_selected_runtime = (
             job_total_selected_runtime
-            + joblight_total_selected_runtime
-            + physop_total_selected_runtime
-            + physopidx_total_selected_runtime
-            + accesspath_total_selected_runtime
+            + job_light_total_selected_runtime
+            + physop_selected_runtime
+            + physop_idx_selected_runtime
+            + accesspath_selected_runtime
         )
-        avg_total_slowdown = (
-            job_total_slowdown
-            + joblight_total_slowdown
-            + physop_total_slowdown
-            + physopidx_total_slowdown
-            + accesspath_total_slowdown
+
+        avg_slowdown = (
+            job_avg_slowdown
+            + job_light_avg_slowdown
+            + physop_avg_slowdown
+            + physop_idx_avg_slowdown
+            + accesspath_avg_slowdown
         ) / 5
 
         if wandb_run is not None:
@@ -233,11 +310,14 @@ def test_model(
                 wandb_run.log(
                     {
                         "qo_total_per_epoch/selected_runtime": total_selected_runtime,
-                        "qo_total_per_epoch/avg_slowdown": avg_total_slowdown,
+                        "qo_total_per_epoch/avg_slowdown": avg_slowdown,
                         "qo_total_with_complex_per_epoch/selected_runtime": total_selected_runtime
-                        + jobcomplex_total_selected_runtime,
-                        "qo_total_with_complex_per_epoch/avg_slowdown": avg_total_slowdown
-                        + jobcomplex_total_slowdown,
+                        + job_complex_total_selected_runtime,
+                        "qo_total_per_epoch/jo_ap_po_selected_runtime": jo_ap_po_total_selected_runtime,
+                        "qo_total_per_epoch/ac_po_selected_runtime": ac_po_total_selected_runtime,
+                        "qo_total_per_epoch/jo_selected_runtime": join_order_total_selected_runtime,
+                        "qo_total_per_epoch/ap_selected_runtime": access_path_total_selected_runtime,
+                        "qo_total_per_epoch/po_selected_runtime": physop_total_selected_runtime,
                     },
                     step=epoch,
                 )
@@ -245,11 +325,14 @@ def test_model(
                 wandb_run.summary.update(
                     {
                         "qo_total/selected_runtime": total_selected_runtime,
-                        "qo_total/avg_slowdown": avg_total_slowdown,
+                        "qo_total/avg_slowdown": avg_slowdown,
                         "qo_total_with_complex/selected_runtime": total_selected_runtime
-                        + jobcomplex_total_selected_runtime,
-                        "qo_total_with_complex/avg_slowdown": avg_total_slowdown
-                        + jobcomplex_total_slowdown,
+                        + job_complex_total_selected_runtime,
+                        "qo_total/jo_ap_po_selected_runtime": jo_ap_po_total_selected_runtime,
+                        "qo_total/ac_po_selected_runtime": ac_po_total_selected_runtime,
+                        "qo_total/jo_selected_runtime": join_order_total_selected_runtime,
+                        "qo_total/ap_selected_runtime": access_path_total_selected_runtime,
+                        "qo_total/po_selected_runtime": physop_total_selected_runtime,
                     }
                 )
 

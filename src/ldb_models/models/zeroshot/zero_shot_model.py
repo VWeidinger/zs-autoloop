@@ -53,6 +53,9 @@ class ZeroShotModelEncoder(FcOutModel):
                     node_type=node_type,
                     hidden_dim=self.hidden_dim,
                     join_repr_mode=getattr(model_config, "join_repr_mode", "sum"),
+                    use_per_child_join_aggregation=getattr(
+                        model_config, "use_per_child_join_aggregation", False
+                    ),
                     **model_config.tree_layer_kwargs,
                 )
                 for node_type in tree_model_types
@@ -237,9 +240,10 @@ class PassDirection:
             self.in_types.add(curr_n_src)
             self.out_types.add(curr_n_dest)
 
-        self.etypes = list(self.etypes)
-        self.in_types = list(self.in_types)
-        self.out_types = list(self.out_types)
+        # Sort for deterministic message-passing traversal / reproducible runs.
+        self.etypes = sorted(list(self.etypes))
+        self.in_types = sorted(list(self.in_types))
+        self.out_types = sorted(list(self.out_types))
         if not allow_empty:
             assert len(self.etypes) > 0, (
                 f"No nodes in the graph qualify for e_name={e_name}, n_dest={n_dest}"

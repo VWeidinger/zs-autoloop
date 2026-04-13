@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Dict, Optional
 
 import torch
@@ -26,6 +26,7 @@ class LossOutput:
     subplan_loss: Optional[torch.Tensor] = None
     card_loss: Optional[torch.Tensor] = None
     monotonicity_loss: Optional[torch.Tensor] = None
-    # for ranking models
-    gouped_output: Optional[torch.Tensor] = None
-    grouped_labels: Optional[torch.Tensor] = None
+    # For ranking/relevancy models that supervise auxiliary per-plan scores.
+    relevancy_scores_preds: Optional[torch.Tensor] = None
+    relevancy_scores_labels: Optional[torch.Tensor] = None
+    loss_breakdown: Dict[str, float] = field(default_factory=dict)

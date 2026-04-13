@@ -80,6 +80,7 @@ def get_encoded_filter(
     feature_statistics: dict,
     column_statistics: dict,
     database_statistics: SimpleNamespace,
+    col_id_dict: Dict = None,
 ) -> np.ndarray:
     encoded_filters = []
     for column, operator, literal in filter_info:
@@ -92,11 +93,13 @@ def get_encoded_filter(
             encoded_literal = 0.0
 
         else:
-            encoded_column = (
-                column  # No scaling required, as it is a categorical identifier
-            )
+            # Map per-run column index to global column id if mapping supplied.
             column_name = database_statistics.column_stats[column].attname
             table_name = database_statistics.column_stats[column].tablename
+            if col_id_dict is not None:
+                encoded_column = col_id_dict.get((table_name, column_name), column)
+            else:
+                encoded_column = column
             col_statistics = column_statistics[table_name][column_name]
             if col_statistics["datatype"] in {"float", "int"}:
                 assert literal is not None
@@ -166,6 +169,7 @@ def recursively_convert_plan(
     dim_bitmaps: int = 1000,
     max_filter_number: int = 5,
     histogram_bin_size: int = 10,
+    col_id_dict: Dict = None,
 ) -> TreeNode:
     plan_parameters = plan["plan_parameters"]
 
@@ -206,6 +210,7 @@ def recursively_convert_plan(
             feature_statistics=feature_statistics,
             column_statistics=column_statistics,
             database_statistics=database_statistics,
+            col_id_dict=col_id_dict,
         )
 
         encoded_histogram_info = get_encoded_histograms(
@@ -282,6 +287,7 @@ def recursively_convert_plan(
                 dim_word_hash=dim_word_hash,
                 word_embeddings=word_embeddings,
                 max_filter_number=max_filter_number,
+                col_id_dict=col_id_dict,
             )
         tree_node.parent = plan
         tree_node.add_child(child)
@@ -298,6 +304,7 @@ def encode_query_plan(
     dim_word_hash: int,
     dim_bitmaps: int,
     database_statistics: SimpleNamespace,
+    col_id_dict: Dict = None,
     max_node: int = 30,
     rel_pos_max: int = 20,
     max_filter_number: int = 5,
@@ -328,6 +335,7 @@ def encode_query_plan(
         word_embeddings=word_embeddings,
         max_filter_number=max_filter_number,
         histogram_bin_size=histogram_bin_size,
+        col_id_dict=col_id_dict,
     )
 
     # Get adjacency matrix, num_child, features
@@ -416,6 +424,7 @@ def query_former_plan_collator(
             feature_statistics=feature_statistics,
             column_statistics=column_statistics,
             database_statistics=db_statistics[0],
+            col_id_dict=col_id_dict,
             dim_word_embedding=dim_word_embedding,
             dim_word_hash=dim_word_hash,
             dim_bitmaps=dim_bitmaps,

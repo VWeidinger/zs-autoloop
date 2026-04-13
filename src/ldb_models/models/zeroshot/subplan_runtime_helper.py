@@ -129,7 +129,7 @@ def compute_subplan_runtimes_aligned(
 
             # Store the predictions in the map, using the original IDs as keys.
             for i in range(original_ids.shape[0]):
-                orig_id = original_ids[i]
+                orig_id = original_ids[i].item()
                 predictions_map[orig_id] = predictions[i]
 
     # Create a list to hold the predictions in the order of the original plan nodes.

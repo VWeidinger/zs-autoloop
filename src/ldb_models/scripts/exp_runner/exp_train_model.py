@@ -5,6 +5,7 @@ import sys
 from functools import lru_cache
 from typing import List, Optional
 
+import wandb
 from ldb_schema.datasets import Dataset
 from ldb_schema.paths import ClusterPaths, LocalPaths
 from octopus.step import (
@@ -16,16 +17,18 @@ from octopus.step import (
     Step,
 )
 
-import wandb
-
 sys.path.append(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 )
-
-from classes import ModelConfig, shorten_model_name
+from classes.configs.base import ModelConfig, shorten_model_name
 from classes.model_config_helper import parameterized_config
 from scripts.exp_runner.exp_runner import ExpRunner, TrainingServers
-from training.featurizations import MambaFullWIdxCor
+
+from ldb_models.training.featurizations import (
+    MambaFullWIdxCor,
+    PostgresEstSystemCardDetail,
+    PostgresEstWithNumLoops,
+)
 
 
 @lru_cache(maxsize=None)
@@ -56,7 +59,7 @@ def generate_training_commands(
     is_pretrained: bool = False,
     update_wandb_summary: bool = False,
     assemble_data_up_front: bool = False,
-    feature_stats_suffix: str = "",
+    enable_checkpoint_loading: bool = False,
 ) -> List[str]:
     if update_wandb_summary:
         assert is_pretrained, "update_wandb_summary only works with pretrained models"
@@ -153,6 +156,8 @@ def generate_training_commands(
             if use_romans_runs:
                 statistics_path = "/mnt/labstore/SIGs/ML/learned_db/runs_roman/parsed_plans/statistics_complex_workload_combined.json"
             else:
+                # Get feature stats suffix from the model config
+                feature_stats_suffix = target_model.get_feature_stats_suffix()
                 statistics_path = target_model.get_statistics(
                     source_path=ClusterPaths(),
                     dataset=target_dataset,
@@ -294,6 +299,9 @@ def generate_training_commands(
                 if assemble_data_up_front:
                     command += " --assemble_data_up_front"
 
+                if enable_checkpoint_loading:
+                    command += " --enable_checkpoint_loading"
+
                 commands.append(command)
 
     return commands
@@ -363,14 +371,15 @@ if __name__ == "__main__":
         Dataset("fhnk", scale=2),
     ]
 
-    version = 6  # 3=parsed_plans2, 4=fixed card-annotation of optimal plans in JOB & -Complex and improved logging/plotting, 5=fixed parser error (new feature statistics) 10/2025) # 6= parsed plans 3
-    seeds = [5]
+    version = 5  # 3=parsed_plans2, 4=fixed card-annotation of optimal plans in JOB & -Complex and improved logging/plotting, 5=fixed parser error (new feature statistics) 10/2025)
+    seeds = [9]
     nodes = [
         # TrainingServers.NODE01,
-        TrainingServers.NODE02,
+        # TrainingServers.NODE02,
         # TrainingServers.NODE03,
-        # TrainingServers.NODE04,
-        # TrainingServers.NODE05,
+        TrainingServers.NODE04,
+        TrainingServers.NODE05,
+        # TrainingServers.NODE06,
         # TrainingServers.NODE00,
         # TrainingServers.NODE09,
     ]
@@ -404,8 +413,9 @@ if __name__ == "__main__":
     use_romans_runs = False
     assemble_data_up_front = False  # run data / graph assemble up front i.e. during dataset creation instead of collate / training time
 
-    # feature statistics version
-    feature_stats_suffix = "_v20260107"
+    enable_checkpoint_loading = (
+        False  # if True, dont load checkpoint (excluding specific pretrain path set)
+    )
 
     # =================== (pretrained / wandb reuse configs)
     is_pretrained = False  # if True, assumes that the model is pretrained and does not train it # noqa: E501
@@ -413,32 +423,40 @@ if __name__ == "__main__":
     # ===================
 
     # generate model configs
+
     model_configs = []
+
     for model_type in [
+        "zs_sumo",
         # "postgres",
         # "zeroshot",
-        # "zeroshot_act_card",
-        # # 'zeroshot_low_min',
-        # # 'zeroshot_xl',
-        # # 'zeroshot_timeout',
         # "dace",
         # "flat",
         # "t3",
-        # "t3_act",
         # "zeroshot_vae",
-        "neo",
+        # "neo",
         # "qppnet",
         # "mscn",
         # "e2e",
         # "query_former",
         # "mamba",
+        # "spn",
+        # # "t3_act",
         # # "mamba_tanh",
         # # "mamba_relu",
-        # "spn",
+        # # "zeroshot_act_card",
+        # # 'zeroshot_low_min',
+        # # 'zeroshot_xl',
+        # # 'zeroshot_timeout',
     ]:
+        zs_featurizations = [PostgresEstSystemCardDetail, PostgresEstWithNumLoops]
+
         if model_type == "dace":
             model_specific_args = {"pad_length": 60}
+        elif model_type in ["postgres", "t3", "mscn", "flat", "spn"]:
+            model_specific_args = {"epochs": 80}
         elif model_type == "mamba":
+            # from ldb_models.training.featurizations import MambaFullWIdxCor
             model_specific_args = {
                 "featurization": MambaFullWIdxCor,
                 "scan_nte_relu": True,
@@ -448,17 +466,37 @@ if __name__ == "__main__":
         else:
             model_specific_args = {}
 
+        """for featurization in [PostgresEstSystemCardDetail, PostgresEstWithNumLoops]:
+            model_specific_args["featurization"] = featurization"""
         model_configs.extend(
             [
-                # +
                 parameterized_config(
                     model_type,
-                    wandb_group="baselines",
                     include_pg_opt_workloads=True,
+                    epochs=2,
+                    wandb_group="baseline",
                     **model_specific_args,
                 )
             ]
         )
+        if model_type not in ["postgres"]:
+            model_configs.extend(
+                [
+                    parameterized_config(
+                        model_type,
+                        include_hint_idx_workloads=True,
+                        epochs=2,
+                        wandb_group="baseline",
+                        **model_specific_args,
+                    )
+                ]
+            )
+
+    # Try to load model with name pm-zs_sop_rl-stable-gs8-bgs32-regrW1-rankW1-subpW1-s10-ld5-sLNFalse-hiFalse-cr-mjFalse and seed 5 from /mnt/labstore/SIGs/ML/learned_db/models/pm-zs_sop_rl-stable-gs8-bgs32-regrW1-rankW1-subpW1-s10-ld5-sLNFalse-hiFalse-cr-mjFalse/imdb
+    # No valid checkpoint found [Errno 2] No such file or directory: '/mnt/labstore/SIGs/ML/learned_db/models/pm-zs_sop_rl-stable-gs8-bgs32-regrW1-rankW1-subpW1-s10-ld5-sLNFalse-hiFalse-cr-mjFalse/imdb/pm-zs_sop_rl-stable-gs8-bgs32-regrW1-rankW1-subpW1-s10-ld5-sLNFalse-hiFalse-cr-mjFalse_5.pt'
+
+    # pprint(asdict(model_configs[0]), sort_dicts=False)
+    # model_configs = list(model_configs[:2])  # for testing only use the first 2 configs
 
     model_configs = [model for model in model_configs if model is not None]
 
@@ -497,7 +535,7 @@ if __name__ == "__main__":
         is_pretrained=is_pretrained,
         update_wandb_summary=update_wandb_summary,
         assemble_data_up_front=assemble_data_up_front,
-        feature_stats_suffix=feature_stats_suffix,
+        enable_checkpoint_loading=enable_checkpoint_loading,
     )
 
     runner.run_exp(
