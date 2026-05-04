@@ -6,17 +6,22 @@ from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import torch
-from classes import DACEModelConfig, DataLoaderOptions
-from classes.workload_runs import WorkloadRuns
 from ldb_schema.load_schema import get_json_schema, load_json
-from models.white_mamba.extract_query_stats import extract_query_stats_for_plan
-from models.zeroshot.postgres_plan_batching import assign_additional_plan_info
 from sklearn.preprocessing import RobustScaler
 from torch.nn.functional import pad
 from torch.utils.data import DataLoader
-from training.dataset.dataset_creation import read_workload_runs
-from training.dataset.plan_dataset import PlanDataset
-from training.preprocessing.feature_statistics import FeatureType
+
+from ldb_models.classes import DACEModelConfig, DataLoaderOptions
+from ldb_models.classes.workload_runs import WorkloadRuns
+from ldb_models.models.white_mamba.extract_query_stats import (
+    extract_query_stats_for_plan,
+)
+from ldb_models.models.zeroshot.postgres_plan_batching import (
+    assign_additional_plan_info,
+)
+from ldb_models.training.dataset.dataset_creation import read_workload_runs
+from ldb_models.training.dataset.plan_dataset import PlanDataset
+from ldb_models.training.preprocessing.feature_statistics import FeatureType
 
 
 def create_dace_dataloader(
@@ -165,7 +170,7 @@ def dace_collator(
     # Get op_name to one-hot, using feature_statistics
     op_name_to_one_hot = get_op_name_to_one_hot(feature_statistics)
 
-    labels, sample_idxs, seq_encodings, attention_masks, loss_masks, all_runtimes = (
+    labels, _sample_idxs, seq_encodings, attention_masks, loss_masks, all_runtimes = (
         [],
         [],
         [],

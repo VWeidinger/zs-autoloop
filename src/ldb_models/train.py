@@ -3,17 +3,17 @@ from pathlib import Path
 from typing import List
 
 import torch
-from classes import ModelConfig
+from ldb_models.classes import ModelConfig
 from dgl.dataloading import DataLoader
 from torch import nn
 from torch.optim import Optimizer
-from training.bound_predictions_with_history import PredictionBounder
-from training.scheduler import step_scheduler
-from training.training.checkpoint import save_checkpoint
-from training.training.metrics import Metric
-from training.training.test import test_model
-from training.training.train_epoch import train_epoch
-from training.training.validate import validate_model
+from ldb_models.training.bound_predictions_with_history import PredictionBounder
+from ldb_models.training.scheduler import step_scheduler
+from ldb_models.training.training.checkpoint import save_checkpoint
+from ldb_models.training.training.metrics import Metric
+from ldb_models.training.training.test import test_model
+from ldb_models.training.training.train_epoch import train_epoch
+from ldb_models.training.training.validate import validate_model
 from wandb.apis.public import Run
 
 

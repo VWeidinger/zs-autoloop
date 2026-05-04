@@ -4,19 +4,19 @@ from typing import Dict, List, Optional, Tuple
 
 import lightgbm as lgb
 import numpy as np
-from classes import T3FlatModelConfig, T3ModelConfig, T3TreeModelConfig
+from ldb_models.classes import T3FlatModelConfig, T3ModelConfig, T3TreeModelConfig
 from ldb_schema.load_schema import get_json_schema
-from models.t3.benchmarked_query import BenchmarkedQuery
-from models.t3.features import FeatureMapper
-from models.t3.query_plan import QueryPlan
-from models.tabular.slice_train_val import slice_train_val
-from models.white_mamba.extract_query_stats import extract_query_stats_for_plan
-from models.zeroshot.postgres_plan_batching import assign_additional_plan_info
-from training.dataset.dataset_creation import (
+from ldb_models.models.t3.benchmarked_query import BenchmarkedQuery
+from ldb_models.models.t3.features import FeatureMapper
+from ldb_models.models.t3.query_plan import QueryPlan
+from ldb_models.models.tabular.slice_train_val import slice_train_val
+from ldb_models.models.white_mamba.extract_query_stats import extract_query_stats_for_plan
+from ldb_models.models.zeroshot.postgres_plan_batching import assign_additional_plan_info
+from ldb_models.training.dataset.dataset_creation import (
     check_plan_runtime_validity,
     read_workload_runs,
 )
-from training.featurizations import Featurization
+from ldb_models.training.featurizations import Featurization
 
 
 def annotate_op_id(parsed_plan: Dict, id: int = -1) -> int:

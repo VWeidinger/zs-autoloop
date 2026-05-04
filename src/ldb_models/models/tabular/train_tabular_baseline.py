@@ -11,7 +11,15 @@ import joblib
 import lightgbm as lgb
 import numpy as np
 import torch
-from classes import (
+from ldb_schema.load_schema import get_json_schema, load_json
+from sklearn.linear_model import LinearRegression
+from spn.algorithms.LearningWrappers import learn_parametric
+from spn.algorithms.MPE import mpe
+from spn.structure.Base import Context
+from spn.structure.leaves.parametric.Parametric import Gaussian
+from wandb.apis.public import Run
+
+from ldb_models.classes import (
     AnalyticalActCardModelConfig,
     AnalyticalEstCardModelConfig,
     DataLoaderOptions,
@@ -23,32 +31,34 @@ from classes import (
     T3ModelConfig,
     T3TreeModelConfig,
 )
-from classes.workload_runs import WorkloadRuns
-from ldb_schema.load_schema import get_json_schema, load_json
-from models.t3.model import FlatTreeModel, PerTupleTreeModel, T3Model, TreeModel
-from models.t3.t3_dataloader import gen_t3_dataset
-from models.tabular.slice_train_val import slice_train_val
-from models.white_mamba.extract_query_stats import extract_query_stats_for_plan
-from models.zeroshot.postgres_plan_batching import assign_additional_plan_info
-from sklearn.linear_model import LinearRegression
-from spn.algorithms.LearningWrappers import learn_parametric
-from spn.algorithms.MPE import mpe
-from spn.structure.Base import Context
-from spn.structure.leaves.parametric.Parametric import Gaussian
-from training.bound_predictions_with_history import PredictionBounder
-from training.dataset.dataset_creation import read_workload_runs
-from training.evaluate_query_optimization import (
+from ldb_models.classes.workload_runs import WorkloadRuns
+from ldb_models.models.t3.model import (
+    FlatTreeModel,
+    PerTupleTreeModel,
+    T3Model,
+    TreeModel,
+)
+from ldb_models.models.t3.t3_dataloader import gen_t3_dataset
+from ldb_models.models.tabular.slice_train_val import slice_train_val
+from ldb_models.models.white_mamba.extract_query_stats import (
+    extract_query_stats_for_plan,
+)
+from ldb_models.models.zeroshot.postgres_plan_batching import (
+    assign_additional_plan_info,
+)
+from ldb_models.training.bound_predictions_with_history import PredictionBounder
+from ldb_models.training.dataset.dataset_creation import read_workload_runs
+from ldb_models.training.evaluate_query_optimization import (
     evaluate_access_path_selection,
     evaluate_join_order,
     evaluate_physical_plan_selection,
 )
-from training.featurizations import Featurization
-from training.training.checkpoint import save_csv
-from training.training.metrics import init_metrics
-from training.training.outputs import ModelOutput
-from training.training.utils import prefix_dict
-from training.training.validate import to_rows
-from wandb.apis.public import Run
+from ldb_models.training.featurizations import Featurization
+from ldb_models.training.training.checkpoint import save_csv
+from ldb_models.training.training.metrics import init_metrics
+from ldb_models.training.training.outputs import ModelOutput
+from ldb_models.training.training.utils import prefix_dict
+from ldb_models.training.training.validate import to_rows
 
 
 def train_tabular_model(
@@ -314,7 +324,7 @@ def predict_tabular_model(
         with open(model_path, "rb") as f:
             spn_loaded = pickle.load(f)
         assert spn_loaded is not None, f"SPN model {model_path} could not be loaded"
-        pred_func = lambda x: mpe(spn_loaded, x)
+        pred_func = lambda x: mpe(spn_loaded, x)  # noqa: E731
         gen_dataset_func = gen_flattened_dataset
 
     else:
@@ -354,7 +364,7 @@ def predict_tabular_model(
     job_light_total_selected_runtime = -1
     job_light_avg_slowdown = None
     job_complex_total_selected_runtime = -1
-    job_complex_avg_slowdown = None
+    _job_complex_avg_slowdown = None  # For compatibility with older benchmark they are not included in the total slowdown calculation
     physop_selected_runtime = -1
     physop_avg_slowdown = None
     physop_idx_selected_runtime = -1
@@ -362,7 +372,7 @@ def predict_tabular_model(
     accesspath_selected_runtime = -1
     accesspath_avg_slowdown = None
     accesspath_w_agg_selected_runtime = -1
-    accesspath_w_agg_slowdown = None
+    _accesspath_w_agg_avg_slowdown = None  # For compatibility with older benchmark they are not included in the total slowdown calculation
 
     for (x_test, y_test, query_stats_dict), test_path in zip(
         test_datasets, workload_runs.target_test_csv_paths
@@ -453,7 +463,7 @@ def predict_tabular_model(
                 job_light_avg_slowdown = slowdown
             elif wl_name == "job_complex":
                 job_complex_total_selected_runtime = rt
-                job_complex_avg_slowdown = slowdown
+                _job_complex_avg_slowdown = slowdown
             else:
                 raise ValueError(f"Unknown workload name: {wl_name}")
 
@@ -489,7 +499,7 @@ def predict_tabular_model(
             else:
                 (
                     accesspath_w_agg_selected_runtime,
-                    accesspath_w_agg_avg_slowdown,
+                    _accesspath_w_agg_avg_slowdown,
                 ) = res
 
     # aggregate metrics

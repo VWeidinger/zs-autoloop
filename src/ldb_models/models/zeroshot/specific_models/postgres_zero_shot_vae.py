@@ -1,11 +1,11 @@
 import torch
-from classes import ZeroShotVAEModelConfig
-from models.zeroshot.subplan_runtime_helper import compute_subplan_runtimes
-from models.zeroshot.utils.fc_out_model import FcOutModel
-from models.zeroshot.zero_shot_model import ZeroShotModelEncoder
+from ldb_models.classes import ZeroShotVAEModelConfig
+from ldb_models.models.zeroshot.subplan_runtime_helper import compute_subplan_runtimes
+from ldb_models.models.zeroshot.utils.fc_out_model import FcOutModel
+from ldb_models.models.zeroshot.zero_shot_model import ZeroShotModelEncoder
 from torch import nn
-from training.losses.factory import create_loss
-from training.training.outputs import LossOutput, ModelOutput
+from ldb_models.training.losses.factory import create_loss
+from ldb_models.training.training.outputs import LossOutput, ModelOutput
 
 
 class PostgresZeroShotModelVAE(nn.Module):

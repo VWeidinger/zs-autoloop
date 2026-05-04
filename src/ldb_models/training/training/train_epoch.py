@@ -3,16 +3,16 @@ from typing import Optional
 
 import numpy as np
 import torch
-from classes import ModelConfig
-from models.qppnet.qppnet_model import QPPNet
+from ldb_models.classes import ModelConfig
+from ldb_models.models.qppnet.qppnet_model import QPPNet
 from schedulefree import AdamWScheduleFree
 from torch import nn
 from torch.optim import Optimizer
 from torch.utils.data import DataLoader
 from tqdm import tqdm
-from training.training.metrics import EpochMetrics
-from training.training.outputs import LossOutput, ModelOutput
-from training.training.utils import print_debug_table, q_error
+from ldb_models.training.training.metrics import EpochMetrics
+from ldb_models.training.training.outputs import LossOutput, ModelOutput
+from ldb_models.training.training.utils import print_debug_table, q_error
 
 
 def train_epoch(

@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import Optional
 
-from models.t3.util import AutoNumber
+from ldb_models.models.t3.util import AutoNumber
 
 
 class OperatorType(AutoNumber):

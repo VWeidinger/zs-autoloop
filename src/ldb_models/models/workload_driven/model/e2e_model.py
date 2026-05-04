@@ -1,13 +1,13 @@
 import torch
-from classes import E2EModelConfig, TestSumModelConfig, TlstmModelConfig
-from models.workload_driven.dataset.dataset_creation import InputDims
-from models.workload_driven.model.tree_lstm import LstmConv
-from models.zeroshot.message_aggregators.pooling import PoolingConv, PoolingType
-from models.zeroshot.zero_shot_model import PassDirection
+from ldb_models.classes import E2EModelConfig, TestSumModelConfig, TlstmModelConfig
+from ldb_models.models.workload_driven.dataset.dataset_creation import InputDims
+from ldb_models.models.workload_driven.model.tree_lstm import LstmConv
+from ldb_models.models.zeroshot.message_aggregators.pooling import PoolingConv, PoolingType
+from ldb_models.models.zeroshot.zero_shot_model import PassDirection
 from torch import nn
 from torch.nn import ReLU
-from training.losses.factory import create_loss
-from training.training.outputs import LossOutput, ModelOutput
+from ldb_models.training.losses.factory import create_loss
+from ldb_models.training.training.outputs import LossOutput, ModelOutput
 
 
 class E2EModel(nn.Module):

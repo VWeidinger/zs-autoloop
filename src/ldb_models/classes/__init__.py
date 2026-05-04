@@ -1,19 +1,19 @@
-from . import configs
+from ldb_models.classes import configs
 
 # Re-export all model config classes into the `classes` package namespace
 # so that code which inspects `classes` (via `import classes as cls`) can
 # discover ModelConfig subclasses by iterating over `cls.__dict__`.
-from .configs.base import *
-from .configs.constants import *
-from .configs.dace import *
-from .configs.e2e import *
-from .configs.mamba import *
-from .configs.misc import *
-from .configs.qppnet import *
-from .configs.sumo import *
-from .configs.tabular import *
-from .configs.zeroshot import *
-from .configs.zs_ranking import *
+from ldb_models.classes.configs.base import *  # noqa: F403
+from ldb_models.classes.configs.constants import *  # noqa: F403
+from ldb_models.classes.configs.dace import *  # noqa: F403
+from ldb_models.classes.configs.e2e import *  # noqa: F403
+from ldb_models.classes.configs.mamba import *  # noqa: F403
+from ldb_models.classes.configs.misc import *  # noqa: F403
+from ldb_models.classes.configs.qppnet import *  # noqa: F403
+from ldb_models.classes.configs.sumo import *  # noqa: F403
+from ldb_models.classes.configs.tabular import *  # noqa: F403
+from ldb_models.classes.configs.zeroshot import *  # noqa: F403
+from ldb_models.classes.configs.zs_ranking import *  # noqa: F403
 
 MODEL_CONFIGS = [
     configs.tabular.ScaledPostgresModelConfig(),

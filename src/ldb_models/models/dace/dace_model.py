@@ -1,9 +1,9 @@
 import loralib as lora
 import torch
 import torch.nn as nn
-from classes import DACEModelConfig
-from training.losses.factory import create_loss
-from training.training.outputs import LossOutput, ModelOutput
+from ldb_models.classes import DACEModelConfig
+from ldb_models.training.losses.factory import create_loss
+from ldb_models.training.training.outputs import LossOutput, ModelOutput
 
 
 class DACELora(nn.Module):

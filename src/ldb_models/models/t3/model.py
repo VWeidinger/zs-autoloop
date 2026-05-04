@@ -3,11 +3,11 @@ from abc import ABC, abstractmethod
 import lightgbm as lgb
 import numpy as np
 import torch
-from models.t3.benchmarked_query import BenchmarkedQuery
-from models.t3.features import FeatureMapper
-from models.t3.query_plan import QueryPlan
+from ldb_models.models.t3.benchmarked_query import BenchmarkedQuery
+from ldb_models.models.t3.features import FeatureMapper
+from ldb_models.models.t3.query_plan import QueryPlan
 from torch import nn
-from training.training.outputs import LossOutput, ModelOutput
+from ldb_models.training.training.outputs import LossOutput, ModelOutput
 
 
 class T3Model(ABC):

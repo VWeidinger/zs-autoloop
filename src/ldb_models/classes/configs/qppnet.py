@@ -1,9 +1,9 @@
 from typing import Callable
 import attrs as attrs
-from .base import ModelConfig
-from .constants import InputFormats, ModelName, ModelType, Name
-from training.batch_to_funcs import simple_batch_to
-from training.featurizations import (
+from ldb_models.classes.configs.base import ModelConfig
+from ldb_models.classes.configs.constants import InputFormats, ModelName, ModelType, Name
+from ldb_models.training.batch_to_funcs import simple_batch_to
+from ldb_models.training.featurizations import (
     Featurization,
     QPPNetActCardsFeaturization,
     QPPNetFeaturization,

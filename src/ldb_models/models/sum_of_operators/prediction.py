@@ -1,10 +1,10 @@
 import dgl
 import torch
 import torch.nn.functional as F
-from models.zeroshot.utils.fc_out_model import FcOutModel
+from ldb_models.models.zeroshot.utils.fc_out_model import FcOutModel
 from torch import Tensor
 
-from .cardinality import from_linear_cardinality, to_linear_cardinality
+from ldb_models.models.sum_of_operators.cardinality import from_linear_cardinality, to_linear_cardinality
 
 
 def predict_per_node(

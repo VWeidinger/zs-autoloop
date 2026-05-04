@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 
-from models.zeroshot.specific_models.postgres_zero_shot import PostgresZeroShotModel
+from ldb_models.models.zeroshot.specific_models.postgres_zero_shot import PostgresZeroShotModel
 
 
 def message_passing(g, model_class=PostgresZeroShotModel):

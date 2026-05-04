@@ -1,13 +1,13 @@
 import attrs as attrs
-from training.featurizations import (
+from ldb_models.training.featurizations import (
     Featurization,
     PostgresEstWithNumLoops,
     PostgresTrueCardDetail,
 )
 
-from .constants import ModelName, Name
-from .relevancy import RelevancyConfigMixin
-from .zeroshot import ZeroShotModelConfig
+from ldb_models.classes.configs.constants import ModelName, Name
+from ldb_models.classes.configs.relevancy import RelevancyConfigMixin
+from ldb_models.classes.configs.zeroshot import ZeroShotModelConfig
 
 
 @attrs.define(frozen=True, slots=False)

@@ -5,8 +5,8 @@ from typing import List, Optional
 import attrs as attrs
 from attr import field
 
-from classes.configs.base import ModelConfig
-from classes.configs.constants import ModelType
+from ldb_models.classes.configs.base import ModelConfig
+from ldb_models.classes.configs.constants import ModelType
 
 
 @attrs.define(frozen=True, slots=False)

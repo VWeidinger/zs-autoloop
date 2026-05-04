@@ -1,18 +1,18 @@
 import torch
 import torch.nn as nn
-from classes import (
+from ldb_models.classes import (
     CascadeRankingModelConfig,
     LatentZeroShotRankingModelConfig,
     ModelConfig,
 )
-from models.ranking.latent_ranker import (
+from ldb_models.models.ranking.latent_ranker import (
     AttentionRanker,
     TournamentAttentionRanker,
     UnifiedAttentionRanker,
 )
-from models.zeroshot.relevancy_generator import RelevancyGenerator
-from training.losses.factory import create_loss
-from training.training.outputs import LossOutput, ModelOutput
+from ldb_models.models.zeroshot.relevancy_generator import RelevancyGenerator
+from ldb_models.training.losses.factory import create_loss
+from ldb_models.training.training.outputs import LossOutput, ModelOutput
 
 
 class RankModel(nn.Module):

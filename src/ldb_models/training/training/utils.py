@@ -4,7 +4,7 @@ import json
 import os
 
 import torch
-from training.training.outputs import LossOutput, ModelOutput
+from ldb_models.training.training.outputs import LossOutput, ModelOutput
 
 
 def q_error(preds: torch.Tensor, labels: torch.Tensor):

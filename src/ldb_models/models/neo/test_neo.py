@@ -2,7 +2,8 @@ import re
 import unittest
 
 from ldb_schema.load_schema import load_json
-from models.neo.neo_dataloader import (
+
+from ldb_models.models.neo.neo_dataloader import (
     _featurize_tree,
     extract_join_recursively,
     extract_plan_encoding_recursively,
@@ -85,7 +86,7 @@ class TestNeoFeaturization(unittest.TestCase):
             max_depth=25,
         )
 
-        indexes = make_indexes(plan=plan)
+        _indexes = make_indexes(plan=plan)
 
         tree = _featurize_tree(plan=plan, maximum_depth=25)
         print(tree)

@@ -3,7 +3,7 @@ import math
 import dgl
 import dgl.function as fn
 import torch
-from models.zeroshot.message_aggregators.aggregator import MessageAggregator
+from ldb_models.models.zeroshot.message_aggregators.aggregator import MessageAggregator
 from torch import nn
 
 

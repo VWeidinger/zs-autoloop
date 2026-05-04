@@ -1,4 +1,4 @@
-from . import factory, model_specific, monotonicity, ranking, regression, wrappers
+from ldb_models.training.losses import factory, model_specific, monotonicity, ranking, regression, wrappers
 
 __all__ = [
     "factory",

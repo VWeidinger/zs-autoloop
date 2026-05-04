@@ -2,19 +2,19 @@ from typing import Dict
 
 import dgl
 import torch.nn as nn
-from classes import SumOfOperatorsModelConfig
+from ldb_models.classes import SumOfOperatorsModelConfig
 from dgl import DGLHeteroGraph
-from models.zeroshot.specific_models.postgres_zero_shot import (
+from ldb_models.models.zeroshot.specific_models.postgres_zero_shot import (
     PostgresZeroShotModelEncoder,
 )
-from models.zeroshot.utils.fc_out_model import FcOutModel
+from ldb_models.models.zeroshot.utils.fc_out_model import FcOutModel
 from torch import Tensor
-from training.losses.factory import create_loss
-from training.training.outputs import ModelOutput
+from ldb_models.training.losses.factory import create_loss
+from ldb_models.training.training.outputs import ModelOutput
 
-from .aggregation import aggregate_op_times
-from .debug import print_debug_info
-from .prediction import (
+from ldb_models.models.sum_of_operators.aggregation import aggregate_op_times
+from ldb_models.models.sum_of_operators.debug import print_debug_info
+from ldb_models.models.sum_of_operators.prediction import (
     apply_loop_multipliers,
     augment_features_with_cardinality,
     predict_per_node,

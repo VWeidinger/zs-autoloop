@@ -6,7 +6,7 @@ from attr import field
 from ldb_schema.datasets import Dataset
 from ldb_schema.paths import ClusterPaths, Paths
 
-from .constants import InputFormats, ModelType, Name
+from ldb_models.classes.configs.constants import InputFormats, ModelType, Name
 
 
 def shorten_model_name(name: str) -> str:

@@ -1,16 +1,16 @@
 import torch
-from classes import ZeroShotModelConfig
-from models.zeroshot.subplan_runtime_helper import (
+from ldb_models.classes import ZeroShotModelConfig
+from ldb_models.models.zeroshot.subplan_runtime_helper import (
     compute_subplan_runtimes,
     extract_smaller_larger_preds_tensor_for_subplan_graphs,
 )
-from models.zeroshot.utils.fc_out_model import FcOutModel
-from models.zeroshot.zero_shot_model import ZeroShotModelEncoder
+from ldb_models.models.zeroshot.utils.fc_out_model import FcOutModel
+from ldb_models.models.zeroshot.zero_shot_model import ZeroShotModelEncoder
 from torch import nn
 from torch.nn import functional as F
-from training.losses.factory import create_loss
-from training.losses.monotonicity import LessThanLoss, RelativeLessThanLoss
-from training.training.outputs import LossOutput, ModelOutput
+from ldb_models.training.losses.factory import create_loss
+from ldb_models.training.losses.monotonicity import LessThanLoss, RelativeLessThanLoss
+from ldb_models.training.training.outputs import LossOutput, ModelOutput
 
 
 class PostgresZeroShotModel(nn.Module):

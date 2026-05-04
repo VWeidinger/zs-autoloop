@@ -3,14 +3,19 @@ from typing import Dict, Tuple
 
 import dgl
 import numpy as np
-from models.white_mamba.extract_query_stats import extract_query_stats_for_plan
-from models.workload_driven.dataset.plan_tree_batching import (
+
+from ldb_models.models.white_mamba.extract_query_stats import (
+    extract_query_stats_for_plan,
+)
+from ldb_models.models.workload_driven.dataset.plan_tree_batching import (
     encode_one_hot,
     encode_predicate,
     tensorize_feats,
 )
-from models.zeroshot.postgres_plan_batching import assign_additional_plan_info
-from training.dataset.cmp_operator import LogicalOperator
+from ldb_models.models.zeroshot.postgres_plan_batching import (
+    assign_additional_plan_info,
+)
+from ldb_models.training.dataset.cmp_operator import LogicalOperator
 
 
 def extract_predicate_features(
@@ -92,7 +97,7 @@ def extract_set_features(
     # table feature set#
 
     if "table_id" in params.keys():
-        run_table_id = params["table_id"]
+        # run_table_id = params["table_id"] # not used, but could be useful in the future if we want to match the base table more robustly (e.g. in case of self joins)
         table_name = params["table_name"]
 
         # lookup global table id

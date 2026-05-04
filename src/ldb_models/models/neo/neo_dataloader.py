@@ -3,9 +3,12 @@ from typing import Dict, List, Tuple
 
 import numpy as np
 import torch
-from models.utils import get_general_table_col_to_ids_dict
-from models.white_mamba.extract_query_stats import extract_query_stats_for_plan
-from models.zeroshot.postgres_plan_batching import (
+
+from ldb_models.models.utils import get_general_table_col_to_ids_dict
+from ldb_models.models.white_mamba.extract_query_stats import (
+    extract_query_stats_for_plan,
+)
+from ldb_models.models.zeroshot.postgres_plan_batching import (
     assign_additional_plan_info,
     postprocess_labels,
 )
@@ -45,12 +48,12 @@ def extract_join_recursively(
         # Left side
         table_name1 = join_info["table_name1"]
         col_id1 = join_info["col_id1"]
-        col_name1 = join_info["column_name1"].replace("id_", "")
+        _col_name1 = join_info["column_name1"].replace("id_", "")
 
         # Right side
         table_name2 = join_info["table_name2"]
         col_id2 = join_info["col_id2"]
-        col_name2 = join_info["column_name2"].replace("id_", "")
+        _col_name2 = join_info["column_name2"].replace("id_", "")
 
         # Collect join information
         join_tables.append(
@@ -430,6 +433,9 @@ def neo_collator(
     all_trees = torch.from_numpy(np.array(all_trees)).float()
     all_indexes = torch.from_numpy(pad_indexes(all_indexes)).long()
     labels = postprocess_labels(labels)
+    labels = torch.from_numpy(np.array(labels))
+
+    return (all_query_encodings, all_trees, all_indexes, labels, query_stats_dict)
     labels = torch.from_numpy(np.array(labels))
 
     return (all_query_encodings, all_trees, all_indexes, labels, query_stats_dict)

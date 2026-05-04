@@ -4,13 +4,13 @@ from typing import DefaultDict, Dict, List, Tuple
 import dgl
 import numpy as np
 import torch
-from models.white_mamba.extract_query_stats import extract_query_stats_for_plan
-from models.zeroshot.annotate_additional_plan_info import assign_additional_plan_info
-from training.featurizations import Featurization
+from ldb_models.models.white_mamba.extract_query_stats import extract_query_stats_for_plan
+from ldb_models.models.zeroshot.annotate_additional_plan_info import assign_additional_plan_info
+from ldb_models.training.featurizations import Featurization
 
-from .encoding import apply_feature_scalers, pred_node_type_id
-from .graph_construction import plan_to_graph
-from .postprocess import (
+from ldb_models.models.zeroshot.encoding import apply_feature_scalers, pred_node_type_id
+from ldb_models.models.zeroshot.graph_construction import plan_to_graph
+from ldb_models.models.zeroshot.postprocess import (
     adapt_predicate_edges,
     create_node_types_per_depth,
     get_depths,

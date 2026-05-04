@@ -1,12 +1,12 @@
 from typing import Callable
 
 import attrs as attrs
-from models.white_mamba.mamba_dataset import mamba_plan_collator
-from training.batch_to_funcs import mamba_batch_to
-from training.featurizations import Featurization, MambaFull
+from ldb_models.models.white_mamba.mamba_dataset import mamba_plan_collator
+from ldb_models.training.batch_to_funcs import mamba_batch_to
+from ldb_models.training.featurizations import Featurization, MambaFull
 
-from .base import ModelConfig
-from .constants import InputFormats, ModelName, ModelType, Name
+from ldb_models.classes.configs.base import ModelConfig
+from ldb_models.classes.configs.constants import InputFormats, ModelName, ModelType, Name
 
 
 @attrs.define(frozen=True, slots=False)

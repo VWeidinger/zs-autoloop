@@ -1,6 +1,6 @@
 import unittest
 
-from training.dataset.pushdown_projections import (
+from ldb_models.training.dataset.pushdown_projections import (
     apply_projection_pushdown,
     extract_cols_from_aggr,
     extract_cols_from_filter,

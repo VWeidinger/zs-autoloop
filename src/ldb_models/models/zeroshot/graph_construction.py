@@ -1,4 +1,4 @@
-from .encoding import encode, get_or_add_col_id, parse_predicates
+from ldb_models.models.zeroshot.encoding import encode, get_or_add_col_id, parse_predicates
 
 
 def plan_to_graph(

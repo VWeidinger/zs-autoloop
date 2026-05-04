@@ -1,9 +1,9 @@
 import attrs as attrs
 from attr import field
 
-from .base import ModelConfig
-from .constants import InputFormats, ModelName, ModelType, Name
-from training.featurizations import (
+from ldb_models.classes.configs.base import ModelConfig
+from ldb_models.classes.configs.constants import InputFormats, ModelName, ModelType, Name
+from ldb_models.training.featurizations import (
     Featurization,
     FlatModelActCardFeaturization,
     FlatModelFeaturization,

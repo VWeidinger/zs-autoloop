@@ -1,14 +1,9 @@
-import os
-import sys
 
 from ldb_schema.datasets import dataset_list_dict
 from ldb_schema.paths import ClusterPaths
 from octopus.step import KillAllScreens, RsyncCurrentRepo, SetupUVVenv, SetupVenv
 
-sys.path.append(
-    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-)
-from scripts.exp_runner.exp_runner import ExpRunner, TrainingServers
+from ldb_models.scripts.exp_runner.exp_runner import ExpRunner, TrainingServers
 
 if __name__ == "__main__":
     install_venv = False

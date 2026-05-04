@@ -3,14 +3,14 @@ from enum import Enum
 from functools import cmp_to_key
 from typing import Dict, Optional, Tuple
 
-from models.t3.database import Database
-from models.t3.operator_stages import (
+from ldb_models.models.t3.database import Database
+from ldb_models.models.t3.operator_stages import (
     ExecutionPhase,
     OperatorStage,
     Pipeline,
     build_pipeline,
 )
-from models.t3.operators import Expressions, Operator, OperatorType, parse_operator_type
+from ldb_models.models.t3.operators import Expressions, Operator, OperatorType, parse_operator_type
 
 
 class CardType(Enum):

@@ -5,7 +5,7 @@ from typing import List, Tuple
 
 import numpy as np
 import torch
-from models.query_former.utils import (
+from ldb_models.models.query_former.utils import (
     TreeNode,
     floyd_warshall_transform,
     pad_1d_unsqueeze,
@@ -13,10 +13,10 @@ from models.query_former.utils import (
     pad_attn_bias_unsqueeze,
     pad_rel_pos_unsqueeze,
 )
-from models.white_mamba.extract_query_stats import extract_query_stats_for_plan
-from models.workload_driven.dataset.mscn_batching import get_all_join_conds
-from models.zeroshot.postgres_plan_batching import assign_additional_plan_info
-from training.dataset.cmp_operator import LogicalOperator
+from ldb_models.models.white_mamba.extract_query_stats import extract_query_stats_for_plan
+from ldb_models.models.workload_driven.dataset.mscn_batching import get_all_join_conds
+from ldb_models.models.zeroshot.postgres_plan_batching import assign_additional_plan_info
+from ldb_models.training.dataset.cmp_operator import LogicalOperator
 
 
 def calculate_node_heights(adjacency_matrix: List[Tuple[int, int]], tree_size: int):

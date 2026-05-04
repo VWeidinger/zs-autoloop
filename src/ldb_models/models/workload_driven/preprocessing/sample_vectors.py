@@ -2,20 +2,13 @@ import argparse
 import concurrent.futures
 import json
 import os
-import sys
 from typing import Any, Dict
 
 import pandas as pd
 from ldb_schema.load_schema import get_json_schema, load_json
-
-sys.path.append(
-    os.path.dirname(
-        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    )
-)
-
-from models.workload_driven.preprocessing.sentence_creation import dumper
 from tqdm import tqdm
+
+from ldb_models.models.workload_driven.preprocessing.sentence_creation import dumper
 
 
 def get_col_stats(column_stats: list, column_name: str):
@@ -84,16 +77,18 @@ def construct_filter_sample(
             regex = regex.replace("%", ".*?")
             regex = f"^{regex}$"
             # sample_vec = base_sample.str.contains(regex)
-            sample_vec = base_sample.astype(str).str.contains(regex, regex=True, na=False)
+            sample_vec = base_sample.astype(str).str.contains(
+                regex, regex=True, na=False
+            )
             if filter_column["operator"] == "NOT LIKE":
                 sample_vec[sample_vec.isna()] = False
                 sample_vec = ~sample_vec
         elif filter_column["operator"] == "IN":
             literal = literal.split(",")
             casted_literals = []
-            for l in literal:
-                l = _parse_based_on_dtype(l, datatype)
-                casted_literals.append(l)
+            for lit in literal:
+                lit = _parse_based_on_dtype(lit, datatype)
+                casted_literals.append(lit)
             sample_vec = base_sample.isin(casted_literals)
         elif filter_column["operator"] == "IS NOT NULL":
             sample_vec = ~base_sample.isna()

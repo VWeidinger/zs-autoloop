@@ -1,7 +1,7 @@
-from classes.model_config_helper import parameterized_config
+from ldb_models.classes.model_config_helper import parameterized_config
 from ldb_schema.datasets import Dataset
 from ldb_schema.paths import ClusterPaths, LocalPaths
-from scripts.exp_runner.exp_train_model import generate_training_commands
+from ldb_models.scripts.exp_runner.exp_train_model import generate_training_commands
 
 
 def replace_file_paths_in_train_command(train_command: str) -> str:

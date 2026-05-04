@@ -6,9 +6,9 @@ from pathlib import Path
 
 import joblib
 import torch
-from classes import ModelConfig, shorten_model_name
+from ldb_models.classes import ModelConfig, shorten_model_name
 from torch import nn
-from training.training.utils import find_early_stopping_metric
+from ldb_models.training.training.utils import find_early_stopping_metric
 
 
 def torch_save(checkpoint, target_path, model_name, postfix="", filetype=".m"):

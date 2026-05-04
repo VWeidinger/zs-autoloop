@@ -1,7 +1,6 @@
 import os
 
 # add to python path
-import sys
 from functools import lru_cache
 from typing import List, Optional
 
@@ -17,12 +16,9 @@ from octopus.step import (
     Step,
 )
 
-sys.path.append(
-    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-)
-from classes.configs.base import ModelConfig, shorten_model_name
-from classes.model_config_helper import parameterized_config
-from scripts.exp_runner.exp_runner import ExpRunner, TrainingServers
+from ldb_models.classes.configs.base import ModelConfig, shorten_model_name
+from ldb_models.classes.model_config_helper import parameterized_config
+from ldb_models.scripts.exp_runner.exp_runner import ExpRunner, TrainingServers
 
 from ldb_models.training.featurizations import (
     MambaFullWIdxCor,

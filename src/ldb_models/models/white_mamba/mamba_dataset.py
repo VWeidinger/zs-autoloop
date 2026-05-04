@@ -4,14 +4,14 @@ from typing import Dict, List, Tuple
 
 import numpy as np
 import torch
-from models.white_mamba.col_info_extractor import get_col_stats_for_idx_name
-from models.white_mamba.extract_query_stats import extract_query_stats_for_plan
-from models.zeroshot.postgres_plan_batching import (
+from ldb_models.models.white_mamba.col_info_extractor import get_col_stats_for_idx_name
+from ldb_models.models.white_mamba.extract_query_stats import extract_query_stats_for_plan
+from ldb_models.models.zeroshot.postgres_plan_batching import (
     apply_feature_scalers,
     assign_additional_plan_info,
     postprocess_labels,
 )
-from training.preprocessing.feature_statistics import FeatureType
+from ldb_models.training.preprocessing.feature_statistics import FeatureType
 
 
 def augment_feature_stats_for_mamba(feature_statistics: Dict):

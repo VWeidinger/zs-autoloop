@@ -1,7 +1,7 @@
 from typing import List, Tuple
 
 import torch
-from models.zeroshot.subplan_runtime_helper import SubplanClass
+from ldb_models.models.zeroshot.subplan_runtime_helper import SubplanClass
 
 
 def mamba_compute_subplan_runtimes(

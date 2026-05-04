@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from .regression import QLoss
+from ldb_models.training.losses.regression import QLoss
 
 
 class LessThanLoss(nn.Module):

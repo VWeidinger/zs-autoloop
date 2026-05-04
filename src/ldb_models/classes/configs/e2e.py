@@ -1,11 +1,11 @@
 import attrs
 from typing import Callable
 
-from .base import ModelConfig
-from .constants import InputFormats, ModelName, ModelType, Name
+from ldb_models.classes.configs.base import ModelConfig
+from ldb_models.classes.configs.constants import InputFormats, ModelName, ModelType, Name
 
-from training.batch_to_funcs import wl_driven_batch_to
-from models.workload_driven.dataset.plan_tree_batching import baseline_plan_collator
+from ldb_models.training.batch_to_funcs import wl_driven_batch_to
+from ldb_models.models.workload_driven.dataset.plan_tree_batching import baseline_plan_collator
 
 
 @attrs.define(frozen=True, slots=False)

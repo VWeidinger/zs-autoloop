@@ -2,7 +2,7 @@ import dgl.function as fn
 import torch
 from dgl.nn import edge_softmax
 from dgl.utils import expand_as_pair
-from models.zeroshot.message_aggregators.aggregator import MessageAggregator
+from ldb_models.models.zeroshot.message_aggregators.aggregator import MessageAggregator
 from torch import nn
 
 

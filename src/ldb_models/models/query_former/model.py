@@ -3,10 +3,10 @@ from typing import Tuple
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from classes import QueryFormerModelConfig
-from models.workload_driven.dataset.dataset_creation import InputDims
-from training.losses.factory import create_loss
-from training.training.outputs import LossOutput, ModelOutput
+from ldb_models.classes import QueryFormerModelConfig
+from ldb_models.models.workload_driven.dataset.dataset_creation import InputDims
+from ldb_models.training.losses.factory import create_loss
+from ldb_models.training.training.outputs import LossOutput, ModelOutput
 
 
 class FinalPredictionLayer(nn.Module):

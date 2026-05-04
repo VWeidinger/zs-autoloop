@@ -1,6 +1,6 @@
 from typing import Dict
 
-from . import model_specific, ranking, regression, wrappers
+from ldb_models.training.losses import model_specific, ranking, regression, wrappers
 
 
 def create_loss(loss_name: str, loss_kwargs: Dict):

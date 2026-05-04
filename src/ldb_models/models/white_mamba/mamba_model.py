@@ -1,27 +1,27 @@
 from typing import Dict
 
 import torch
-from classes import MambaModelConfig
-from models.white_mamba.mamba_dataset import (
+from ldb_models.classes import MambaModelConfig
+from ldb_models.models.white_mamba.mamba_dataset import (
     augment_feature_stats_for_mamba,
     expand_scan_featurization,
 )
-from models.white_mamba.mamba_subplan_runtime_helper import (
+from ldb_models.models.white_mamba.mamba_subplan_runtime_helper import (
     mamba_compute_subplan_runtimes,
 )
-from models.zeroshot.subplan_runtime_helper import (
+from ldb_models.models.zeroshot.subplan_runtime_helper import (
     extract_smaller_larger_preds_tensor_for_subplan_graphs,
 )
-from models.zeroshot.utils.fc_out_model import FcOutModel
-from models.zeroshot.zero_shot_model import NodeTypeEncoder
+from ldb_models.models.zeroshot.utils.fc_out_model import FcOutModel
+from ldb_models.models.zeroshot.zero_shot_model import NodeTypeEncoder
 from torch import nn
-from training.losses.factory import create_loss
-from training.losses.monotonicity import (
+from ldb_models.training.losses.factory import create_loss
+from ldb_models.training.losses.monotonicity import (
     LessThanLoss,
     RelativeLessThanLoss,
 )
-from training.preprocessing.feature_statistics import FeatureType
-from training.training.outputs import LossOutput, ModelOutput
+from ldb_models.training.preprocessing.feature_statistics import FeatureType
+from ldb_models.training.training.outputs import LossOutput, ModelOutput
 
 
 class DAGDualInputConv(nn.Module):

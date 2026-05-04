@@ -2,8 +2,8 @@ from typing import Dict, List
 
 import numpy as np
 from sklearn.preprocessing import MinMaxScaler, RobustScaler
-from training.dataset.cmp_operator import Operator
-from training.preprocessing.feature_statistics import FeatureType
+from ldb_models.training.dataset.cmp_operator import Operator
+from ldb_models.training.preprocessing.feature_statistics import FeatureType
 
 
 def encode(column, plan_params, feature_statistics):

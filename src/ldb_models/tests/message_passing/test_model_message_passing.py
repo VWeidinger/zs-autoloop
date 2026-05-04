@@ -1,7 +1,7 @@
 import dgl
 import numpy as np
 
-from tests.utils import message_passing
+from ldb_models.tests.utils import message_passing
 
 
 def test_model_message_passing():

@@ -1,8 +1,8 @@
 from dataclasses import dataclass
 from typing import Optional
 
-from models.t3.operators import Operator, OperatorType
-from models.t3.util import AutoNumber
+from ldb_models.models.t3.operators import Operator, OperatorType
+from ldb_models.models.t3.util import AutoNumber
 
 
 class OperatorStage(AutoNumber):

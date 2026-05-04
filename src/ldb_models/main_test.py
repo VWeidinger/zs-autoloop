@@ -1,6 +1,6 @@
 import unittest
 
-from main import get_model_config
+from ldb_models.main import get_model_config
 
 
 class TestMain(unittest.TestCase):

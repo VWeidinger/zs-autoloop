@@ -1,5 +1,5 @@
 import torch
-from models.zeroshot.utils.fc_out_model import FcOutModel
+from ldb_models.models.zeroshot.utils.fc_out_model import FcOutModel
 
 
 class MessageAggregator(FcOutModel):

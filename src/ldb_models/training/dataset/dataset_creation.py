@@ -2,7 +2,6 @@ import concurrent.futures
 import functools
 import math
 import random
-import time
 from dataclasses import dataclass
 from json import JSONDecodeError
 from pathlib import Path
@@ -10,7 +9,13 @@ from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import torch
-from classes import (
+from ldb_schema.load_schema import get_json_schema, load_json
+from sklearn import preprocessing
+from sklearn.pipeline import Pipeline
+from torch.utils.data import DataLoader
+from tqdm import tqdm
+
+from ldb_models.classes import (
     DataLoaderOptions,
     InputFormats,
     MambaModelConfig,
@@ -20,28 +25,23 @@ from classes import (
     ZeroShotModelConfig,
     ZeroShotRankingModelConfig,
 )
-from classes.workload_runs import WorkloadRuns
-from ldb_schema.load_schema import get_json_schema, load_json
-from models.white_mamba.mamba_dataset import (
-    augment_feature_stats_for_mamba,
+from ldb_models.classes.workload_runs import WorkloadRuns
+from ldb_models.models.white_mamba.mamba_dataset import augment_feature_stats_for_mamba
+from ldb_models.models.zeroshot.encoding import add_numerical_scalers
+from ldb_models.training.dataset.card_adjustment import (
+    apply_cardinality_estimation_logic,
 )
-from models.zeroshot.encoding import add_numerical_scalers
-from sklearn import preprocessing
-from sklearn.pipeline import Pipeline
-from torch.utils.data import DataLoader
-from tqdm import tqdm
-from training.dataset.card_adjustment import apply_cardinality_estimation_logic
-from training.dataset.plan_dataset import (
+from ldb_models.training.dataset.plan_dataset import (
     OHEMPlanDataset,
     PlanDataset,
     PreBatchedDataset,
 )
-from training.dataset.pushdown_projections import apply_projection_pushdown
-from training.dataset.query_batch_sampler import (
+from ldb_models.training.dataset.pushdown_projections import apply_projection_pushdown
+from ldb_models.training.dataset.query_batch_sampler import (
     AllPlansForQuerySampler,
     SimilarSampler,
 )
-from training.dataset.statification import stratify_plans
+from ldb_models.training.dataset.statification import stratify_plans
 
 
 @dataclass
@@ -141,7 +141,7 @@ def read_workload_runs(
     limit_plans_blacklist = ["join_order", "physical_operator", "access_path_selection"]
 
     # load the workload runs in parallel
-    t0 = time.perf_counter()
+    # t0 = time.perf_counter() # Not used! Print also uncomment!
     parallelize = True
 
     if parallelize:

@@ -2,8 +2,8 @@ import argparse
 import glob
 import os
 
-from classes import InputFormats
-from training.preprocessing.feature_statistics import gather_feature_statistics
+from ldb_models.classes import InputFormats
+from ldb_models.training.preprocessing.feature_statistics import gather_feature_statistics
 
 
 def get_all_json_files(directory):

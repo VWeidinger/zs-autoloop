@@ -4,7 +4,7 @@ import dgl
 import numpy as np
 import torch
 from dgl import DGLHeteroGraph
-from training.training.operator_tree import OperatorTree
+from ldb_models.training.training.operator_tree import OperatorTree
 
 
 def recursive_to(obj, device):

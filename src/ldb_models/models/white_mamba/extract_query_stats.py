@@ -1,6 +1,6 @@
 from typing import Dict, List
 
-from models.white_mamba.extract_card_error_utils import extract_card_error_from_plan
+from ldb_models.models.white_mamba.extract_card_error_utils import extract_card_error_from_plan
 
 
 def extract_query_stats_for_plan(

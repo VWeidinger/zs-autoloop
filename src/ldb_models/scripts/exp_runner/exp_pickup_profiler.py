@@ -1,6 +1,6 @@
 from ldb_schema.paths import ClusterPaths, LocalPaths
 from octopus.step import Rsync
-from scripts.exp_runner.exp_runner import ExpRunner, TrainingServers
+from ldb_models.scripts.exp_runner.exp_runner import ExpRunner, TrainingServers
 
 if __name__ == "__main__":
     install_venv = True

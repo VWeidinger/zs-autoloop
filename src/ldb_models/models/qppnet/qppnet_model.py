@@ -2,12 +2,13 @@ from typing import Tuple
 
 import torch
 import torch.nn as nn
-from classes import QPPNetModelConfig
-from classes.workload_runs import WorkloadRuns
-from models.zeroshot.encoding import add_numerical_scalers
-from training.losses.factory import create_loss
-from training.training.operator_tree import OperatorTree
-from training.training.outputs import LossOutput, ModelOutput
+
+from ldb_models.classes import QPPNetModelConfig
+from ldb_models.classes.workload_runs import WorkloadRuns
+from ldb_models.models.zeroshot.encoding import add_numerical_scalers
+from ldb_models.training.losses.factory import create_loss
+from ldb_models.training.training.operator_tree import OperatorTree
+from ldb_models.training.training.outputs import LossOutput, ModelOutput
 
 
 class NeuralUnit(nn.Module):
@@ -84,7 +85,7 @@ class NeuralUnit(nn.Module):
         for layer in dense_block:
             try:
                 nn.init.xavier_uniform_(layer.weight)
-            except:
+            except:  # noqa: E722
                 pass
         return nn.Sequential(*dense_block)
 

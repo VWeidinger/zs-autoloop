@@ -51,7 +51,7 @@ class LearnToRankWithRegressionLoss(nn.Module):
         self.device = device
 
         # import here to avoid circular import with factory.create_loss
-        from .factory import create_loss
+        from ldb_models.training.losses.factory import create_loss
 
         self.regression_loss = create_loss(regression_loss_name, regression_loss_kwargs)
         self.ranking_loss = create_loss(ranking_loss_name, ranking_loss_kwargs)

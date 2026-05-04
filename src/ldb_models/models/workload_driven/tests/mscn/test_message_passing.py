@@ -1,8 +1,8 @@
 import dgl
 import numpy as np
 
-from models.workload_driven.dataset.plan_tree_batching import tensorize_feats
-from models.workload_driven.model.mscn_model import MSCNModel
+from ldb_models.models.workload_driven.dataset.plan_tree_batching import tensorize_feats
+from ldb_models.models.workload_driven.model.mscn_model import MSCNModel
 
 
 def test_plan_message():

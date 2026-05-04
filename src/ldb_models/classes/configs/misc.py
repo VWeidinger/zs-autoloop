@@ -1,11 +1,11 @@
 from typing import Callable
 import attrs as attrs
-from .base import ModelConfig
-from .constants import InputFormats, ModelName, ModelType, Name
-from .tabular import TabularModelConfig
-from models.t3.query_plan import CardType
-from models.workload_driven.dataset.mscn_batching import mscn_plan_collator
-from training.batch_to_funcs import (
+from ldb_models.classes.configs.base import ModelConfig
+from ldb_models.classes.configs.constants import InputFormats, ModelName, ModelType, Name
+from ldb_models.classes.configs.tabular import TabularModelConfig
+from ldb_models.models.t3.query_plan import CardType
+from ldb_models.models.workload_driven.dataset.mscn_batching import mscn_plan_collator
+from ldb_models.training.batch_to_funcs import (
     neo_batch_to,
     query_former_batch_to,
     zs_batch_to,

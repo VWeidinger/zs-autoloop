@@ -1,17 +1,17 @@
 from typing import Callable
 
 import attrs as attrs
-from models.zeroshot.postgres_plan_batching import postgres_plan_collator
-from training.batch_to_funcs import zs_batch_to
-from training.featurizations import (
+from ldb_models.models.zeroshot.postgres_plan_batching import postgres_plan_collator
+from ldb_models.training.batch_to_funcs import zs_batch_to
+from ldb_models.training.featurizations import (
     Featurization,
     PostgresEstSystemCardDetail,
     PostgresEstWithPGCost,
     PostgresTrueCardDetail,
 )
 
-from .base import ModelConfig
-from .constants import InputFormats, ModelName, ModelType, Name
+from ldb_models.classes.configs.base import ModelConfig
+from ldb_models.classes.configs.constants import InputFormats, ModelName, ModelType, Name
 
 
 @attrs.define(frozen=True, slots=False)

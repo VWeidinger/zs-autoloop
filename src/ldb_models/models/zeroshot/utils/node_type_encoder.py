@@ -2,10 +2,10 @@ from typing import List
 
 import numpy as np
 import torch
-from models.zeroshot.utils.embeddings import EmbeddingInitializer
-from models.zeroshot.utils.fc_out_model import FcOutModel
+from ldb_models.models.zeroshot.utils.embeddings import EmbeddingInitializer
+from ldb_models.models.zeroshot.utils.fc_out_model import FcOutModel
 from torch import nn
-from training.preprocessing.feature_statistics import FeatureType
+from ldb_models.training.preprocessing.feature_statistics import FeatureType
 
 
 class NodeTypeEncoder(FcOutModel):

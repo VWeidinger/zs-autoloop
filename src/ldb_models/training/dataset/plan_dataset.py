@@ -6,11 +6,11 @@ from typing import List, Tuple
 
 import numpy as np
 import torch
-from models.white_mamba.mamba_model import MambaModel
-from models.zeroshot.specific_models.postgres_zero_shot import PostgresZeroShotModel
+from ldb_models.models.white_mamba.mamba_model import MambaModel
+from ldb_models.models.zeroshot.specific_models.postgres_zero_shot import PostgresZeroShotModel
 from torch.utils.data import DataLoader, Dataset
-from training.batch_to_funcs import mamba_batch_to, zs_batch_to
-from training.training.inference import inference
+from ldb_models.training.batch_to_funcs import mamba_batch_to, zs_batch_to
+from ldb_models.training.training.inference import inference
 
 
 class PlanDataset(Dataset):

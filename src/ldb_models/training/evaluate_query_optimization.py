@@ -10,7 +10,7 @@ from sklearn.metrics import (
     balanced_accuracy_score,
     confusion_matrix,
 )
-from training.training.metrics import (
+from ldb_models.training.training.metrics import (
     NDCG,
     MaxOverestimation,
     MaxUnderestimation,

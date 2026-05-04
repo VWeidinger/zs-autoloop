@@ -7,17 +7,18 @@ import numpy as np
 import pandas as pd
 import torch
 import wandb
-from classes import ModelConfig
 from torch import nn
 from torch.utils.data import DataLoader
 from tqdm import tqdm
-from training.bound_predictions_with_history import (
+
+from ldb_models.classes import ModelConfig
+from ldb_models.training.bound_predictions_with_history import (
     PredictionBounder,
     bound_predictions_helper,
 )
-from training.training.checkpoint import save_csv
-from training.training.metrics import EpochMetrics, Metric, QError
-from training.training.outputs import LossOutput, ModelOutput
+from ldb_models.training.training.checkpoint import save_csv
+from ldb_models.training.training.metrics import EpochMetrics, Metric, QError
+from ldb_models.training.training.outputs import LossOutput, ModelOutput
 
 
 def validate_model(
@@ -410,4 +411,5 @@ def compute_card_qerror_metrics(actual: List, compared: List, log_scale=False) -
         "max": float(np.max(qerrors)),
     }
 
+    return metrics
     return metrics

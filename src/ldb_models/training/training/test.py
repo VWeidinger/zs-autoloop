@@ -6,19 +6,19 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 import wandb
-from classes import MambaRankingModelConfig, ModelConfig, ZeroShotRankingModelBaseConfig
+from ldb_models.classes import MambaRankingModelConfig, ModelConfig, ZeroShotRankingModelBaseConfig
 from dgl.dataloading import DataLoader
 from torch import nn
-from training.bound_predictions_with_history import PredictionBounder
-from training.evaluate_query_optimization import (
+from ldb_models.training.bound_predictions_with_history import PredictionBounder
+from ldb_models.training.evaluate_query_optimization import (
     evaluate_access_path_selection,
     evaluate_join_order,
     evaluate_physical_plan_selection,
 )
-from training.training.checkpoint import save_csv
-from training.training.metrics import Metric
-from training.training.utils import find_early_stopping_metric, prefix_dict
-from training.training.validate import validate_model
+from ldb_models.training.training.checkpoint import save_csv
+from ldb_models.training.training.metrics import Metric
+from ldb_models.training.training.utils import find_early_stopping_metric, prefix_dict
+from ldb_models.training.training.validate import validate_model
 from wandb.apis.public import Run
 
 

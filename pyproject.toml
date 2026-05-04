@@ -103,3 +103,14 @@ allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/ldb_models"]
+
+[tool.ruff]
+src = ["src", "ldb_models"]
+
+[tool.ruff.lint]
+select = ["TID"]
+
+[tool.ruff.lint.flake8-tidy-imports]
+ban-relative-imports = "all"
+
+

@@ -4,10 +4,10 @@ from typing import Dict, Tuple
 import dgl
 import numpy as np
 import torch
-from models.utils import get_general_table_col_to_ids_dict
-from models.white_mamba.extract_query_stats import extract_query_stats_for_plan
-from models.zeroshot.postgres_plan_batching import assign_additional_plan_info
-from training.dataset.cmp_operator import LogicalOperator
+from ldb_models.models.utils import get_general_table_col_to_ids_dict
+from ldb_models.models.white_mamba.extract_query_stats import extract_query_stats_for_plan
+from ldb_models.models.zeroshot.postgres_plan_batching import assign_additional_plan_info
+from ldb_models.training.dataset.cmp_operator import LogicalOperator
 
 
 class WorkloadDrivenGraph:

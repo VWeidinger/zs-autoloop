@@ -1,14 +1,14 @@
+import argparse
 import collections
 import json
 import os
-import argparse
 
 import pandas as pd
 from ldb_schema.load_schema import (
     get_json_schema,
     load_column_statistics,
-    load_string_statistics,
     load_json,
+    load_string_statistics,
 )
 from tqdm import tqdm
 
@@ -22,7 +22,7 @@ def get_col_stats(column_stats: list, column_name: str):
 def dumper(obj):
     try:
         return obj.toJSON()
-    except:
+    except:  # noqa: E722
         return obj.__dict__
 
 

@@ -1,13 +1,13 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from models.zeroshot.specific_models.postgres_zero_shot import (
+from ldb_models.models.zeroshot.specific_models.postgres_zero_shot import (
     PostgresZeroShotModelEncoder,
 )
-from models.zeroshot.utils.fc_out_model import FcOutModel
-from models.zeroshot.zero_shot_model import PassDirection
-from training.losses.factory import create_loss
-from training.training.outputs import ModelOutput
+from ldb_models.models.zeroshot.utils.fc_out_model import FcOutModel
+from ldb_models.models.zeroshot.zero_shot_model import PassDirection
+from ldb_models.training.losses.factory import create_loss
+from ldb_models.training.training.outputs import ModelOutput
 
 
 class SUMO(nn.Module):

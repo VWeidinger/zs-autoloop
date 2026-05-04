@@ -1,7 +1,7 @@
 import math
 
 import torch
-from models.zeroshot.utils import activations
+from ldb_models.models.zeroshot.utils import activations
 from torch import nn
 from torch.nn import init
 from torch.nn.parameter import Parameter

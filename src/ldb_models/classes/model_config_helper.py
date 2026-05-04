@@ -4,12 +4,12 @@ from typing import Dict
 
 import torch.optim as opt
 import torch.optim.lr_scheduler as schedulers
-import training.featurizations as fts
-from training.featurizations import Featurization
 
-import classes as cls
-from classes.configs.base import ModelConfig, shorten_model_name
-from classes.configs.constants import Name
+import ldb_models.classes as cls
+import ldb_models.training.featurizations as fts
+from ldb_models.classes.configs.base import ModelConfig, shorten_model_name
+from ldb_models.classes.configs.constants import Name
+from ldb_models.training.featurizations import Featurization
 
 
 def parameterized_config(base_config_name: str, **args):

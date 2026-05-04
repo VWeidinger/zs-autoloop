@@ -1,12 +1,12 @@
 import torch
-from classes import MSCNModelConfig
-from models.workload_driven.dataset.dataset_creation import MSCNInputDims
-from models.zeroshot.message_aggregators.pooling import PoolingConv, PoolingType
-from models.zeroshot.zero_shot_model import PassDirection
+from ldb_models.classes import MSCNModelConfig
+from ldb_models.models.workload_driven.dataset.dataset_creation import MSCNInputDims
+from ldb_models.models.zeroshot.message_aggregators.pooling import PoolingConv, PoolingType
+from ldb_models.models.zeroshot.zero_shot_model import PassDirection
 from torch import nn
 from torch.nn import ReLU
-from training.losses.factory import create_loss
-from training.training.outputs import LossOutput, ModelOutput
+from ldb_models.training.losses.factory import create_loss
+from ldb_models.training.training.outputs import LossOutput, ModelOutput
 
 
 class MSCNModel(nn.Module):

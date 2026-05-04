@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from training.training.outputs import ModelOutput
+from ldb_models.training.training.outputs import ModelOutput
 
 
 class LatentRankerBase(nn.Module):

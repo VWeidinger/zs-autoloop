@@ -1,8 +1,8 @@
 import torch
-from classes import ZeroShotModelConfig
-from models.zeroshot.message_aggregators import message_aggregators
-from models.zeroshot.utils.fc_out_model import FcOutModel
-from models.zeroshot.utils.node_type_encoder import NodeTypeEncoder
+from ldb_models.classes import ZeroShotModelConfig
+from ldb_models.models.zeroshot.message_aggregators import message_aggregators
+from ldb_models.models.zeroshot.utils.fc_out_model import FcOutModel
+from ldb_models.models.zeroshot.utils.node_type_encoder import NodeTypeEncoder
 from torch import nn
 
 

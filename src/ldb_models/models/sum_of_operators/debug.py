@@ -1,7 +1,7 @@
 import torch
 from torch import Tensor
 
-from .cardinality import to_linear_cardinality
+from ldb_models.models.sum_of_operators.cardinality import to_linear_cardinality
 
 
 def print_debug_info(

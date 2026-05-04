@@ -3,9 +3,9 @@ import collections
 import dgl
 import numpy as np
 import torch
-from models.workload_driven.model.plan_model import PlanModel
+from ldb_models.models.workload_driven.model.plan_model import PlanModel
 
-from models.workload_driven.dataset.plan_tree_batching import tensorize_feats
+from ldb_models.models.workload_driven.dataset.plan_tree_batching import tensorize_feats
 
 
 def test_pred_message_passing():

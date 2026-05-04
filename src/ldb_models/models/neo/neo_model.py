@@ -1,9 +1,9 @@
 import torch
 import torch.nn as nn
-from classes import NeoModelConfig
-from models.workload_driven.dataset.dataset_creation import NeoInputDims
-from training.losses.factory import create_loss
-from training.training.outputs import LossOutput, ModelOutput
+from ldb_models.classes import NeoModelConfig
+from ldb_models.models.workload_driven.dataset.dataset_creation import NeoInputDims
+from ldb_models.training.losses.factory import create_loss
+from ldb_models.training.training.outputs import LossOutput, ModelOutput
 
 
 class TreeConvolution(nn.Module):

@@ -2,10 +2,10 @@ import json
 from typing import Optional
 
 import numpy as np
-from models.t3.operator_stages import ExecutionPhase, OperatorStage
-from models.t3.operators import OperatorType
-from models.t3.query_plan import QueryPlan
-from models.t3.util import AutoNumber
+from ldb_models.models.t3.operator_stages import ExecutionPhase, OperatorStage
+from ldb_models.models.t3.operators import OperatorType
+from ldb_models.models.t3.query_plan import QueryPlan
+from ldb_models.models.t3.util import AutoNumber
 
 
 class Feature(AutoNumber):

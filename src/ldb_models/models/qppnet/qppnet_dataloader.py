@@ -4,20 +4,20 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 import numpy as np
-from classes import DataLoaderOptions, ModelConfig, QPPNetModelConfig
-from classes.workload_runs import WorkloadRuns
+from ldb_models.classes import DataLoaderOptions, ModelConfig, QPPNetModelConfig
+from ldb_models.classes.workload_runs import WorkloadRuns
 from ldb_schema.load_schema import get_json_schema, load_json
-from models.utils import get_general_table_col_to_ids_dict
-from models.white_mamba.extract_query_stats import extract_query_stats_for_plan
-from models.zeroshot.annotate_additional_plan_info import assign_additional_plan_info
+from ldb_models.models.utils import get_general_table_col_to_ids_dict
+from ldb_models.models.white_mamba.extract_query_stats import extract_query_stats_for_plan
+from ldb_models.models.zeroshot.annotate_additional_plan_info import assign_additional_plan_info
 from sklearn.pipeline import Pipeline
 from torch.utils.data import DataLoader
-from training.dataset.dataset_creation import (
+from ldb_models.training.dataset.dataset_creation import (
     derive_label_normalizer,
     read_workload_runs,
 )
-from training.dataset.plan_dataset import PlanDataset
-from training.training.operator_tree import OperatorTree, operator_tree_from_json
+from ldb_models.training.dataset.plan_dataset import PlanDataset
+from ldb_models.training.training.operator_tree import OperatorTree, operator_tree_from_json
 
 
 def create_qppnet_dataloader(

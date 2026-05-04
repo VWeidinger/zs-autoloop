@@ -1,6 +1,6 @@
 from typing import Dict, Tuple
 
-from models.white_mamba.col_info_extractor import get_col_stats_for_idx_name
+from ldb_models.models.white_mamba.col_info_extractor import get_col_stats_for_idx_name
 
 
 def assign_additional_plan_info(
@@ -151,7 +151,7 @@ def _get_add_plan_stats_json_plan(
                 f"Relation Name not found in {leaf_node}"
             )
             base_table_name = leaf_node["Relation Name"]
-            base_table_alias = leaf_node["Alias"]
+            # base_table_alias = leaf_node["Alias"] # not used, but could be useful in the future if we want to match the base table more robustly (e.g. in case of self joins)
 
             base_table_id = None
             for i, entry in enumerate(db_statistics[run_file_id]["table_stats"]):
@@ -206,4 +206,5 @@ def _get_add_plan_stats_json_plan(
         join_node = get_top_join_node(analyze_plan)
         join_op = join_node["Node Type"]
 
+    return selectivity, scan_op, join_op, col_correlation, len(leaf_nodes)
     return selectivity, scan_op, join_op, col_correlation, len(leaf_nodes)

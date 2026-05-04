@@ -5,7 +5,7 @@ import traceback
 from pathlib import Path
 from typing import Dict, Tuple
 
-from classes import (
+from ldb_models.classes import (
     DataLoaderOptions,
     E2EModelConfig,
     ModelConfig,
@@ -16,19 +16,19 @@ from classes import (
     TlstmModelConfig,
     TPoolModelConfig,
 )
-from classes.workload_runs import WorkloadRuns
+from ldb_models.classes.workload_runs import WorkloadRuns
 from gensim.models import KeyedVectors
 from ldb_schema.load_schema import load_json
-from models.neo.neo_dataloader import neo_collator
-from models.query_former.dataloader import query_former_plan_collator
-from models.utils import get_general_table_col_to_ids_dict
-from models.workload_driven.dataset.mscn_batching import mscn_plan_collator
-from models.workload_driven.dataset.plan_tree_batching import (
+from ldb_models.models.neo.neo_dataloader import neo_collator
+from ldb_models.models.query_former.dataloader import query_former_plan_collator
+from ldb_models.models.utils import get_general_table_col_to_ids_dict
+from ldb_models.models.workload_driven.dataset.mscn_batching import mscn_plan_collator
+from ldb_models.models.workload_driven.dataset.plan_tree_batching import (
     baseline_plan_collator,
     extract_dimensions,
 )
 from torch.utils.data import DataLoader
-from training.dataset.dataset_creation import create_datasets
+from ldb_models.training.dataset.dataset_creation import create_datasets
 
 
 class CollateLogger:

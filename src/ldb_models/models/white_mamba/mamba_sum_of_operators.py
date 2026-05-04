@@ -3,17 +3,17 @@ from typing import Dict
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from classes import MambaSumOfOperatorsModelConfig
+from ldb_models.classes import MambaSumOfOperatorsModelConfig
 
 # These imports might need path adjustments depending on your project structure
-from models.white_mamba.mamba_model import (
+from ldb_models.models.white_mamba.mamba_model import (
     MambaModelEncoder,
     augment_feature_stats_for_mamba,
 )
-from models.zeroshot.utils.fc_out_model import FcOutModel
+from ldb_models.models.zeroshot.utils.fc_out_model import FcOutModel
 from torch_scatter import scatter_sum
-from training.preprocessing.feature_statistics import FeatureType
-from training.training.outputs import ModelOutput
+from ldb_models.training.preprocessing.feature_statistics import FeatureType
+from ldb_models.training.training.outputs import ModelOutput
 
 
 class MambaSumOfOperatorsModel(nn.Module):

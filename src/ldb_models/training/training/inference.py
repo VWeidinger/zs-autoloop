@@ -3,7 +3,7 @@ from typing import Callable, Tuple
 import torch
 from torch.utils.data import DataLoader
 from tqdm import tqdm
-from training.batch_to_funcs import zs_batch_to
+from ldb_models.training.batch_to_funcs import zs_batch_to
 
 
 def inference(
