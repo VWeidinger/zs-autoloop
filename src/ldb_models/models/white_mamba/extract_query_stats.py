@@ -1,6 +1,8 @@
 from typing import Dict, List
 
-from ldb_models.models.white_mamba.extract_card_error_utils import extract_card_error_from_plan
+from ldb_models.models.white_mamba.extract_card_error_utils import (
+    extract_card_error_from_plan,
+)
 
 
 def extract_query_stats_for_plan(
@@ -23,6 +25,11 @@ def extract_query_stats_for_plan(
     query_stats_dict["graph_depth"].append(node_depth)
     query_stats_dict["sql"].append(plan["sql"])
     query_stats_dict["hint"].append(plan["hint"])
+
+    if "plan_id" in plan:
+        query_stats_dict["plan_id"].append(plan.get("plan_id"))
+        query_stats_dict["parent_plan_id"].append(plan.get("parent_plan_id"))
+        query_stats_dict["subplan_id"].append(plan.get("subplan_id"))
 
     # add card error
     mse, qerror = extract_card_error_from_plan(
