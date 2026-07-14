@@ -2,6 +2,7 @@ import argparse
 import concurrent.futures
 import json
 import os
+import re
 from typing import Any, Dict
 
 import pandas as pd
@@ -18,7 +19,7 @@ def get_col_stats(column_stats: list, column_name: str):
 
 
 def _parse_based_on_dtype(literal: str, dtype: str) -> str | int | float:
-    if dtype == "integer":
+    if dtype in ["integer", "bigint", "smallint"]:
         return int(float(literal))
     elif dtype in ["float", "numeric", "double", "double precision"]:
         return float(literal)
@@ -70,11 +71,11 @@ def construct_filter_sample(
         elif filter_column["operator"] == "!=":
             sample_vec = base_sample != literal
         elif filter_column["operator"] in {"NOT LIKE", "LIKE"}:
-            # replace wildcards to obtain valid regex
-            regex = literal
-            for esc_char in [".", "(", ")", "?"]:
-                regex = regex.replace(esc_char, f"\{esc_char}")
-            regex = regex.replace("%", ".*?")
+            # Escape every regex metacharacter in the literal, then translate the
+            # SQL wildcards. re.escape leaves "%" and "_" untouched (they are not
+            # regex-special), so the wildcard replacement below still applies.
+            regex = re.escape(literal)
+            regex = regex.replace("%", ".*?").replace("_", ".")
             regex = f"^{regex}$"
             # sample_vec = base_sample.str.contains(regex)
             sample_vec = base_sample.astype(str).str.contains(
