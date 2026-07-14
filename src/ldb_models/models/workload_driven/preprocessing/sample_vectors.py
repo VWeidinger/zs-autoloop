@@ -18,7 +18,17 @@ def get_col_stats(column_stats: list, column_name: str):
             return col_stat
 
 
-def _parse_based_on_dtype(literal: str, dtype: str) -> str | int | float:
+# Datatypes whose samples/literals must be compared chronologically. Both the
+# sample column (see cast_date_columns) and the literal are cast to datetime.
+DATE_TYPES = {
+    "date",
+    "timestamp",
+    "timestamp without time zone",
+    "timestamp with time zone",
+}
+
+
+def _parse_based_on_dtype(literal: str, dtype: str) -> str | int | float | pd.Timestamp:
     if dtype in ["integer", "bigint", "smallint"]:
         return int(float(literal))
     elif dtype in ["float", "numeric", "double", "double precision"]:
@@ -31,8 +41,37 @@ def _parse_based_on_dtype(literal: str, dtype: str) -> str | int | float:
         "char",
     ]:
         return str(literal)
+    elif dtype in DATE_TYPES:
+        return pd.to_datetime(literal)
     else:
         raise ValueError(f"Unsupported datatype: {dtype}")
+
+
+def _split_in_literal(literal: str) -> list[str]:
+    """Split a SQL ``IN`` literal list into individual, cleaned values.
+
+    The parsed literal keeps the surrounding parentheses and may quote each
+    element, e.g. ``(1994-08-23,1995-01-01)`` or ``('a','b')``. Strip that SQL
+    decoration so each value casts and compares against the raw sample values.
+    """
+    literal = literal.strip().strip("()")
+    return [s for part in literal.split(",") if (s := part.strip().strip("'\""))]
+
+
+def cast_date_columns(table_samples: dict, column_stats: list) -> None:
+    """Cast every date/timestamp sample column to datetime once, in place.
+
+    The columns are read as strings from the CSV; converting them here (rather
+    than per filter node) means each column is parsed a single time and every
+    downstream comparison sees a chronological datetime dtype.
+    """
+    for col_stat in column_stats:
+        if col_stat["data_type"] not in DATE_TYPES:
+            continue
+        table = table_samples.get(col_stat["tablename"])
+        col_name = col_stat["attname"]
+        if table is not None and col_name in table:
+            table[col_name] = pd.to_datetime(table[col_name], errors="coerce")
 
 
 def construct_filter_sample(
@@ -57,8 +96,10 @@ def construct_filter_sample(
         literal = filter_column["literal"]
         base_sample = table_samples[table_name][col_name]
 
-        # Cast literal to the correct type
-        if literal:
+        # Cast the literal to the column type for the scalar comparison operators.
+        # LIKE keeps the raw string (it is regex-escaped below) and IN carries a
+        # list that is split and cast element-wise in its own branch.
+        if literal and filter_column["operator"] in {"=", ">=", "<=", "!="}:
             literal = _parse_based_on_dtype(literal, datatype)
 
         # Compute Sample Vectors
@@ -85,11 +126,10 @@ def construct_filter_sample(
                 sample_vec[sample_vec.isna()] = False
                 sample_vec = ~sample_vec
         elif filter_column["operator"] == "IN":
-            literal = literal.split(",")
-            casted_literals = []
-            for lit in literal:
-                lit = _parse_based_on_dtype(lit, datatype)
-                casted_literals.append(lit)
+            casted_literals = [
+                _parse_based_on_dtype(lit, datatype)
+                for lit in _split_in_literal(literal)
+            ]
             sample_vec = base_sample.isin(casted_literals)
         elif filter_column["operator"] == "IS NOT NULL":
             sample_vec = ~base_sample.isna()
@@ -220,6 +260,10 @@ def augment_sample_vectors(
         ):
             df = get_sample_for_table(table, columns)
             table_samples[table] = df
+
+    # Parse date/timestamp columns to datetime once, up front, so filter
+    # construction never re-parses the same string column per plan node.
+    cast_date_columns(table_samples, col_stats)
 
     for workload in workloads:
         source_path = os.path.join(plan_path, f"{workload}.json")
