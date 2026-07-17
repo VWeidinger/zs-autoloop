@@ -1,4 +1,3 @@
-
 from ldb_schema.datasets import dataset_list_dict
 from ldb_schema.paths import ClusterPaths
 from octopus.step import (
@@ -33,10 +32,10 @@ if __name__ == "__main__":
 
     nodes = [
         # TrainingServers.NODE05,
-        TrainingServers.NODE06,
+        # TrainingServers.NODE06,
         TrainingServers.NODE07,
-        TrainingServers.NODE08,
-        TrainingServers.NODE09,
+        # TrainingServers.NODE08,
+        # TrainingServers.NODE09,
     ]
 
     runner = ExpRunner(
@@ -51,6 +50,8 @@ if __name__ == "__main__":
 
     datasets = dataset_list_dict["zs"]
     # datasets = [d for d in datasets if d.db_name in {"financial"}]
+
+    datasets = [d for d in datasets if d.db_name in {"imdb"}]
 
     exp_commands = [
         f"python models/workload_driven/preprocessing/sample_vectors.py --dataset {dataset.db_name} --data_dir {ClusterPaths().Data.datasets}/{dataset.data_folder} --plan_path {ClusterPaths().Data.parsed_plans3}/{dataset.data_folder} --target_path {ClusterPaths().Data.augmented_plans3}/{dataset.data_folder} --workloads workload_200k_s1 complex_workload_200k_s1 complex_workload_many_joins_hints full_qo_complex_workload_200k_s1 scan_only_s1_access_path_hints_stratified workload_200k_s1_full_hints_gt30 workload_200k_s1_full_hints_idx workload_200k_s1_full_hints_lt30 join_order access_path_selection access_path_selection_with_aggregate physical_operator physical_operator_w_idx job_w_optimal_w_idxs job_complex_w_optimal_w_idxs"

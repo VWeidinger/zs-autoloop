@@ -80,6 +80,8 @@ def construct_filter_sample(
     sample_vec = None
     if filter_column["operator"] in {
         "=",
+        ">",
+        "<",
         ">=",
         "<=",
         "!=",
@@ -99,12 +101,16 @@ def construct_filter_sample(
         # Cast the literal to the column type for the scalar comparison operators.
         # LIKE keeps the raw string (it is regex-escaped below) and IN carries a
         # list that is split and cast element-wise in its own branch.
-        if literal and filter_column["operator"] in {"=", ">=", "<=", "!="}:
+        if literal and filter_column["operator"] in {"=", ">", "<", ">=", "<=", "!="}:
             literal = _parse_based_on_dtype(literal, datatype)
 
         # Compute Sample Vectors
         if filter_column["operator"] == "=":
             sample_vec = base_sample == literal
+        elif filter_column["operator"] == ">":
+            sample_vec = base_sample > literal
+        elif filter_column["operator"] == "<":
+            sample_vec = base_sample < literal
         elif filter_column["operator"] == ">=":
             sample_vec = base_sample >= literal
         elif filter_column["operator"] == "<=":
