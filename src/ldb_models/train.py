@@ -39,6 +39,7 @@ def train_model(
     prediction_bounder: PredictionBounder = None,
     quick_run: bool = False,
     scheduler=None,
+    training_info: dict = None,
 ):
     prof = None
     if pt_profiler:
@@ -147,6 +148,7 @@ def train_model(
                 csv_stats=csv_stats,
                 finished=stop_early,
                 rank_model=train_w_rank_model,
+                training_info=training_info,
             )
 
         epoch_stats.update(epoch_time=time.perf_counter() - epoch_start_time)

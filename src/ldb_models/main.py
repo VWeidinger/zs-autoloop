@@ -40,7 +40,7 @@ from ldb_models.classes import (
     ZeroShotRankingModelBaseConfig,
     ZeroShotVAEModelConfig,
 )
-from ldb_models.classes.model_config_helper import get_model_config
+from ldb_models.classes.model_config_helper import get_model_config, shorten_model_name
 from ldb_models.classes.workload_runs import WorkloadRuns
 from ldb_models.models.dace.dace_dataset import create_dace_dataloader
 from ldb_models.models.dace.dace_model import DACELora
@@ -77,6 +77,7 @@ from ldb_models.training.dataset.dataset_creation import (
 from ldb_models.training.dataset.plan_dataset import OHEMPlanDataset
 from ldb_models.training.scheduler import init_scheduler
 from ldb_models.training.training.checkpoint import load_checkpoint
+from ldb_models.training.training.provenance import collect_training_info, write_training_info
 from ldb_models.training.training.metrics import Metric, init_metrics
 from ldb_models.training.training.test import test_model
 from wandb.apis.public import Run
@@ -413,6 +414,7 @@ def use_model(
     pretrained_model_name: Optional[str] = None,
     quick_run: bool = False,
     assemble_data_up_front: bool = False,
+    training_info: Optional[Dict] = None,
 ):
     # Seed for reproducibility
     print("Found model config:")
@@ -691,6 +693,7 @@ def use_model(
                 prediction_bounder=prediction_bounder,
                 quick_run=quick_run,
                 scheduler=scheduler,
+                training_info=training_info,
             )
 
         # perform validation - after each training stage
@@ -839,6 +842,27 @@ if __name__ == "__main__":
 
     model_config = get_model_config(model_type=args.model_type, m_args=model_args)
 
+    # record how this model is trained, beside and inside its checkpoint (provenance.py)
+    training_info = None
+    if args.mode == "train" and not args.quick_run:
+        training_info = collect_training_info(
+            cli_args=vars(args),
+            config=model_config,
+            train_workloads=train_runs,
+            test_workloads=test_runs,
+            other_files={
+                "statistics_file": args.statistics_file,
+                "column_statistics": args.column_statistics,
+                "word_embeddings": args.word_embeddings,
+            },
+        )
+        info_path = write_training_info(
+            training_info,
+            args.model_dir,
+            shorten_model_name(f"{model_config.name.NAME}_{model_config.seed}"),
+        )
+        print(f"Training info written to {info_path}")
+
     # extract model_type information
     model_type = args.model_type
     if model_type.startswith("pm-"):
@@ -938,6 +962,7 @@ if __name__ == "__main__":
         pretrained_model_name=args.pretrained_model_name,
         quick_run=args.quick_run,
         assemble_data_up_front=args.assemble_data_up_front,
+        training_info=training_info,
     )
 
     use_model(**args)

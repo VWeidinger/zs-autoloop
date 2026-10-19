@@ -63,6 +63,7 @@ def save_checkpoint(
     csv_stats,
     finished=False,
     rank_model: bool = False,
+    training_info: dict = None,
 ):
     checkpoint = {
         "epochs_wo_improvement": epochs_wo_improvement,
@@ -71,6 +72,9 @@ def save_checkpoint(
         "optimizer": optimizer.state_dict(),
         "finished": finished,
     }
+    if training_info is not None:
+        # how this model was trained (command, config, data fingerprints), see provenance.py
+        checkpoint["training_info"] = training_info
     if metrics is not None:
         for m in metrics:
             checkpoint[m.metric_name + "_best_model"] = m.best_model
