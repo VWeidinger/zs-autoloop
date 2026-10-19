@@ -64,6 +64,11 @@ class ZeroShotModelConfig(ModelConfig):
     # when enabled, intra_plan join aggregation preserves individual child messages
     # per destination node instead of pre-summing by source node type.
     use_per_child_join_aggregation: bool = False
+    # when enabled, plan nodes on the deepest level of a batch (and plan depths that get no
+    # to_plan edge in the batch) receive the same zero-message update as every other leaf.
+    # Without it, a plan's prediction depends on whether its batch holds a deeper plan
+    # (e.g. batch size 1 vs 256). Shortened to "RMP" in model names.
+    reproducible_message_passing: bool = False
     batch_to_func: Callable = zs_batch_to
     collator_func: Callable = postgres_plan_collator
     input_format: InputFormats = InputFormats.parsed

@@ -39,6 +39,9 @@ class ZeroShotModelEncoder(FcOutModel):
         self.hidden_dim = model_config.hidden_dim
         self.return_all_node_states = return_all_node_states
         self.run_with_assertions = run_with_assertions
+        self.reproducible_message_passing = getattr(
+            model_config, "reproducible_message_passing", False
+        )
 
         # use different models per edge type
         tree_model_types = add_tree_model_types + [
@@ -158,10 +161,17 @@ class ZeroShotModelEncoder(FcOutModel):
                 PassDirection(model_name="to_plan", g=g, e_name="to_plan")
             )
 
-            # intra_plan from deepest node to top node
-            for d in reversed(range(g.max_depth)):
+            # intra_plan from deepest node to top node. With reproducible message passing
+            # the deepest level of the batch (plan{max_depth}) is a destination too: its
+            # pass has no edges, but its nodes get the zero-message update below.
+            plan_depths = g.max_depth + 1 if self.reproducible_message_passing else g.max_depth
+            for d in reversed(range(plan_depths)):
                 pd = PassDirection(
-                    model_name="intra_plan", g=g, e_name="intra_plan", n_dest=f"plan{d}"
+                    model_name="intra_plan",
+                    g=g,
+                    e_name="intra_plan",
+                    n_dest=f"plan{d}",
+                    allow_empty=self.reproducible_message_passing,
                 )
                 pass_directions.append(pd)
 
@@ -172,6 +182,7 @@ class ZeroShotModelEncoder(FcOutModel):
             assert combined_e_types == set(g.canonical_etypes)
 
             for pd in pass_directions:
+                out_dict = {}
                 if len(pd.etypes) > 0:
                     out_dict = self.tree_models[pd.model_name](
                         g,
@@ -180,17 +191,31 @@ class ZeroShotModelEncoder(FcOutModel):
                         out_node_types=pd.out_types,
                         feat_dict=feat_dict,
                     )
-                    for out_type, hidden_out in out_dict.items():
-                        if self.run_with_assertions:
-                            # ensure that result is not NaN / inf
-                            assert torch.isfinite(hidden_out).all(), (
-                                f"hidden_out for {out_type} contain NaN or inf"
-                                f" (input: {feat_dict[out_type]})"
-                                f" (model: {pd.model_name})"
-                                f" (hidden: {hidden_out})"
-                                f" (etypes: {pd.etypes})"
-                            )
-                        feat_dict[out_type] = hidden_out
+                if self.reproducible_message_passing:
+                    # plan types this pass is meant to reach but that got no edge in this batch
+                    # get what every leaf of a visited type gets: combine(h, 0)
+                    if pd.model_name == "to_plan":
+                        targets = [f"plan{d}" for d in range(plan_depths)]
+                    elif pd.model_name == "intra_plan":
+                        targets = [pd.n_dest]
+                    else:
+                        targets = []
+                    skipped = [t for t in targets if t not in out_dict]
+                    out_dict = {
+                        **out_dict,
+                        **self.zero_message_update(pd.model_name, feat_dict, skipped),
+                    }
+                for out_type, hidden_out in out_dict.items():
+                    if self.run_with_assertions:
+                        # ensure that result is not NaN / inf
+                        assert torch.isfinite(hidden_out).all(), (
+                            f"hidden_out for {out_type} contain NaN or inf"
+                            f" (input: {feat_dict[out_type]})"
+                            f" (model: {pd.model_name})"
+                            f" (hidden: {hidden_out})"
+                            f" (etypes: {pd.etypes})"
+                        )
+                    feat_dict[out_type] = hidden_out
 
         # compute top nodes of dags
         out = feat_dict["plan0"]
@@ -205,6 +230,27 @@ class ZeroShotModelEncoder(FcOutModel):
         else:
             # return graph representation
             return out
+
+    def zero_message_update(self, model_name, feat_dict, node_types):
+        """
+        What the aggregator's combine() gives a node of a visited type that received no
+        message: fcout(h || 0), followed by the layer norm if the aggregator has one.
+        """
+        aggregator = self.tree_models[model_name]
+        out_dict = dict()
+        for node_type in node_types:
+            hidden = feat_dict.get(node_type)
+            if hidden is None or hidden.shape[0] == 0:
+                continue
+            zeros = hidden.new_zeros(
+                hidden.shape[0], aggregator.input_dim - hidden.shape[1]
+            )
+            out_dict.update(
+                aggregator.combine({node_type: hidden}, [node_type], {node_type: zeros})
+            )
+        if getattr(aggregator, "layer_norm", None) is not None:
+            out_dict = {k: aggregator.layer_norm(v) for k, v in out_dict.items()}
+        return out_dict
 
 
 class PassDirection:
@@ -228,6 +274,7 @@ class PassDirection:
         self.in_types = set()
         self.out_types = set()
         self.model_name = model_name
+        self.n_dest = n_dest
 
         for curr_n_src, curr_e_name, curr_n_dest in g.canonical_etypes:
             if e_name is not None and curr_e_name != e_name:

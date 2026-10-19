@@ -51,6 +51,7 @@ def shorten_model_name(name: str) -> str:
 
     name = name.replace("join_repr_mode", "JOIN")
     name = name.replace("use_per_child_join_aggregation", "PCJOIN")
+    name = name.replace("reproducible_message_passing", "RMP")
 
     name = name.replace("use_pretrained_embeddings", "PTE")
     name = name.replace("latent_strategy", "LS")
