@@ -91,7 +91,12 @@ class MSCNModel(nn.Module):
         return LossOutput(loss=loss, plan_loss=plan_loss)
 
     def pool_set_features(self, graph, plan_feats):
-        node_types = list(plan_feats.keys())
+        # Always pool the sets in the fixed order of pool_node_types, with zeros for a set
+        # type that has no element in the batch. Taking the order from plan_feats.keys()
+        # (the collator drops empty types) shifted every later set into the wrong slot of
+        # est_layer, or left 3 instead of 4 slots (crash), whenever no plan of the batch
+        # had e.g. a predicate - routinely so for subplans or a batch of one plan.
+        node_types = self.pool_node_types
         plan_feats["plan"] = torch.zeros(
             graph.num_nodes("plan"), self.hidden_dim, device=self.device
         )
@@ -108,7 +113,7 @@ class MSCNModel(nn.Module):
             )
             pass_directions.append(pd)
 
-            if len(pd.etypes) == 0:
+            if len(pd.etypes) == 0 or node_type not in plan_feats:
                 out = torch.zeros(
                     graph.num_nodes("plan"), self.hidden_dim, device=self.device
                 )
@@ -123,11 +128,4 @@ class MSCNModel(nn.Module):
 
                 out = out_dict["plan"]
             pooled_feats.append(out)
-        # Workaround if no join features are given: Append zero vector
-        if len(pooled_feats) < 4:
-            pooled_feats.append(
-                torch.zeros(
-                    graph.num_nodes("plan"), self.hidden_dim, device=self.device
-                )
-            )
         return torch.cat(pooled_feats, dim=1)

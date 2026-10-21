@@ -25,6 +25,11 @@ class MSCNModelConfig(ModelConfig):
     word_embeddings: bool = True
     hidden_dim_plan: int = 256
     device: str = "cuda:[socket]"
+    # bucket the characters of string literals with zlib.crc32 instead of Python's hash(),
+    # which is salted per process unless PYTHONHASHSEED is set before the interpreter starts;
+    # with hash() the literal-hash dims of training and inference do not match.
+    # Changes the encoding, so train and predict with the same setting. Shortened to "SLH".
+    stable_literal_hash: bool = False
 
 
 @attrs.define(frozen=True, slots=False)

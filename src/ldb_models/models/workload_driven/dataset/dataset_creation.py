@@ -179,6 +179,7 @@ def get_collate_func(
                 dim_word_hash=dim_word_hash,
                 dim_word_emdb=dim_word_emdb,
                 dim_bitmaps=dim_bitmaps,
+                stable_literal_hash=getattr(model_config, "stable_literal_hash", False),
             )
         )
         plan_collator_func = mscn_plan_collator

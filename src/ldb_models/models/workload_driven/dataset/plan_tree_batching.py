@@ -2,6 +2,8 @@ import collections
 from typing import Dict, Tuple
 
 import dgl
+import zlib
+
 import numpy as np
 import torch
 from ldb_models.models.utils import get_general_table_col_to_ids_dict
@@ -217,6 +219,7 @@ def encode_predicate(
     filter_column,
     word_embeddings,
     col_id_dict: Dict[Tuple[str, str], int],
+    stable_literal_hash: bool = False,
 ):
     _, dim_pred_op = extract_dimensions(feature_statistics)
     col_vec = np.zeros(len(col_id_dict))
@@ -276,7 +279,8 @@ def encode_predicate(
                     no_words += 1
                     literal_vec[:dim_word_emdb] += word_embeddings[w]
                     for t in w:
-                        literal_vec[dim_word_emdb + hash(t) % dim_word_hash] += 1.0
+                        bucket = zlib.crc32(t.encode()) if stable_literal_hash else hash(t)
+                        literal_vec[dim_word_emdb + bucket % dim_word_hash] += 1.0
             if no_words > 1:
                 literal_vec /= no_words
         else:

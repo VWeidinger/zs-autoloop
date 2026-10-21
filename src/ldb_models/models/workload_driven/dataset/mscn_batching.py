@@ -27,6 +27,7 @@ def extract_predicate_features(
     feature_statistics,
     word_embeddings,
     col_id_dict: Dict[Tuple[str, str], int],
+    stable_literal_hash: bool = False,
 ):
     # (column one hot, operator one hot, predicate)
     if n["operator"] not in {str(LogicalOperator.AND), str(LogicalOperator.OR)}:
@@ -38,6 +39,7 @@ def extract_predicate_features(
             filter_column=n,
             word_embeddings=word_embeddings,
             col_id_dict=col_id_dict,
+            stable_literal_hash=stable_literal_hash,
         )
         pred_feats.append(pred_feat_vec)
 
@@ -52,6 +54,7 @@ def extract_predicate_features(
                 feature_statistics=feature_statistics,
                 word_embeddings=word_embeddings,
                 col_id_dict=col_id_dict,
+                stable_literal_hash=stable_literal_hash,
             )
 
 
@@ -67,6 +70,7 @@ def extract_set_features(
     col_id_dict: Dict[Tuple[str, str], int],
     table_feats=None,
     pred_feats=None,
+    stable_literal_hash: bool = False,
 ):
     if table_feats is None:
         table_feats = []
@@ -92,6 +96,7 @@ def extract_set_features(
             feature_statistics=feature_statistics,
             word_embeddings=word_embeddings,
             col_id_dict=col_id_dict,
+            stable_literal_hash=stable_literal_hash,
         )
 
     # table feature set#
@@ -124,6 +129,7 @@ def extract_set_features(
                 col_id_dict=col_id_dict,
                 table_feats=table_feats,
                 pred_feats=pred_feats,
+                stable_literal_hash=stable_literal_hash,
             )
 
     return table_feats, pred_feats
@@ -192,6 +198,7 @@ def mscn_plan_collator(
     dim_word_emdb=None,
     dim_bitmaps=None,
     db_schema_info: Dict = None,
+    stable_literal_hash: bool = False,
 ):
     """
     Combines physical plans into a large graph that can be fed into ML models.
@@ -236,6 +243,7 @@ def mscn_plan_collator(
             dim_bitmaps=dim_bitmaps,
             table_id_dict=table_id_dict,
             col_id_dict=col_id_dict,
+            stable_literal_hash=stable_literal_hash,
         )
 
         join_conditions = get_all_join_conds(p, feature_statistics)
