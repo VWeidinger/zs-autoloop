@@ -8,6 +8,9 @@ from ldb_schema.paths import ClusterPaths, Paths
 
 from ldb_models.classes.configs.constants import InputFormats, ModelType, Name
 
+# parsed_plans3 + JIT information (ldb_wlexecutor branch jit_extraction) - not (yet) part of ldb_schema's DataPaths
+PARSED_PLANS50_DIRNAME = "parsed_plans50"
+
 
 def shorten_model_name(name: str) -> str:
     # shorten wandb name
@@ -52,6 +55,8 @@ def shorten_model_name(name: str) -> str:
     name = name.replace("join_repr_mode", "JOIN")
     name = name.replace("use_per_child_join_aggregation", "PCJOIN")
     name = name.replace("reproducible_message_passing", "RMP")
+    name = name.replace("use_jit_features", "JIT")
+    name = name.replace("parsed_plans_version", "PPV")
 
     name = name.replace("use_pretrained_embeddings", "PTE")
     name = name.replace("latent_strategy", "LS")
@@ -190,6 +195,7 @@ class ModelConfig:
     # parsed plans and feature statistics version mapping
     # Version 2: parsed_plans2, feature_stats _v20260107
     # Version 3: parsed_plans3, feature_stats _v20260309
+    # Version 50: parsed_plans50 (= parsed_plans3 + JIT information, no stratified copy), feature_stats _v20261104
     parsed_plans_version: int = field(default=3)
 
     def get_feature_stats_suffix(self) -> str:
@@ -197,6 +203,7 @@ class ModelConfig:
         version_suffix_map = {
             2: "_v20260107",
             3: "_v20260309",
+            50: "_v20261104",
         }
         if self.parsed_plans_version not in version_suffix_map:
             raise ValueError(
@@ -232,10 +239,12 @@ class ModelConfig:
                 parsed_plans_path = source_path.Data.parsed_plans2
             elif self.parsed_plans_version == 3:
                 parsed_plans_path = source_path.Data.parsed_plans3
+            elif self.parsed_plans_version == 50:
+                parsed_plans_path = source_path.Data.runs / PARSED_PLANS50_DIRNAME
             else:
                 raise ValueError(
                     f"Unknown parsed_plans_version: {self.parsed_plans_version}. "
-                    f"Supported versions: 2, 3"
+                    f"Supported versions: 2, 3, 50"
                 )
             format_str = parsed_plans_path.name
         elif format == InputFormats.json:
@@ -423,9 +432,12 @@ class ModelConfig:
                     return ClusterPaths().Data.parsed_plans_stratified2
                 elif self.parsed_plans_version == 3:
                     return ClusterPaths().Data.parsed_plans_stratified3
+                elif self.parsed_plans_version == 50:
+                    # there is no stratified copy of parsed_plans50 - use the full workloads
+                    return ClusterPaths().Data.runs / PARSED_PLANS50_DIRNAME
                 else:
                     raise ValueError(
-                        f"Unknown parsed_plans_version: {self.parsed_plans_version}. Supported versions: 2, 3"
+                        f"Unknown parsed_plans_version: {self.parsed_plans_version}. Supported versions: 2, 3, 50"
                     )
             elif self.input_format == InputFormats.json:
                 return ClusterPaths().Data.json_plans_stratified
@@ -440,9 +452,11 @@ class ModelConfig:
                         return ClusterPaths().Data.parsed_plans2
                     elif self.parsed_plans_version == 3:
                         return ClusterPaths().Data.parsed_plans3
+                    elif self.parsed_plans_version == 50:
+                        return ClusterPaths().Data.runs / PARSED_PLANS50_DIRNAME
                     else:
                         raise ValueError(
-                            f"Unknown parsed_plans_version: {self.parsed_plans_version}. Supported versions: 2, 3"
+                            f"Unknown parsed_plans_version: {self.parsed_plans_version}. Supported versions: 2, 3, 50"
                         )
                 else:
                     return ClusterPaths().Data.root / "runs_roman" / "parsed_plans"

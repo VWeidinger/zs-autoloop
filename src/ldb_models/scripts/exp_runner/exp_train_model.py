@@ -19,7 +19,6 @@ from octopus.step import (
 from ldb_models.classes.configs.base import ModelConfig, shorten_model_name
 from ldb_models.classes.model_config_helper import parameterized_config
 from ldb_models.scripts.exp_runner.exp_runner import ExpRunner, TrainingServers
-
 from ldb_models.training.featurizations import (
     MambaFullWIdxCor,
     PostgresEstSystemCardDetail,
@@ -373,8 +372,9 @@ if __name__ == "__main__":
         # TrainingServers.NODE01,
         # TrainingServers.NODE02,
         # TrainingServers.NODE03,
-        TrainingServers.NODE04,
-        TrainingServers.NODE05,
+        TrainingServers.NODE03,
+        # TrainingServers.NODE04,
+        # TrainingServers.NODE05,
         # TrainingServers.NODE06,
         # TrainingServers.NODE00,
         # TrainingServers.NODE09,
@@ -394,14 +394,21 @@ if __name__ == "__main__":
     test_against = "imdb"  # if not set, will test against all in an leave one out style
     bound_predictions = False  # bound predictions to the range of the training data and output them as separate metrics - at the moment not competitive
 
+    # training / test data: 3 = parsed_plans3, 50 = parsed_plans50 (parsed_plans3 + JIT information, no stratified copy
+    # - the test workload is the full workload_200k_s1)
+    parsed_plans_version = 50
+    # encode the JIT information as plan node features (zeroshot based models, requires parsed_plans_version 50)
+    use_jit_features = True
+
     # evaluate join order using JOB-Light runs with exhaustive join orders
     eval_join_order = True and not quick_run
 
     # evaluate access path selection (Idx Scan vs. SeqScan)
-    eval_access_path = True and not quick_run
+    eval_access_path = False  # TODO workaround always failes for parsed plans 3
 
     # evaluate physical operator selection
-    eval_physical_operator = True and not quick_run
+    # eval_physical_operator = True and not quick_run
+    eval_physical_operator = False  # TODO workaround always failes for parsed plans 3
 
     # if True, will run a full QO evaluation after each epoch
     qo_eval_after_each_epoch = True
@@ -423,7 +430,7 @@ if __name__ == "__main__":
     model_configs = []
 
     for model_type in [
-        "zs_sumo",
+        "zeroshot",
         # "postgres",
         # "zeroshot",
         # "dace",
@@ -462,31 +469,59 @@ if __name__ == "__main__":
         else:
             model_specific_args = {}
 
+        # only part of the model name if not the default (keeps the names of existing parsed_plans3 runs)
+        data_args = {}
+        if parsed_plans_version != 3:
+            data_args["parsed_plans_version"] = parsed_plans_version
+        if use_jit_features:
+            data_args["use_jit_features"] = True
+        wandb_group = "jit" if use_jit_features else "baseline"
+
         """for featurization in [PostgresEstSystemCardDetail, PostgresEstWithNumLoops]:
             model_specific_args["featurization"] = featurization"""
+        # model_configs.extend(
+        #     [
+        #         parameterized_config(
+        #             model_type,
+        #             include_pg_opt_workloads=True,
+        #             subplan_monotonicity_loss=True,
+        #             epochs=2,
+        #             wandb_group="monotonicity",
+        #             **model_specific_args,
+        #         ),
+        #         parameterized_config(
+        #             model_type,
+        #             include_hint_idx_workloads=True,
+        #             subplan_monotonicity_loss=True,
+        #             epochs=2,
+        #             wandb_group="monotonicity",
+        #             **model_specific_args,
+        #         ),
+        #     ]
+        # )
         model_configs.extend(
             [
                 parameterized_config(
                     model_type,
                     include_pg_opt_workloads=True,
-                    epochs=2,
-                    wandb_group="baseline",
+                    reproducible_message_passing=True,
+                    epochs=200,
+                    wandb_group=wandb_group,
+                    **data_args,
                     **model_specific_args,
-                )
+                ),
+                parameterized_config(
+                    model_type,
+                    include_pg_opt_workloads=True,
+                    skip_top_aggregation=True,
+                    reproducible_message_passing=True,
+                    epochs=200,
+                    wandb_group=wandb_group,
+                    **data_args,
+                    **model_specific_args,
+                ),
             ]
         )
-        if model_type not in ["postgres"]:
-            model_configs.extend(
-                [
-                    parameterized_config(
-                        model_type,
-                        include_hint_idx_workloads=True,
-                        epochs=2,
-                        wandb_group="baseline",
-                        **model_specific_args,
-                    )
-                ]
-            )
 
     # Try to load model with name pm-zs_sop_rl-stable-gs8-bgs32-regrW1-rankW1-subpW1-s10-ld5-sLNFalse-hiFalse-cr-mjFalse and seed 5 from /mnt/labstore/SIGs/ML/learned_db/models/pm-zs_sop_rl-stable-gs8-bgs32-regrW1-rankW1-subpW1-s10-ld5-sLNFalse-hiFalse-cr-mjFalse/imdb
     # No valid checkpoint found [Errno 2] No such file or directory: '/mnt/labstore/SIGs/ML/learned_db/models/pm-zs_sop_rl-stable-gs8-bgs32-regrW1-rankW1-subpW1-s10-ld5-sLNFalse-hiFalse-cr-mjFalse/imdb/pm-zs_sop_rl-stable-gs8-bgs32-regrW1-rankW1-subpW1-s10-ld5-sLNFalse-hiFalse-cr-mjFalse_5.pt'
