@@ -42,6 +42,7 @@ from ldb_models.training.dataset.query_batch_sampler import (
     SimilarSampler,
 )
 from ldb_models.training.dataset.statification import stratify_plans
+from ldb_models.training.training.provenance import record_split
 
 
 @dataclass
@@ -249,6 +250,9 @@ def read_workload_runs(
                 raise ValueError(f"Input format {input_format} not supported")
 
             plan["run_file_id"] = path_index
+            # position in the workload file, counted before any filtering: together with
+            # run_file_id it names the plan, so the train/val split can be stored
+            plan["run_file_pos"] = p_id
 
             if merge_nlj_and_inlj_to_same_op:
                 # replace Index Nested Loop with Nested Loop Join
@@ -452,6 +456,7 @@ def augment_subplans(
             "invalid_hint": plan["invalid_hint"],
             "zero_card": plan["zero_card"],
             "run_file_id": plan["run_file_id"],
+            "run_file_pos": plan.get("run_file_pos"),
         }
 
         # extract subplans
@@ -637,6 +642,11 @@ def create_datasets(
             shuffle_before_split=shuffle_before_split,
             cap_training_samples=model_config.cap_training_samples,
         )
+
+    if not is_test_dataset:
+        # which plan went to training and which to validation; main.py writes it next to
+        # the checkpoint as {model}_training_split.json.gz
+        record_split(workload_run_paths, plans, train_indexes, val_indexes)
 
     def create_dataset(
         plans,

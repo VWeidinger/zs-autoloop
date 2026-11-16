@@ -12,10 +12,20 @@ It is written once as ``{model_name}_training_info.json`` when training starts (
 tabular models, which never go through ``save_checkpoint``) and stored under
 ``checkpoint["training_info"]`` in every ``.pt`` checkpoint. The dict is a few tens of KB.
 
+Which plan was trained on and which was only validated on depends on the random state at
+the moment of the split, so it cannot be read off the files. ``create_datasets`` therefore
+hands the split to ``record_split`` and ``main.py`` writes it as
+``{model_name}_training_split.json.gz``: per split a list of ``[file, position]``, where
+``file`` indexes the ``files`` list of the same document and ``position`` is the plan's
+index in that file's plan list (``run_file_pos``, counted before any filtering). The
+training info only gets the path, hash and sizes of that file (``info["split"]``), so the
+checkpoints do not grow by it.
+
 Inspect a model with ``python -m ldb_models.training.training.provenance <.pt or .json>``.
 """
 
 import getpass
+import gzip
 import hashlib
 import inspect
 import json
@@ -27,7 +37,7 @@ import sys
 from datetime import datetime, timezone
 from importlib import metadata
 from pathlib import Path
-from typing import Any, Dict, Iterable, Optional
+from typing import Any, Dict, Iterable, List, Optional
 
 import attrs
 
@@ -157,6 +167,87 @@ def read_training_info(path) -> Optional[Dict[str, Any]]:
     return checkpoint.get("training_info")
 
 
+# ---------------------------------------------------------------------------
+# the train / validation split
+# ---------------------------------------------------------------------------
+
+# The split of the training data of this process, set by create_datasets and taken by
+# main.py once the loaders are built. A module global, because create_datasets is called
+# from every model's own dataloader factory and none of them knows the model directory.
+_RECORDED_SPLIT: Optional[Dict[str, Any]] = None
+
+
+def _positions(plans, indexes) -> List[List[int]]:
+    """``[file, position]`` per entry of ``indexes``, in the order the dataset holds them.
+    -1 marks a plan that carries no position (plans not read by read_workload_runs)."""
+    if indexes is None:
+        return []
+    out = []
+    for i in indexes:
+        plan = plans[i]
+        file_id, pos = plan.get("run_file_id"), plan.get("run_file_pos")
+        out.append([-1 if file_id is None else int(file_id), -1 if pos is None else int(pos)])
+    return out
+
+
+def record_split(workload_run_paths, plans, train_indexes, val_indexes) -> None:
+    """Remember which plans are in the training and in the validation set.
+
+    ``plans`` and the index lists are what ``split_plans_in_train_val`` worked on - one
+    list, or one list per file (online hard example mining; there the lists are the pools
+    each epoch draws from). With ``train_on_subplans`` a subplan carries the position of
+    the query it was cut from, so the record names queries, not subplans.
+    """
+    global _RECORDED_SPLIT
+    per_file = bool(plans) and isinstance(plans[0], list)
+    if per_file:
+        val_indexes = val_indexes or [None] * len(plans)
+        train = [p for pl, idx in zip(plans, train_indexes) for p in _positions(pl, idx)]
+        val = [p for pl, idx in zip(plans, val_indexes) for p in _positions(pl, idx)]
+    else:
+        train, val = _positions(plans, train_indexes), _positions(plans, val_indexes)
+    _RECORDED_SPLIT = {
+        "files": [str(p) for p in workload_run_paths],
+        "per_file_pools": per_file,
+        "train": train,
+        "val": val,
+    }
+
+
+def take_split() -> Optional[Dict[str, Any]]:
+    """The recorded split, once (None if no training data was split in this process)."""
+    global _RECORDED_SPLIT
+    split, _RECORDED_SPLIT = _RECORDED_SPLIT, None
+    return split
+
+
+def training_split_path(model_dir, model_name: str) -> Path:
+    return Path(model_dir) / f"{model_name}_training_split.json.gz"
+
+
+def write_training_split(split: Dict[str, Any], model_dir, model_name: str) -> Dict[str, Any]:
+    """Write the split next to the checkpoint; returns what goes into ``info["split"]``."""
+    path = training_split_path(model_dir, model_name)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = json.dumps(split, separators=(",", ":")).encode()
+    # mtime=0 and no file name in the gzip header: the same split gives the same bytes
+    with open(path, "wb") as raw, gzip.GzipFile(filename="", fileobj=raw, mode="wb", mtime=0) as handle:
+        handle.write(payload)
+    return {
+        "path": str(path),
+        "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+        "n_train": len(split["train"]),
+        "n_val": len(split["val"]),
+        "per_file_pools": split.get("per_file_pools", False),
+    }
+
+
+def read_training_split(path) -> Dict[str, Any]:
+    """``{"files": [...], "train": [[file, position], ...], "val": [...]}``."""
+    with gzip.open(path, "rt") as handle:
+        return json.load(handle)
+
+
 def _summary(info: Dict[str, Any]) -> str:
     lines = [
         f"trained {info['created_at']} on {info['host']} by {info['user']}",
@@ -170,6 +261,11 @@ def _summary(info: Dict[str, Any]) -> str:
     lines.append("test workloads:")
     for f in info["test_workloads"]:
         lines.append(f"  {f.get('realpath')}  {f.get('size_bytes', 'missing')} B")
+    split = info.get("split")
+    if split:
+        lines.append(f"split   {split['n_train']} train / {split['n_val']} val plans in {split['path']}")
+    else:
+        lines.append("split   not recorded (training predates it)")
     return "\n".join(lines)
 
 

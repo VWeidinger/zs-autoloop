@@ -77,7 +77,12 @@ from ldb_models.training.dataset.dataset_creation import (
 from ldb_models.training.dataset.plan_dataset import OHEMPlanDataset
 from ldb_models.training.scheduler import init_scheduler
 from ldb_models.training.training.checkpoint import load_checkpoint
-from ldb_models.training.training.provenance import collect_training_info, write_training_info
+from ldb_models.training.training.provenance import (
+    collect_training_info,
+    take_split,
+    write_training_info,
+    write_training_split,
+)
 from ldb_models.training.training.metrics import Metric, init_metrics
 from ldb_models.training.training.test import test_model
 from wandb.apis.public import Run
@@ -472,6 +477,18 @@ def use_model(
         quick_run=quick_run,
         assemble_data_up_front=assemble_data_up_front,
     )
+
+    # the loaders are built, so the train/val split is fixed: store it next to the
+    # checkpoint and reference it from the training info (provenance.py)
+    split = take_split()
+    if training_info is not None and split is not None:
+        info_name = shorten_model_name(f"{config.name.NAME}_{config.seed}")
+        training_info["split"] = write_training_split(split, model_dir, info_name)
+        write_training_info(training_info, model_dir, info_name)
+        print(
+            f"Training split written to {training_info['split']['path']} "
+            f"({training_info['split']['n_train']} train / {training_info['split']['n_val']} val plans)"
+        )
 
     if test_loaders:
         # extract test data for testing after each epoch
