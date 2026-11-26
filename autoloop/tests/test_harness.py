@@ -305,3 +305,26 @@ def test_leaderboard_marks_unexplained(cfg):
 def test_inner_script_reuses_prebuilt_venv(cfg):
     inner = command.inner_script(cfg, _spec(cfg), 9, cfg.agent_root / "venvs" / "x")
     assert "[ -x " in inner and "|| flock" in inner
+
+
+# --- agent sandbox (Landlock) -------------------------------------------------------------------
+
+def test_sandbox_blocks_secrets_and_allows_repo(tmp_path):
+    import subprocess, sys
+    from autoloop.harness import sandbox
+    if sandbox.abi_version() < 4:
+        pytest.skip("landlock ABI 4 not available")
+    secret = Path.home() / ".config" / "zs-autoloop" / "secrets.env"
+    allowed = tmp_path / "ok.txt"
+    code = ("import sys\n"
+            f"open({str(allowed)!r}, 'w').write('x')\n"
+            f"try:\n    open({str(secret)!r}).read(); sys.exit(3)\n"
+            "except PermissionError:\n    sys.exit(0)\n"
+            "except FileNotFoundError:\n    sys.exit(0)\n")
+    r = subprocess.run([sys.executable, "-m", "autoloop.harness.sandbox", "--ro", "/usr", "--ro", "/lib",
+                        "--ro", "/lib64", "--ro", "/etc", "--ro", "/proc", "--ro", str(Path.home() / ".local/share/uv"),
+                        "--ro", str(Path(__file__).resolve().parents[2]), "--rw", str(tmp_path), "--rw", "/dev",
+                        "--", sys.executable, "-c", code],
+                       cwd=Path(__file__).resolve().parents[2], capture_output=True, text=True, timeout=60)
+    assert r.returncode == 0, r.stderr
+    assert allowed.read_text() == "x"

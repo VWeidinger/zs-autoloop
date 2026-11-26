@@ -85,9 +85,20 @@ agent:
   escalation_model: gpt-5.6-sol
   phase_timeout_min: 60
   # command templates; {model} {repo} {agent_root} {prompt_file} are filled in
+  # Codex's own sandbox needs bubblewrap + user namespaces, which AppArmor blocks here and which only an
+  # admin can allow. So Codex runs with its sandbox off INSIDE our Landlock sandbox (harness/sandbox.py,
+  # no root needed): it can write only the repo, the agent root, /tmp, ~/.codex, ~/.cache/uv; read the
+  # system, subplex and the training data; and connect only to TCP 443. ~/.ssh, ~/.config,
+  # ~/.git-credentials and ~/.netrc are unreachable, so no ssh, no push, no secrets.
+  sandbox:
+    enabled: true
+    connect_ports: [443]
+    extra_ro: []
+    extra_rw: []
   commands:
-    codex: ["codex", "exec", "--json", "-m", "{model}", "-C", "{repo}",
-            "--sandbox", "workspace-write", "--add-dir", "{agent_root}", "-"]
+    codex: ["python3", "-m", "autoloop.harness.sandbox", "--profile", "agent", "--",
+            "codex", "exec", "--json", "-m", "{model}", "-C", "{repo}",
+            "--dangerously-bypass-approvals-and-sandbox", "-"]
     claude: ["claude", "-p", "--output-format", "json", "--model", "{model}",
              "--max-turns", "80"]
 

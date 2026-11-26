@@ -31,6 +31,19 @@ def agent_env(cfg: Config) -> Dict[str, str]:
     if cfg["agent"]["cli"] == "claude" and sec.get("ANTHROPIC_API_KEY"):
         env["ANTHROPIC_API_KEY"] = sec["ANTHROPIC_API_KEY"]
     env["AUTOLOOP_CONFIG"] = str(cfg.path)
+    env["PYTHONPATH"] = str(cfg.repo)  # the sandbox launcher is autoloop.harness.sandbox
+    # ~/.gitconfig is outside the sandbox: the agent commits under its own identity
+    gitconfig = cfg.agent_root / "agent.gitconfig"
+    if not gitconfig.exists():
+        gitconfig.parent.mkdir(parents=True, exist_ok=True)
+        gitconfig.write_text("[user]\n\tname = zs-autoloop agent\n\temail = zs-autoloop-agent@localhost\n"
+                             "[core]\n\texcludesFile = /dev/null\n"
+                             f"[safe]\n\tdirectory = {cfg.repo}\n")
+    env["GIT_CONFIG_GLOBAL"] = str(gitconfig)
+    # ~/.config is outside the sandbox: tools that read XDG config (git, uv, ...) look here instead
+    xdg = cfg.agent_root / "xdg_config"
+    xdg.mkdir(parents=True, exist_ok=True)
+    env["XDG_CONFIG_HOME"] = str(xdg)
     return env
 
 

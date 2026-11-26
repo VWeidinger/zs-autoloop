@@ -60,21 +60,12 @@ python3 -m autoloop.harness resume                        # after writing autolo
 - [x] Repository pushed to `VWeidinger/zs-autoloop`. Lab tokens were removed from the whole history; uv reads `ldb_schema` access from `~/.git-credentials`, on c02 only.
 - [x] The shared venv is at `<agent_root>/venvs/3fedfb092158`, on a labstore interpreter. Nodes only reuse it and never download.
 - [x] The Codex CLI package (0.172.0, with bundled bubblewrap) is in `~/.local/share/codex-package`, linked from `~/.local/bin/codex`, and logged in with the API key.
-- [ ] **Codex sandbox: needs sudo once.** Ubuntu blocks unprivileged user namespaces (`kernel.apparmor_restrict_unprivileged_userns=1`), so Codex's bubblewrap sandbox fails with `bwrap: loopback: Failed RTM_NEWADDR`. Allow it for exactly this binary:
-
-  ```bash
-  sudo tee /etc/apparmor.d/codex-bwrap >/dev/null <<'PROFILE'
-  abi <abi/4.0>,
-  include <tunables/global>
-  profile codex-bwrap /home/vweidinger/.local/share/codex-package/codex-resources/bwrap flags=(unconfined) {
-    userns,
-  }
-  PROFILE
-  sudo apparmor_parser -r /etc/apparmor.d/codex-bwrap
-  codex sandbox linux -- echo ok        # must print ok
-  ```
-
-  Do not run the loop with `--dangerously-bypass-approvals-and-sandbox`: the agent would then be able to read your ssh keys and secrets.
+- [x] **Agent sandbox without root.** Codex's own sandbox needs bubblewrap with user namespaces, which AppArmor blocks here, and there is no sudo. So Codex runs with its sandbox off inside our Landlock sandbox (`autoloop/harness/sandbox.py`, kernel Landlock ABI 4, no root).
+  - **Tested:** it can write only the repo, the agent root, `/tmp`, `~/.codex` and `~/.cache/uv`, and connect only to TCP 443.
+  - **Tested:** `~/.ssh`, `~/.config` (secrets), `~/.git-credentials` and `~/.netrc` are unreachable, so ssh, push and listening ports are blocked.
+  - **Tested:** git worktree and commit work, under the identity "zs-autoloop agent".
+  - **Smoke call:** one real Codex call inside the sandbox cost $0.03.
+  - **Check it yourself:** `PYTHONPATH=. python3 -m autoloop.harness.sandbox --profile agent -- cat ~/.ssh/vw_encrypted` must fail.
 - [x] c01–c05 host keys are in `known_hosts`.
 - [x] The subplex reference diagnosis (steps 1–2 of the three reference models) is in `<agent_root>/subplex/_reference/`. Rebuild it with `python3 -m autoloop.harness reference-diagnosis`.
 - [ ] First real start: `tmux new -s autoloop 'python3 -m autoloop.harness driver 2>&1 | tee -a ~/autoloop-driver.log'`.
