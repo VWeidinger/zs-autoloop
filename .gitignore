@@ -176,3 +176,6 @@ src/ldb_models/models/zeroshot/specific_models/OBS-sum_of_operators.py
 autoloop/.secrets/
 autoloop/state/
 *.secrets.env
+
+# agent worktrees (one per experiment branch)
+worktrees/
