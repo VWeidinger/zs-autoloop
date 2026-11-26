@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
 import sys
@@ -76,6 +77,21 @@ def _experiment_runs_ended(cfg: Config, exp: str) -> bool:
     return all(s in ("finished", "failed", "killed", "launch_failed") for s in sts)
 
 
+def push_progress(cfg: Config, dry_run: bool = False) -> Optional[str]:
+    """Push the agent's local commits (main + agent/* branches) to origin after every phase.
+
+    Runs here, outside the sandbox, with your git credentials; the agent itself cannot push.
+    Never forced: if origin diverged (someone pushed), the push fails and is only logged."""
+    if dry_run or not cfg.get("git", {}).get("auto_push", False):
+        return None
+    cmd = ["git", "-C", str(cfg.repo), "push", "--porcelain", "origin", "main",
+           "refs/heads/agent/*:refs/heads/agent/*"]
+    p = subprocess.run(cmd, capture_output=True, text=True, timeout=120, env={**os.environ, "GIT_TERMINAL_PROMPT": "0"})
+    msg = (p.stdout + p.stderr).strip().splitlines()[-1:] or [""]
+    print(f"[driver] push: rc={p.returncode} {msg[0]}", file=sys.stderr)
+    return None if p.returncode == 0 else msg[0]
+
+
 def _local_gpu(cfg: Config, run: Runner) -> str:
     """A free GPU on the driver's host for the subplex annotation, '' (= CPU) if none is idle."""
     host = cfg["subplex"]["local_host"]
@@ -135,6 +151,7 @@ def step(cfg: Config, run: Runner, dry_run: bool = False, history=watcher.wandb_
                                      subplex_root=cfg.agent_root / "subplex",
                                      status=_status_text(cfg), budget_left=_budget_left(cfg))
         agent.run_phase(cfg, f"analyse-{exp}", prompt, dry_run=dry_run)
+        push_progress(cfg, dry_run)
         rnd["analysed"].append(exp)
         save_state(cfg, st)
 
@@ -148,6 +165,7 @@ def step(cfg: Config, run: Runner, dry_run: bool = False, history=watcher.wandb_
             status=_status_text(cfg), budget_left=_budget_left(cfg), review=review,
             subplex_root=cfg.agent_root / "subplex")
         agent.run_phase(cfg, f"plan-r{st['round']}", prompt, dry_run=dry_run)
+        push_progress(cfg, dry_run)
         done_before = [e for r in st["rounds"].values() for e in r["experiments"]]
         specs = ready_specs(cfg, exclude=done_before)
         specs = _enforce_round_caps(cfg, specs)

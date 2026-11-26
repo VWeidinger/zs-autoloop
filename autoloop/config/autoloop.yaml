@@ -72,6 +72,9 @@ subplex:
   reference_pp3: pm-zeroshot-pg_opt
   reference_ppv50: pm-zeroshot-pg_opt-RMP-epochs200-limitpf10050-PPV50-JIT
 
+git:
+  auto_push: true           # the driver pushes main + agent/* after every agent phase (never --force)
+
 loop:
   rounds_before_review: 2
   max_runs_per_round: 6
