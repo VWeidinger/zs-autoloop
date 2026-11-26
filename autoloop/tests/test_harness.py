@@ -323,6 +323,7 @@ def test_sandbox_blocks_secrets_and_allows_repo(tmp_path):
             "except FileNotFoundError:\n    sys.exit(0)\n")
     r = subprocess.run([sys.executable, "-m", "autoloop.harness.sandbox", "--ro", "/usr", "--ro", "/lib",
                         "--ro", "/lib64", "--ro", "/etc", "--ro", "/proc", "--ro", str(Path.home() / ".local/share/uv"),
+                        "--ro", sys.prefix, "--ro", sys.base_prefix,
                         "--ro", str(Path(__file__).resolve().parents[2]), "--rw", str(tmp_path), "--rw", "/dev",
                         "--", sys.executable, "-c", code],
                        cwd=Path(__file__).resolve().parents[2], capture_output=True, text=True, timeout=60)
