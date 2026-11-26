@@ -522,3 +522,30 @@ class PostgresTrueCardDecAblationTableFeats(Featurization):
     ]
     OUTPUT_COLUMN_FEATURES = ["aggregation"]
     TABLE_FEATURES = ["reltuples", "relpages"]
+
+
+# JIT information annotated to every plan node by the plan parser (parsed_plans50, ldb_wlexecutor branch
+# jit_extraction): the JIT decision / options of the query (the same for all nodes of a plan) and whether the
+# lazy JIT compilation (inlining + optimization + emission) is paid in this node
+JIT_GLOBAL_PLAN_FEATURES = ["jit", "jit_inlining", "jit_optimization", "jit_functions"]
+JIT_PLAN_FEATURES = JIT_GLOBAL_PLAN_FEATURES + ["jit_compiled_here"]
+
+
+def with_jit_plan_features(featurization: type) -> type:
+    """
+    Variant of the featurization which additionally encodes the JIT features of every plan node. The class is
+    registered in this module (as {featurization}WithJIT) so that it can be pickled like the static featurizations.
+    """
+    if all(feature in featurization.PLAN_FEATURES for feature in JIT_PLAN_FEATURES):
+        return featurization
+    name = f"{featurization.__name__}WithJIT"
+    if name not in globals():
+        globals()[name] = type(
+            name,
+            (featurization,),
+            dict(
+                __module__=__name__,
+                PLAN_FEATURES=featurization.PLAN_FEATURES + JIT_PLAN_FEATURES,
+            ),
+        )
+    return globals()[name]

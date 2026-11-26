@@ -30,9 +30,15 @@ if __name__ == "__main__":
     parser.add_argument("--target_folder", default=None)
     parser.add_argument("--runs_dir", default=None)
     parser.add_argument("--parsed_plans_dirname", default=None, type=str)
+    parser.add_argument(
+        "--formats", default=["json", "parsed"], nargs="+", choices=["json", "parsed"]
+    )
+    parser.add_argument(
+        "--overwrite", action="store_true", help="replace existing statistics files"
+    )
     args = parser.parse_args()
 
-    for mode in [InputFormats.json, InputFormats.parsed]:
+    for mode in [InputFormats[f] for f in args.formats]:
         mode_str = (
             f"{mode}" if mode != InputFormats.parsed else args.parsed_plans_dirname
         )
@@ -52,6 +58,10 @@ if __name__ == "__main__":
         )
 
         target_path = f"{args.target_folder}/{mode_str}_{args.file_name}.json"
+        if os.path.exists(target_path) and not args.overwrite:
+            raise FileExistsError(
+                f"{target_path} already exists - pass --overwrite to replace it"
+            )
         print(
             f"Saving feature statistics for {json_files} workload files to {target_path}"
         )

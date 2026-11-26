@@ -50,6 +50,10 @@ def gather_values_recursively(json_dict, value_dict=None):
             ]:
                 # skip these values
                 pass
+            elif k == "jit" and isinstance(v, dict):
+                # JIT block of the whole plan (parsed_plans50, incl. the measured timings) - the JIT features are
+                # annotated to every plan node, so their statistics are gathered from the nodes only
+                pass
             elif not (
                 isinstance(v, list) or isinstance(v, tuple) or isinstance(v, dict)
             ):
@@ -145,8 +149,9 @@ def gather_feature_statistics(workload_run_paths, target):
             statistics_dict[k] = {
                 "no_vals": len(unique_values),
                 "type": str(FeatureType.categorical),
+                # str(v) is the key encode() looks up (json.dump would store bool keys as "true" / "false")
                 "value_dict": {
-                    v: id for id, v in enumerate(sorted(unique_values, key=str))
+                    str(v): id for id, v in enumerate(sorted(unique_values, key=str))
                 },
             }
 

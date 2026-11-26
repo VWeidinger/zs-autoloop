@@ -8,6 +8,7 @@ from ldb_models.training.featurizations import (
     PostgresEstSystemCardDetail,
     PostgresEstWithPGCost,
     PostgresTrueCardDetail,
+    with_jit_plan_features,
 )
 
 from ldb_models.classes.configs.base import ModelConfig
@@ -69,6 +70,10 @@ class ZeroShotModelConfig(ModelConfig):
     # Without it, a plan's prediction depends on whether its batch holds a deeper plan
     # (e.g. batch size 1 vs 256). Shortened to "RMP" in model names.
     reproducible_message_passing: bool = False
+    # when enabled, the JIT information of the plan parser (JIT used, inlining, optimization, number of compiled
+    # functions, node paying the lazy JIT compilation) is added to the plan node features (featurization {..}WithJIT).
+    # Requires parsed_plans_version 50. Shortened to "JIT" in model names.
+    use_jit_features: bool = False
     batch_to_func: Callable = zs_batch_to
     collator_func: Callable = postgres_plan_collator
     input_format: InputFormats = InputFormats.parsed
@@ -157,10 +162,20 @@ class ZeroShotModelConfig(ModelConfig):
             object.__setattr__(self, "final_mlp_kwargs", final_mlp_kwargs)
             object.__setattr__(self, "tree_layer_kwargs", tree_layer_kwargs)
             object.__setattr__(self, "node_type_kwargs", node_type_kwargs)
-        if self.parsed_plans_version == 3:
+        # parsed_plans50 = parsed_plans3 + JIT information
+        if self.parsed_plans_version in (3, 50):
             object.__setattr__(self, "do_operator_rewriting", True)
         else:
             object.__setattr__(self, "do_operator_rewriting", False)
+        if self.use_jit_features:
+            if self.parsed_plans_version != 50:
+                raise ValueError(
+                    f"use_jit_features requires parsed_plans_version 50 (parsed plans with JIT information), "
+                    f"got {self.parsed_plans_version}"
+                )
+            object.__setattr__(
+                self, "featurization", with_jit_plan_features(self.featurization)
+            )
 
 
 @attrs.define(frozen=True, slots=False)

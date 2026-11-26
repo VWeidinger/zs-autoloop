@@ -6,7 +6,7 @@ import numpy as np
 import torch
 from ldb_models.models.white_mamba.extract_query_stats import extract_query_stats_for_plan
 from ldb_models.models.zeroshot.annotate_additional_plan_info import assign_additional_plan_info
-from ldb_models.training.featurizations import Featurization
+from ldb_models.training.featurizations import JIT_GLOBAL_PLAN_FEATURES, Featurization
 
 from ldb_models.models.zeroshot.encoding import apply_feature_scalers, pred_node_type_id
 from ldb_models.models.zeroshot.graph_construction import plan_to_graph
@@ -149,6 +149,13 @@ def postgres_plan_collator(
                         else -1,
                         "above_udf_filter": False,
                         "is_udf_filter": False,
+                        # global JIT features (parsed_plans50) of the query, compiled in the original plan
+                        **{
+                            k: original_root_plan_parameters[k]
+                            for k in JIT_GLOBAL_PLAN_FEATURES
+                            if k in original_root_plan_parameters
+                        },
+                        "jit_compiled_here": False,
                     },
                     "children": [p],
                     **other_args,
