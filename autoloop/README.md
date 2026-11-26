@@ -98,6 +98,31 @@ Codex additionally keeps its own session records, including reasoning summaries,
 In git you find what the agent decided: hypotheses, analyses, `NOTEBOOK.md`, `FRAMEWORK_REPORT.md` and
 `framework_usage/`.
 
+## What keeps the budget on research (and not on tooling problems)
+
+| risk | guard |
+|---|---|
+| the agent "repairs" the driver, harness, config or prompts | impossible: the sandbox makes them read-only for it. It can write only its experiment folders, NOTEBOOK.md, SUBPLEX_FEEDBACK.md, worktrees/ and .git |
+| a tooling problem makes the agent debug instead of research | AGENTS.md: report it under "## Harness problem" in the notebook and end the phase |
+| a broken agent call (auth, crash, timeout) | the driver halts (`stop_reason: agent error`) instead of calling again |
+| subplex fails on a run | the driver halts before ANALYSE (`subplex analysis failed`); the agent is not called |
+| a retry loop | none: per round at most one PLAN and one ANALYSE per experiment, no automatic retries |
+| the money runs out | clean stop (`stop_reason: budget`) before the next phase, trainings keep running |
+| one phase runs long | `phase_timeout_min: 60` kills it |
+
+Every halt sends a wandb alert and appears in `driver.log` and `harness watch`. After a halt:
+fix the cause, or raise `budget.total_usd` in the config, then `python3 -m autoloop.harness resume --force`
+and start the driver again. Nothing that already finished is repeated.
+
+## First cycle: check that the agent uses everything as intended
+
+The config stops for review after round 1 at $60. Then run `python3 -m autoloop.harness audit`. Per agent phase it
+shows the model, cost, commands, whether it read the brief, the subplex guide, the notebook and the reference
+diagnosis, which subplex steps it used, whether it ran a smoke test, and sandbox denials. Per experiment it
+shows whether the hypothesis and analysis are complete, whether the spec is valid, and whether the code branch
+exists. For the details, use `harness watch --phase plan-r1 -v`. Once this looks right, set
+`rounds_before_review: 2` and a larger budget.
+
 ## Review cycle with Claude Code
 
 When the driver stops in `AWAITING_REVIEW`:

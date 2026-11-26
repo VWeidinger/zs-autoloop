@@ -350,3 +350,61 @@ def test_framework_trace_classifies_codex_commands(cfg):
     ft.record_phase(cfg, "analyse-e002-x", "20261126-000000", log)
     rep = ft.report(cfg)
     assert "analyse-e002-x | 2 | 1 | 1 | 1 |" in rep and "e000-baseline-pgopt-proxy" in rep
+
+
+# --- circuit breakers: no money is spent on tooling problems ------------------------------------
+
+def _finished_round(cfg, monkeypatch):
+    """Round 1 planned with e000, its run finished; the agent and subplex are stubbed."""
+    st = driver.load_state(cfg)
+    st["rounds"]["1"] = {"planned": True, "experiments": ["e000-baseline-pgopt-proxy"], "analysed": []}
+    driver.save_state(cfg, st)
+    launcher.write_state(cfg, "e000-baseline-pgopt-proxy-s9", status="finished", experiment="e000-baseline-pgopt-proxy")
+    (cfg.agent_root / "models" / "e000-baseline-pgopt-proxy-s9").mkdir(parents=True)
+    (cfg.agent_root / "models" / "e000-baseline-pgopt-proxy-s9" / "m_9.pt").write_text("x")
+    monkeypatch.setattr(watcher, "tick", lambda *a, **k: [])
+    monkeypatch.setattr(driver, "_local_gpu", lambda *a: "")
+    monkeypatch.setattr(driver, "push_progress", lambda *a, **k: None)
+    monkeypatch.setattr(driver, "_commit_generated", lambda *a, **k: None)
+
+
+def test_halt_when_subplex_fails(cfg, monkeypatch):
+    from autoloop.harness import agent, subplex_analysis
+    _finished_round(cfg, monkeypatch)
+    calls = []
+    monkeypatch.setattr(subplex_analysis, "run_analysis", lambda *a, **k: {"returncode": 1, "log": "x.log"})
+    monkeypatch.setattr(agent, "run_phase", lambda *a, **k: calls.append(a) or {"returncode": 0})
+    assert driver.step(cfg, dry_runner()) == "awaiting_review"
+    assert calls == [] and driver.load_state(cfg)["stop_reason"] == "subplex analysis failed"
+
+
+def test_halt_on_agent_error(cfg, monkeypatch):
+    from autoloop.harness import agent, subplex_analysis
+    _finished_round(cfg, monkeypatch)
+    monkeypatch.setattr(subplex_analysis, "run_analysis", lambda *a, **k: {"returncode": 0})
+    monkeypatch.setattr(agent, "run_phase", lambda *a, **k: {"returncode": 1, "log": "y"})
+    assert driver.step(cfg, dry_runner()) == "awaiting_review"
+    assert driver.load_state(cfg)["stop_reason"] == "agent error"
+
+
+def test_budget_stop_is_clean_and_resumable(cfg, monkeypatch):
+    from autoloop.harness import agent, subplex_analysis
+    _finished_round(cfg, monkeypatch)
+    monkeypatch.setattr(subplex_analysis, "run_analysis", lambda *a, **k: {"returncode": 0})
+    calls = []
+    monkeypatch.setattr(agent, "run_phase", lambda *a, **k: calls.append(a) or {"returncode": 0})
+    cfg.raw["budget"].update(total_usd=5, max_usd_per_phase=10)
+    assert driver.step(cfg, dry_runner()) == "awaiting_review"
+    assert calls == [] and driver.load_state(cfg)["stop_reason"] == "budget"
+    cfg.raw["budget"]["total_usd"] = 100                       # raise the limit ...
+    assert driver.resume(cfg, force=True) == "resumed"         # ... and continue: nothing is repeated
+    driver.step(cfg, dry_runner())
+    assert len(calls) == 1 and "stop_reason" not in driver.load_state(cfg)
+
+
+def test_agent_sandbox_profile_keeps_harness_read_only(cfg):
+    from autoloop.harness import sandbox
+    prof = sandbox.agent_profile(cfg)
+    assert str(cfg.repo) in prof["ro"] and str(cfg.repo) not in prof["rw"]
+    assert str(cfg.experiments_dir) in prof["rw"] and str(cfg.repo / "worktrees") in prof["rw"]
+    assert not any("harness" in p or "config" in p for p in prof["rw"])

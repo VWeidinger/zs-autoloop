@@ -137,3 +137,86 @@ def costs(cfg: Config) -> str:
             + f"  |  ${ledger.spent(cfg):.2f} of ${cfg['budget']['total_usd']} budget",
             f"ledger file: {p}"]
     return "\n".join(out)
+
+
+# --- audit: is the agent using everything as intended? ------------------------------------------
+
+READ_CHECKS = {
+    "brief": r"AGENT_BRIEF",
+    "subplex guide": r"SUBPLEX_GUIDE",
+    "notebook": r"NOTEBOOK",
+    "reference diagnosis": r"_reference",
+    "own run's subplex output": r"agent_zs-autoloop/subplex/e\d{3}",
+}
+
+
+def audit(cfg: Config) -> str:
+    import re
+    import subprocess
+    from collections import Counter
+    from . import framework_trace
+    from .spec import ANALYSIS_SECTIONS, HYPOTHESIS_SECTIONS, framework_errors, load_spec, validate_spec
+
+    led = {}
+    lp = ledger.ledger_path(cfg)
+    if lp.exists():
+        for l in lp.read_text().splitlines():
+            r = json.loads(l)
+            led.setdefault(r["phase"], []).append(r)
+    out = ["# Audit: is the agent using everything as intended?", ""]
+    for f in sorted(_logs(cfg).glob("*.out.jsonl")) if _logs(cfg).exists() else []:
+        name = f.name[:-len(".out.jsonl")]
+        phase = name.split("-", 2)[-1]
+        if "smoke" in phase:
+            continue
+        cmds, failed, edits, denied, msgs = [], 0, 0, 0, 0
+        for line in f.read_text().splitlines():
+            try:
+                e = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            it = e.get("item") or {}
+            if e.get("type") != "item.completed":
+                continue
+            if it.get("type") == "command_execution":
+                cmds.append(it.get("command", ""))
+                failed += it.get("exit_code") not in (0, None)
+                o = it.get("aggregated_output") or ""
+                denied += bool(re.search(r"Permission denied|Operation not permitted", o))
+            elif it.get("type") == "file_change":
+                edits += len(it.get("changes") or [])
+            elif it.get("type") == "agent_message":
+                msgs += 1
+        alltext = "\n".join(cmds)
+        steps = Counter(r["step"] for r in framework_trace.extract(f.read_text()))
+        cost = sum(r["usd"] for r in led.get(phase, []) if r.get("usd") == r.get("usd"))
+        model = ", ".join(sorted({r["model"] for r in led.get(phase, [])})) or "-"
+        reads = " ".join(f"{'✓' if re.search(p, alltext) else '✗'} {k}" for k, p in READ_CHECKS.items())
+        smoke = "✓" if re.search(r"main\.py", alltext) else "✗"
+        out += [f"## {name}  ({model}, ${cost:.2f})",
+                f"- commands {len(cmds)} (failed {failed}), file edits {edits}, messages {msgs}, sandbox denials {denied}",
+                f"- read: {reads}",
+                f"- subplex use: " + (", ".join(f"{k} {v}" for k, v in steps.items()) or "NONE"),
+                f"- ran ldb_models (smoke test): {smoke}" if phase.startswith("plan") else "", ""]
+    out += ["## Experiments", "", "| experiment | hypothesis sections | spec valid | code branch | analysis sections |",
+            "|---|---|---|---|---|"]
+    for exp in sorted(p for p in cfg.experiments_dir.glob("e*") if p.is_dir()):
+        base = exp.name.startswith(("e000-", "e001-"))
+        hyp = "baseline" if base else ("ok" if not framework_errors(exp / "hypothesis.md", HYPOTHESIS_SECTIONS) else "MISSING")
+        try:
+            spec = load_spec(exp / "spec.yaml")
+            errs = validate_spec(spec, cfg)
+            valid = "ok" if not errs else f"NO ({len(errs)})"
+            br = spec.branch or "-"
+            has = subprocess.run(["git", "-C", str(cfg.repo), "rev-parse", "--verify", "-q", br],
+                                 capture_output=True).returncode == 0
+            branch = f"{br} {'✓' if has else '✗'}"
+        except Exception as e:  # noqa: BLE001 - report, do not crash the audit
+            valid, branch = f"NO ({e.__class__.__name__})", "-"
+        ana = "-" if not (exp / "analysis.md").exists() else \
+            ("ok" if not framework_errors(exp / "analysis.md", ANALYSIS_SECTIONS) else "INCOMPLETE")
+        out.append(f"| {exp.name} | {hyp} | {valid} | {branch} | {ana} |")
+    fb = cfg.autoloop_dir / "SUBPLEX_FEEDBACK.md"
+    n_fb = fb.read_text().count("\n## ") if fb.exists() else 0
+    out += ["", f"subplex feedback entries: {n_fb}  |  spent ${ledger.spent(cfg):.2f} of ${cfg['budget']['total_usd']}"]
+    return "\n".join(l for l in out if l is not None) + "\n"

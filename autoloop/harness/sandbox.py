@@ -97,10 +97,16 @@ def agent_profile(cfg) -> Dict[str, List]:
     """What the agent may touch: code, its data area, the read-only training data, subplex."""
     home = Path.home()
     sb = cfg["agent"]["sandbox"]
+    repo = Path(cfg.repo)
+    (repo / "worktrees").mkdir(exist_ok=True)
     ro = ["/usr", "/lib", "/lib64", "/bin", "/sbin", "/etc", "/opt", "/run", "/proc", "/sys", "/snap",
           str(home / ".local/bin"), str(home / ".local/share/uv"), str(home / ".local/share/codex-package"),
+          str(repo),                      # the whole repo readable: harness, config, prompts, brief stay READ-ONLY
           cfg["subplex"]["repo"], *[str(p) for p in cfg.read_only_data]] + list(sb.get("extra_ro", []))
-    rw = ["/tmp", "/dev", "/var/tmp", str(cfg.repo), str(cfg.agent_root), str(home / ".codex"),
+    # writable in the repo: only what the agent owns. Model code changes happen in worktrees/.
+    agent_owned = [repo / ".git", repo / "worktrees", cfg.experiments_dir,
+                   cfg.autoloop_dir / "NOTEBOOK.md", cfg.autoloop_dir / "SUBPLEX_FEEDBACK.md"]
+    rw = ["/tmp", "/dev", "/var/tmp", *[str(p) for p in agent_owned], str(cfg.agent_root), str(home / ".codex"),
           str(home / ".cache/uv")] + list(sb.get("extra_rw", []))
     return {"ro": ro, "rw": rw, "connect": list(sb.get("connect_ports", [443]))}
 

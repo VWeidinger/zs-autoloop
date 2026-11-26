@@ -31,6 +31,7 @@ def main(argv=None) -> int:
     w.add_argument("--phase", help="show a past phase, e.g. plan-r1 or analyse-e002")
     w.add_argument("--verbose", "-v", action="store_true", help="full command outputs")
     sub.add_parser("costs", help="every agent call: tokens x prices = USD")
+    sub.add_parser("audit", help="per agent phase: what it read, subplex use, smoke test, denials; per experiment: completeness")
     e = sub.add_parser("evaluate", help="selection metrics of an evaluation dir (offline)")
     e.add_argument("eval_dir", type=Path)
     p = sub.add_parser("probe", help="show GPU state on all nodes (ssh)")
@@ -70,6 +71,10 @@ def main(argv=None) -> int:
             monitor.watch(cfg, follow=a.follow, phase=a.phase, verbose=a.verbose)
         except KeyboardInterrupt:
             pass
+        return 0
+    if a.cmd == "audit":
+        from . import monitor
+        print(monitor.audit(cfg))
         return 0
     if a.cmd == "costs":
         from . import monitor

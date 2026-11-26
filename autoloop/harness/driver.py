@@ -132,7 +132,8 @@ def _run_subplex(cfg: Config, spec: Spec, run: Runner, dry_run: bool) -> None:
         st = launcher.read_state(cfg, rid)
         # killed runs are analysed too when a checkpoint exists: it shows why the run went wrong
         has_ckpt = any((cfg.agent_root / "models" / rid).rglob(f"*_{seed}.pt"))
-        if st.get("subplex") or st.get("status") not in ("finished", "killed") or not (has_ckpt or dry_run):
+        done = (st.get("subplex") or {}).get("returncode") == 0 or (dry_run and st.get("subplex"))
+        if done or st.get("status") not in ("finished", "killed") or not (has_ckpt or dry_run):
             continue
         log(cfg, f"subplex analysis {rid} started")
         res = subplex_analysis.run_analysis(cfg, spec, seed, _local_gpu(cfg, run), dry_run=dry_run)
@@ -154,6 +155,32 @@ def _write_result(cfg: Config, exp: str) -> None:
     (cfg.autoloop_dir / "LEADERBOARD.md").write_text(evaluate.leaderboard(cfg))
 
 
+def _budget_stop(cfg: Config, st: Dict, dry_run: bool) -> bool:
+    """Before every agent phase: if the budget cannot cover another phase, stop cleanly (no crash).
+
+    The loop waits in AWAITING_REVIEW; running trainings keep going and are picked up later.
+    To continue: raise budget.total_usd in the config, then `harness resume --force` and start the driver."""
+    if dry_run or ledger.can_afford_phase(cfg):
+        return False
+    st.update(phase="AWAITING_REVIEW", review_started=time.time(), stop_reason="budget")
+    save_state(cfg, st)
+    msg = (f"budget reached: spent ${ledger.spent(cfg):.2f} of ${cfg['budget']['total_usd']} "
+           f"(next phase may cost up to ${cfg['budget']['max_usd_per_phase']}). Trainings keep running. "
+           f"To continue: raise budget.total_usd, then `harness resume --force` and restart the driver.")
+    log(cfg, msg)
+    notify.notify(cfg, f"{cfg['name']}: budget reached", msg, dry_run)
+    return True
+
+
+def _halt(cfg: Config, st: Dict, reason: str, detail: str, dry_run: bool) -> str:
+    """Circuit breaker: stop spending, wait for the human. Trainings keep running."""
+    st.update(phase="AWAITING_REVIEW", review_started=time.time(), stop_reason=reason)
+    save_state(cfg, st)
+    log(cfg, f"HALT ({reason}): {detail}")
+    notify.notify(cfg, f"{cfg['name']}: halted - {reason}", detail, dry_run)
+    return "awaiting_review"
+
+
 def step(cfg: Config, run: Runner, dry_run: bool = False, history=watcher.wandb_history) -> str:
     if (cfg.state_dir / "STOP").exists():
         return "paused"
@@ -171,14 +198,25 @@ def step(cfg: Config, run: Runner, dry_run: bool = False, history=watcher.wandb_
     for exp in rnd["experiments"]:
         if exp in rnd["analysed"] or not _experiment_runs_ended(cfg, exp):
             continue
-        _run_subplex(cfg, load_spec(cfg.experiments_dir / exp / "spec.yaml"), run, dry_run)
+        spec = load_spec(cfg.experiments_dir / exp / "spec.yaml")
+        _run_subplex(cfg, spec, run, dry_run)
+        sub = [launcher.read_state(cfg, rid).get("subplex") for rid in spec.run_ids()]
+        attempted = [x for x in sub if x and "returncode" in x]
+        if not dry_run and attempted and all(x["returncode"] != 0 for x in attempted):
+            # the agent would only debug tooling here - a harness problem is for the human
+            return _halt(cfg, st, "subplex analysis failed",
+                         f"{exp}: subplex failed for every run, see {[x.get('log') for x in attempted]}", dry_run)
         _write_result(cfg, exp)
         prompt = agent.render_prompt("analyse", experiment=exp, round=st["round"],
                                      subplex_root=cfg.agent_root / "subplex",
                                      status=_status_text(cfg), budget_left=_budget_left(cfg))
+        if _budget_stop(cfg, st, dry_run):
+            return "awaiting_review"
         log(cfg, f"agent ANALYSE {exp} started")
         r = agent.run_phase(cfg, f"analyse-{exp}", prompt, dry_run=dry_run)
         log(cfg, f"agent ANALYSE {exp} done: rc={r.get('returncode')} usd={r.get('usd')}")
+        if not dry_run and r.get("returncode") != 0:
+            return _halt(cfg, st, "agent error", f"ANALYSE {exp} exited {r.get('returncode')}, see {r.get('log')}", dry_run)
         _commit_generated(cfg, dry_run)
         push_progress(cfg, dry_run)
         rnd["analysed"].append(exp)
@@ -193,9 +231,13 @@ def step(cfg: Config, run: Runner, dry_run: bool = False, history=watcher.wandb_
             max_full=cfg["loop"]["max_full_runs_per_round"], next_id=f"e{next_experiment_number(cfg):03d}",
             status=_status_text(cfg), budget_left=_budget_left(cfg), review=review,
             subplex_root=cfg.agent_root / "subplex")
+        if _budget_stop(cfg, st, dry_run):
+            return "awaiting_review"
         log(cfg, f"agent PLAN round {st['round']} started")
         r = agent.run_phase(cfg, f"plan-r{st['round']}", prompt, dry_run=dry_run)
         log(cfg, f"agent PLAN round {st['round']} done: rc={r.get('returncode')} usd={r.get('usd')}")
+        if not dry_run and r.get("returncode") != 0:
+            return _halt(cfg, st, "agent error", f"PLAN round {st['round']} exited {r.get('returncode')}, see {r.get('log')}", dry_run)
         _commit_generated(cfg, dry_run)
         push_progress(cfg, dry_run)
         done_before = [e for r in st["rounds"].values() for e in r["experiments"]]
@@ -281,5 +323,6 @@ def resume(cfg: Config, force: bool = False) -> str:
             return "write autoloop/REVIEW.md first (or --force)"
         st["phase"] = "RUNNING"
         st["rounds_since_review"] = 0
+        st.pop("stop_reason", None)
         save_state(cfg, st)
     return "resumed"

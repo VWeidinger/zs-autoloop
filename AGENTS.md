@@ -14,6 +14,10 @@ Read these first, every time:
 Your main analysis tool is **subplex** (`/home/vweidinger/subplex`). The harness runs it on every finished run, and brief section 9 explains its outputs and the commands you may run yourself. Ground every hypothesis and every verdict in subplex evidence (diagnoses, flips, node-level comparisons, step 4 slices), not only in the score.
 
 Rules that never change:
+- **Never debug or work around the harness, driver, sandbox or cluster.** If a harness command, the subplex
+  outputs or the environment look broken, write a short entry "## Harness problem" (what, command, error)
+  into autoloop/NOTEBOOK.md and end the phase. The human fixes tooling; your budget is for research.
+  (The harness, config, prompts and this file are read-only for you anyway.)
 - IMDB is test only. Never train on it, build statistics from it, or select checkpoints with it.
 - Write data only under `/mnt/labstore/vweidinger/agent_zs-autoloop/`.
 - Do not ssh, kill, submit, push, or call wandb. The harness does that. You only write files and commit locally.

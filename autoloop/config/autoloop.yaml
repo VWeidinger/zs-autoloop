@@ -76,7 +76,7 @@ git:
   auto_push: true           # the driver pushes main + agent/* after every agent phase (never --force)
 
 loop:
-  rounds_before_review: 2
+  rounds_before_review: 1   # first cycle: review after round 1 to check the agent uses everything as intended (later: 2)
   max_runs_per_round: 6
   max_full_runs_per_round: 3
   poll_interval_s: 600
@@ -111,7 +111,7 @@ agent:
              "--max-turns", "80"]
 
 budget:
-  total_usd: 100
+  total_usd: 60             # first cycle; raise it and `harness resume --force` to continue
   max_usd_per_phase: 10
   # USD per 1M tokens, current list prices (OpenAI, after the 2026-07-30 price change; cached input
   # at 10 % of input). The key cannot report usage, so this ledger is the spend record.
