@@ -125,6 +125,13 @@ def main(argv=None) -> int:
         launcher.cancel(cfg, a.run_id, run, a.reason)
         return 0
     if a.cmd == "driver":
+        if not dry:
+            import signal
+            # Ctrl-C in the tmux window must not kill the loop (or the agent mid-phase, which loses its work).
+            # Stop it deliberately: `harness pause` (clean) or `tmux kill-session -t autoloop`.
+            signal.signal(signal.SIGINT, signal.SIG_IGN)
+            print("driver: Ctrl-C is ignored. Leave tmux with Ctrl-b d; stop with `python3 -m autoloop.harness pause`.",
+                  flush=True)
         print(driver.run_loop(cfg, run, dry_run=dry, max_steps=a.max_steps))
         return 0
     return 2

@@ -190,7 +190,7 @@ def test_ledger_parses_codex_jsonl_and_enforces_budget(cfg):
     assert ledger.price_known(cfg, m)              # conservative defaults in the repo config
     cfg.raw["budget"]["prices"][m] = {"input": 2.0, "cached_input": 0.5, "output": 10.0}
     assert ledger.cost_usd(cfg, m, u) == pytest.approx(0.6 * 2 + 0.4 * 0.5 + 0.1 * 10)
-    cfg.raw["budget"].update(total_usd=5, max_usd_per_phase=3)
+    cfg.raw["budget"].update(total_usd=5, max_usd_per_phase={"plan": 3, "analyse": 1})
     ledger.record(cfg, "plan", m, u, 1.0)
     assert ledger.spent(cfg) == pytest.approx(2.4)
     assert not ledger.can_afford_phase(cfg)
@@ -408,3 +408,20 @@ def test_agent_sandbox_profile_keeps_harness_read_only(cfg):
     assert str(cfg.repo) in prof["ro"] and str(cfg.repo) not in prof["rw"]
     assert str(cfg.experiments_dir) in prof["rw"] and str(cfg.repo / "worktrees") in prof["rw"]
     assert not any("harness" in p or "config" in p for p in prof["rw"])
+
+
+
+def test_session_usage_reads_live_codex_totals(tmp_path):
+    from autoloop.harness import agent
+    d = tmp_path / "2026" / "11" / "26"
+    d.mkdir(parents=True)
+    ev = lambda i, c, o: json.dumps({"type": "event_msg", "payload": {"type": "token_count", "info": {
+        "total_token_usage": {"input_tokens": i, "cached_input_tokens": c, "output_tokens": o}}}})
+    (d / "rollout-x.jsonl").write_text("\n".join([ev(100, 50, 5), '{"type":"other"}', ev(1000, 900, 30)]) + "\n")
+    assert agent.session_usage(0, tmp_path) == {"input": 1000, "cached_input": 900, "output": 30}
+    assert agent.session_usage(9e12, tmp_path) is None
+
+
+def test_phase_limits_by_kind(cfg):
+    cfg.raw["budget"]["max_usd_per_phase"] = {"plan": 20, "analyse": 8}
+    assert ledger.phase_limit(cfg, "plan-r1") == 20 and ledger.phase_limit(cfg, "analyse-e002-x") == 8

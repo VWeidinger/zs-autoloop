@@ -93,6 +93,14 @@ def spent(cfg: Config) -> float:
     return tot
 
 
-def can_afford_phase(cfg: Config) -> bool:
-    b = cfg["budget"]
-    return spent(cfg) + b["max_usd_per_phase"] <= b["total_usd"]
+def phase_limit(cfg: Config, phase: str = "plan") -> float:
+    """budget.max_usd_per_phase: a number, or {plan: x, analyse: y} by phase kind."""
+    lim = cfg["budget"]["max_usd_per_phase"]
+    if isinstance(lim, dict):
+        kind = phase.split("-", 1)[0]
+        return float(lim.get(kind, max(lim.values())))
+    return float(lim)
+
+
+def can_afford_phase(cfg: Config, phase: str = "plan") -> bool:
+    return spent(cfg) + phase_limit(cfg, phase) <= cfg["budget"]["total_usd"]

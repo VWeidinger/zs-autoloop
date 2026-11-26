@@ -155,17 +155,17 @@ def _write_result(cfg: Config, exp: str) -> None:
     (cfg.autoloop_dir / "LEADERBOARD.md").write_text(evaluate.leaderboard(cfg))
 
 
-def _budget_stop(cfg: Config, st: Dict, dry_run: bool) -> bool:
+def _budget_stop(cfg: Config, st: Dict, dry_run: bool, phase: str = "plan") -> bool:
     """Before every agent phase: if the budget cannot cover another phase, stop cleanly (no crash).
 
     The loop waits in AWAITING_REVIEW; running trainings keep going and are picked up later.
     To continue: raise budget.total_usd in the config, then `harness resume --force` and start the driver."""
-    if dry_run or ledger.can_afford_phase(cfg):
+    if dry_run or ledger.can_afford_phase(cfg, phase):
         return False
     st.update(phase="AWAITING_REVIEW", review_started=time.time(), stop_reason="budget")
     save_state(cfg, st)
     msg = (f"budget reached: spent ${ledger.spent(cfg):.2f} of ${cfg['budget']['total_usd']} "
-           f"(next phase may cost up to ${cfg['budget']['max_usd_per_phase']}). Trainings keep running. "
+           f"(next {phase} phase may cost up to ${ledger.phase_limit(cfg, phase)}). Trainings keep running. "
            f"To continue: raise budget.total_usd, then `harness resume --force` and restart the driver.")
     log(cfg, msg)
     notify.notify(cfg, f"{cfg['name']}: budget reached", msg, dry_run)
@@ -210,7 +210,7 @@ def step(cfg: Config, run: Runner, dry_run: bool = False, history=watcher.wandb_
         prompt = agent.render_prompt("analyse", experiment=exp, round=st["round"],
                                      subplex_root=cfg.agent_root / "subplex",
                                      status=_status_text(cfg), budget_left=_budget_left(cfg))
-        if _budget_stop(cfg, st, dry_run):
+        if _budget_stop(cfg, st, dry_run, "analyse"):
             return "awaiting_review"
         log(cfg, f"agent ANALYSE {exp} started")
         r = agent.run_phase(cfg, f"analyse-{exp}", prompt, dry_run=dry_run)

@@ -112,7 +112,8 @@ agent:
 
 budget:
   total_usd: 60             # first cycle; raise it and `harness resume --force` to continue
-  max_usd_per_phase: 10
+  # per phase kind; checked before a phase AND live during it (the agent is stopped at the limit)
+  max_usd_per_phase: {plan: 20, analyse: 8}
   # USD per 1M tokens, current list prices (OpenAI, after the 2026-07-30 price change; cached input
   # at 10 % of input). The key cannot report usage, so this ledger is the spend record.
   prices:

@@ -25,3 +25,6 @@ Rules that never change:
 - Validate every spec: `python -m autoloop.harness validate autoloop/experiments/<id>/spec.yaml`.
 - Keep changes behind config flags; the default behaviour of ldb_models must not change.
 - Be concise in the notebook. Record numbers, not adjectives.
+- **Keep tool output small.** Everything you print is paid again on every later step of the phase. Use `head`,
+  `grep`, `wc` and pandas summaries, and never dump whole CSV, curve or source files. Your phase is stopped at
+  its cost limit (PLAN $20, ANALYSE $8).

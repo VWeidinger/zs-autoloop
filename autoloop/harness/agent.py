@@ -54,6 +54,33 @@ def phase_model(cfg: Config, phase: str) -> str:
     return (cfg["agent"].get("phase_models") or {}).get(kind) or cfg["agent"]["model"]
 
 
+CODEX_SESSIONS = Path.home() / ".codex" / "sessions"
+
+
+def session_usage(since: float, sessions: Path = CODEX_SESSIONS) -> Optional[Dict[str, int]]:
+    """Live token totals of the Codex session started after `since` (Codex updates them per step)."""
+    import json
+    files = [f for f in sessions.rglob("rollout-*.jsonl") if f.stat().st_mtime >= since] if sessions.exists() else []
+    if not files:
+        return None
+    newest = max(files, key=lambda f: f.stat().st_mtime)
+    last = None
+    with open(newest) as h:
+        for line in h:
+            if '"token_count"' not in line:
+                continue
+            try:
+                info = (json.loads(line).get("payload") or {}).get("info")
+            except json.JSONDecodeError:
+                continue
+            if info:
+                last = info.get("total_token_usage") or last
+    if not last:
+        return None
+    return {"input": int(last.get("input_tokens", 0)), "cached_input": int(last.get("cached_input_tokens", 0)),
+            "output": int(last.get("output_tokens", 0))}
+
+
 def run_phase(cfg: Config, phase: str, prompt: str, model: Optional[str] = None,
               dry_run: bool = False) -> Dict[str, object]:
     model = model or phase_model(cfg, phase)
@@ -66,7 +93,7 @@ def run_phase(cfg: Config, phase: str, prompt: str, model: Optional[str] = None,
         return {"dry_run": True, "prompt_file": str(logs / f"{stamp}-{phase}.prompt.md")}
     if not ledger.price_known(cfg, model):
         raise RuntimeError(f"no price for {model} in config budget.prices - refusing to run the agent")
-    if not ledger.can_afford_phase(cfg):
+    if not ledger.can_afford_phase(cfg, phase):
         raise RuntimeError(f"budget exhausted: spent {ledger.spent(cfg):.2f} of {cfg['budget']['total_usd']}")
     tmpl = cfg["agent"]["commands"][cli]
     argv = [a.format(model=model, repo=cfg.repo, agent_root=cfg.agent_root,
@@ -86,15 +113,30 @@ def run_phase(cfg: Config, phase: str, prompt: str, model: Optional[str] = None,
         if stdin is not None:
             p.stdin.write(stdin)
             p.stdin.close()
-        try:
-            rc = p.wait(timeout=cfg["agent"]["phase_timeout_min"] * 60)
-        except subprocess.TimeoutExpired:
-            p.kill()
-            rc = -1
-            err_f.write("\n[harness] phase timeout - agent killed\n")
+        # wait, and watch the live cost: stop the agent when the phase exceeds its budget or its time
+        limit_usd = ledger.phase_limit(cfg, phase)
+        deadline = t0 + cfg["agent"]["phase_timeout_min"] * 60
+        rc = None
+        while rc is None:
+            try:
+                rc = p.wait(timeout=15)
+            except subprocess.TimeoutExpired:
+                live = session_usage(t0 - 5)
+                if live and ledger.cost_usd(cfg, model, live) > limit_usd:
+                    p.kill()
+                    p.wait()
+                    rc = -2
+                    err_f.write(f"\n[harness] phase cost over ${limit_usd} - agent stopped\n")
+                elif time.time() > deadline:
+                    p.kill()
+                    p.wait()
+                    rc = -1
+                    err_f.write("\n[harness] phase timeout - agent stopped\n")
     (logs / "CURRENT").write_text("")
     out = out_path.read_text()
     usage = ledger.usage_from_output(out)
+    if not usage["input"]:                       # killed before its final summary: take the live totals
+        usage = session_usage(t0 - 5) or usage
     usd = ledger.record(cfg, phase, model, usage, time.time() - t0, note=f"rc={rc}")
     from . import framework_trace
     framework_trace.record_phase(cfg, phase, stamp, out)
