@@ -70,6 +70,8 @@ def main(argv=None) -> int:
 
     dry = getattr(a, "dry_run", False)
     if dry:
+        # dry runs keep their own state, so a later real driver never sees phantom runs
+        cfg.raw["paths"]["agent_root"] = str(cfg.agent_root / "_dryrun")
         run = dry_runner(log=None, free={n: list(range(cfg["cluster"]["gpus_per_node"]))
                                          for n in cfg["cluster"]["nodes"]})
     else:

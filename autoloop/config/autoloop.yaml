@@ -27,10 +27,12 @@ cluster:
   free_probes: 2             # ... with no compute process, in this many probes in a row
   probe_interval_s: 30
   ssh_connect_timeout_s: 10
-  ssh_key: ~/.ssh/id_ed25519
+  ssh_key: ~/.ssh/vw_encrypted   # IdentityFile of c01-c05 in ~/.ssh/config; passphrase from secrets
   run_exp_exclusive: false   # shared, like octopus' default
   # uv on the node; the venv lives on labstore, one per uv.lock hash
   uv: uv
+  # interpreter on labstore (home directories are local per node); the shared venv is built on it
+  python: /mnt/labstore/vweidinger/agent_zs-autoloop/python/cpython-3.12.7-linux-x86_64-gnu/bin/python3.12
 
 tiers:
   proxy: {max_epochs: 40, expected_runtime: "04:00", max_seeds: 1}
@@ -48,14 +50,26 @@ test_workloads:
   - runs/parsed_plans3/imdb_scaled1/physical_operator_w_idx.json
 
 objective:
-  # benchmarks (pred-csv stems) that make up the score; each counts equally (mean of selected/optimal)
+  # benchmarks (pred-csv stems). Each is scored on its own (selected/optimal, verdict vs reference);
+  # the single score is the geometric mean, so every benchmark has the same relative weight
   benchmarks: [join_order, job_w_optimal_w_idxs, job_complex_w_optimal_w_idxs,
                access_path_selection, access_path_selection_with_aggregate,
                physical_operator, physical_operator_w_idx]
-  aggregate: mean_ratio      # mean_ratio | total_runtime
+  aggregate: geo_mean_ratio  # geo_mean_ratio | mean_ratio | total_runtime
   # guard: IMDB 200k median q-error may be at most this factor worse than the reference
   qerror_guard_factor: 1.4
-  reference_baseline: zs-pg_opt_pp3
+  reference: baselines/reference_eval.json   # per-benchmark ratios + q-error of the reference model
+
+# the analysis framework: run on every finished run before the agent analyses it
+subplex:
+  repo: /home/vweidinger/subplex
+  uv: uv
+  local_host: c02            # the driver runs the (minutes-long) annotation on a free GPU here, else CPU
+  timeout_min: 90
+  subplan_datasets: [subplex_complex_workload_200k_s1]   # add subplex_workload_200k_s1 for the full 200k (slower)
+  # registry models whose benchmark annotations exist; picks are compared statement by statement
+  reference_pp3: pm-zeroshot-pg_opt
+  reference_ppv50: pm-zeroshot-pg_opt-RMP-epochs200-limitpf10050-PPV50-JIT
 
 loop:
   rounds_before_review: 2
@@ -79,11 +93,13 @@ agent:
 budget:
   total_usd: 100
   max_usd_per_phase: 10
-  # USD per 1M tokens. MUST be filled in from the provider's pricing page before the loop starts;
-  # the driver refuses to call the agent while the price of the configured model is missing.
+  # USD per 1M tokens. CONSERVATIVE DEFAULTS (the higher of the published list prices, 2026-07..11;
+  # cached input assumed at 10 % of input). Real bills are likely lower; the key cannot report prices
+  # or usage (that needs an organization admin key), so this ledger is the only spend record.
+  # The driver refuses to call a model that has no price here.
   prices:
-    gpt-5.6-terra: {input: null, cached_input: null, output: null}
-    gpt-5.6-sol:   {input: null, cached_input: null, output: null}
+    gpt-5.6-terra: {input: 2.50, cached_input: 0.25, output: 15.00}
+    gpt-5.6-sol:   {input: 5.00, cached_input: 0.50, output: 30.00}
 
 notify:
   wandb_alert: true          # e-mail via the wandb account (enable "scriptable run alerts" in wandb settings)

@@ -10,6 +10,8 @@ Read these first, every time:
 3. `autoloop/LEADERBOARD.md`: current scores.
 4. `autoloop/REVIEW.md`: the human supervisor's latest feedback. It overrides your own plans.
 
+Your main analysis tool is **subplex** (`/home/vweidinger/subplex`). The harness runs it on every finished run, and brief section 9 explains its outputs and the commands you may run yourself. Ground every hypothesis and every verdict in subplex evidence (diagnoses, flips, node-level comparisons, step 4 slices), not only in the score.
+
 Rules that never change:
 - IMDB is test only. Never train on it, build statistics from it, or select checkpoints with it.
 - Write data only under `/mnt/labstore/vweidinger/agent_zs-autoloop/`.

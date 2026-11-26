@@ -45,7 +45,7 @@ def tick(cfg: Config, run: Runner, history: History = wandb_history) -> List[Dic
             launcher.write_state(cfg, rid, status=status, exit_code=code, ended_at=time.time())
             ev = {"type": status, "run": rid, "experiment": st["experiment"]}
             if status == "finished":
-                res = evaluate.evaluate_dir(cfg, cfg.agent_root / "evaluation" / rid)
+                res = evaluate.evaluate_dir(cfg, cfg.agent_root / "evaluation" / rid, evaluate.load_reference(cfg))
                 (rd / "eval.json").write_text(json.dumps(res, indent=1, default=str))
                 ev["score"] = res["score"]
             events.append(ev)

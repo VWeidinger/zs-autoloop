@@ -187,7 +187,7 @@ def test_ledger_parses_codex_jsonl_and_enforces_budget(cfg):
     u = ledger.usage_from_output(out)
     assert u == {"input": 1_000_000, "cached_input": 400_000, "output": 100_000}
     m = cfg["agent"]["model"]
-    assert not ledger.price_known(cfg, m)          # prices are deliberately unset in the repo config
+    assert ledger.price_known(cfg, m)              # conservative defaults in the repo config
     cfg.raw["budget"]["prices"][m] = {"input": 2.0, "cached_input": 0.5, "output": 10.0}
     assert ledger.cost_usd(cfg, m, u) == pytest.approx(0.6 * 2 + 0.4 * 0.5 + 0.1 * 10)
     cfg.raw["budget"].update(total_usd=5, max_usd_per_phase=3)
@@ -219,3 +219,48 @@ def test_pause_and_review_gate(cfg):
     assert "REVIEW.md" in driver.resume(cfg)
     assert driver.resume(cfg, force=True) == "resumed"
     assert not (cfg.state_dir / "STOP").exists()
+
+
+# --- subplex wiring and per-benchmark scoring ---------------------------------------------------
+
+def test_subplex_analysis_command(cfg):
+    from autoloop.harness import subplex_analysis
+    s = _spec(cfg)
+    cmd = subplex_analysis.analysis_command(cfg, s, 9)
+    assert cmd[cmd.index("-m") + 1] == "subplex.external_model"
+    assert cmd[cmd.index("--architecture") + 1] == s.model_type
+    assert cmd[cmd.index("--reference") + 1] == cfg["subplex"]["reference_pp3"]
+    assert cmd[cmd.index("--out-root") + 1].startswith(str(cfg.agent_root))
+    assert cmd[cmd.index("--code-src") + 1].endswith("e000-baseline-pgopt-proxy-s9/code/src")
+    assert "--batch-independent" not in cmd and "--ppv50" not in cmd   # RMP model on parsed_plans3
+    s.plans_dir = "runs/parsed_plans50"
+    cmd = subplex_analysis.analysis_command(cfg, s, 9)
+    assert "--ppv50" in cmd and cmd[cmd.index("--reference") + 1] == cfg["subplex"]["reference_ppv50"]
+
+
+def test_per_benchmark_verdicts_and_geo_mean(cfg, tmp_path):
+    ev = tmp_path / "ev"
+    ev.mkdir()
+    _pred_csv(ev / "join_order_9v5_test_pred.csv", [("q", 1.0, 0.2), ("q", 2.0, 0.1)])            # ratio 2.0
+    _pred_csv(ev / "physical_operator_9v5_test_pred.csv", [("q", 1.0, 0.1), ("q", 2.0, 0.2)])     # ratio 1.0
+    ref = {"ratio": {"join_order": 1.5, "physical_operator": 1.2}, "imdb_200k_median_qerror": 1.25}
+    r = evaluate.evaluate_dir(cfg, ev, ref)
+    assert r["vs_reference"]["join_order"]["verdict"] == "worse"
+    assert r["vs_reference"]["physical_operator"]["verdict"] == "better"
+    assert (r["wins"], r["losses"]) == (1, 1)
+    assert r["score"] == pytest.approx(2 ** 0.5)          # geometric mean of 2.0 and 1.0
+
+
+def test_leaderboard_shows_every_benchmark(cfg, tmp_path):
+    exp = cfg.experiments_dir / "e000-baseline-pgopt-proxy"
+    run = {"score": 1.2, "ratios": {"join_order": 1.0, "job_w_optimal_w_idxs": 3.0},
+           "imdb_200k_median_qerror": 1.3}
+    evaluate.write_result(cfg, exp, {"e000-baseline-pgopt-proxy-s9": run}, evaluate.load_reference(cfg))
+    board = evaluate.leaderboard(cfg)
+    assert "| reference |" in board and "JOB-light" in board and "AP-agg" in board
+    assert "1.000 ↓" in board and "3.000 ↑" in board and "1/1" in board
+
+
+def test_inner_script_pins_shared_interpreter(cfg):
+    inner = command.inner_script(cfg, _spec(cfg), 9, cfg.agent_root / "venvs" / "x")
+    assert f"--python {cfg['cluster']['python']}" in inner and "UV_PYTHON_INSTALL_DIR" in inner

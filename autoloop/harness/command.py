@@ -66,12 +66,14 @@ set -euo pipefail
 echo "$(date -Is) start on $(hostname) gpu=${{CUDA_VISIBLE_DEVICES}}" > {rd}/started
 [ -f {cfg.agent_root}/.secrets/wandb.env ] && source {cfg.agent_root}/.secrets/wandb.env
 export UV_PROJECT_ENVIRONMENT={venv}
+# interpreter on labstore too: home directories are not shared between the nodes
+export UV_PYTHON_INSTALL_DIR={cfg.agent_root}/python
 export PYTHONPATH={code}/src
 export PYTHONHASHSEED=0
 export WANDB_RUN_GROUP={cfg['wandb']['group']}
 # one venv per uv.lock hash on labstore; the first run builds it, the others wait on the lock
 mkdir -p {venv.parent}
-flock {venv}.lock {uv} sync --frozen --no-install-project --project {code}
+flock {venv}.lock {uv} sync --frozen --no-install-project --project {code} --python {cfg['cluster']['python']}
 cd {code}/src/ldb_models
 {uv} run --frozen --no-sync --project {code} {cmd}
 """

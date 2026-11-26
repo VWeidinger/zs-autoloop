@@ -19,7 +19,8 @@ import time
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from . import agent, evaluate, launcher, ledger, notify, watcher
+from . import agent, evaluate, launcher, ledger, notify, subplex_analysis, watcher
+from .remote import probe_host
 from .config import Config
 from .remote import Runner
 from .spec import Spec, load_spec, validate_spec
@@ -75,6 +76,28 @@ def _experiment_runs_ended(cfg: Config, exp: str) -> bool:
     return all(s in ("finished", "failed", "killed", "launch_failed") for s in sts)
 
 
+def _local_gpu(cfg: Config, run: Runner) -> str:
+    """A free GPU on the driver's host for the subplex annotation, '' (= CPU) if none is idle."""
+    host = cfg["subplex"]["local_host"]
+    busy = {s.get("gpu") for s in launcher.active_runs(cfg).values() if s.get("host") == host}
+    for g in probe_host(run, host):
+        if g.idle(cfg["cluster"]["free_mem_mib"]) and g.index not in busy:
+            return str(g.index)
+    return ""
+
+
+def _run_subplex(cfg: Config, spec: Spec, run: Runner, dry_run: bool) -> None:
+    for seed in spec.seeds:
+        rid = f"{spec.id}-s{seed}"
+        st = launcher.read_state(cfg, rid)
+        # killed runs are analysed too when a checkpoint exists: it shows why the run went wrong
+        has_ckpt = any((cfg.agent_root / "models" / rid).rglob(f"*_{seed}.pt"))
+        if st.get("subplex") or st.get("status") not in ("finished", "killed") or not (has_ckpt or dry_run):
+            continue
+        res = subplex_analysis.run_analysis(cfg, spec, seed, _local_gpu(cfg, run), dry_run=dry_run)
+        launcher.write_state(cfg, rid, subplex=res)
+
+
 def _write_result(cfg: Config, exp: str) -> None:
     spec = load_spec(cfg.experiments_dir / exp / "spec.yaml")
     runs = {}
@@ -84,9 +107,8 @@ def _write_result(cfg: Config, exp: str) -> None:
         runs[rid] = json.loads(p.read_text()) if p.exists() else {"status": st.get("status"),
                                                                   "kill_reason": st.get("kill_reason"),
                                                                   "score": None}
-    ref_path = cfg.baselines_dir / "reference_eval.json"
-    ref = json.loads(ref_path.read_text()) if ref_path.exists() else None
-    evaluate.write_result(cfg, cfg.experiments_dir / exp, runs, ref)
+        runs[rid]["subplex"] = st.get("subplex")
+    evaluate.write_result(cfg, cfg.experiments_dir / exp, runs, evaluate.load_reference(cfg))
     (cfg.autoloop_dir / "LEADERBOARD.md").write_text(evaluate.leaderboard(cfg))
 
 
@@ -107,8 +129,10 @@ def step(cfg: Config, run: Runner, dry_run: bool = False, history=watcher.wandb_
     for exp in rnd["experiments"]:
         if exp in rnd["analysed"] or not _experiment_runs_ended(cfg, exp):
             continue
+        _run_subplex(cfg, load_spec(cfg.experiments_dir / exp / "spec.yaml"), run, dry_run)
         _write_result(cfg, exp)
         prompt = agent.render_prompt("analyse", experiment=exp, round=st["round"],
+                                     subplex_root=cfg.agent_root / "subplex",
                                      status=_status_text(cfg), budget_left=_budget_left(cfg))
         agent.run_phase(cfg, f"analyse-{exp}", prompt, dry_run=dry_run)
         rnd["analysed"].append(exp)

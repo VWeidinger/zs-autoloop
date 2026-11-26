@@ -1,0 +1,139 @@
+{
+ "source": "subplex annotate_benchmarks + step1.benchmark_selection.overview_table (full candidate sets), 2026-11-26",
+ "optimal_s": {
+  "access_path_selection": 284.0,
+  "access_path_selection_with_aggregate": 333.1,
+  "physical_operator": 310.6,
+  "physical_operator_w_idx": 244.8,
+  "join_order": 967.5,
+  "job_w_optimal_w_idxs": 155.4,
+  "job_complex_w_optimal_w_idxs": 54.2
+ },
+ "models": {
+  "pm-zeroshot-pg_opt (pp3, reference)": {
+   "selected_s": {
+    "access_path_selection": 427.9,
+    "access_path_selection_with_aggregate": 490.6,
+    "physical_operator": 368.3,
+    "physical_operator_w_idx": 334.6,
+    "join_order": 1041.6,
+    "job_w_optimal_w_idxs": 365.6,
+    "job_complex_w_optimal_w_idxs": 375.5
+   },
+   "ratio": {
+    "access_path_selection": 1.5067,
+    "access_path_selection_with_aggregate": 1.4728,
+    "physical_operator": 1.1858,
+    "physical_operator_w_idx": 1.3668,
+    "join_order": 1.0766,
+    "job_w_optimal_w_idxs": 2.3526,
+    "job_complex_w_optimal_w_idxs": 6.928
+   },
+   "wrong_picks": {
+    "access_path_selection": 95,
+    "access_path_selection_with_aggregate": 86,
+    "physical_operator": 35,
+    "physical_operator_w_idx": 64,
+    "join_order": 50,
+    "job_w_optimal_w_idxs": 82,
+    "job_complex_w_optimal_w_idxs": 21
+   },
+   "imdb_200k_median_qerror": 1.251
+  },
+  "pm-zeroshot-pg_opt-RMP-epochs200-limitpf10050-PPV50-JIT (pp50)": {
+   "selected_s": {
+    "access_path_selection": 359.7,
+    "access_path_selection_with_aggregate": 417.9,
+    "physical_operator": 354.3,
+    "physical_operator_w_idx": 329.5,
+    "join_order": 1018.6,
+    "job_w_optimal_w_idxs": 300.0,
+    "job_complex_w_optimal_w_idxs": 369.6
+   },
+   "ratio": {
+    "access_path_selection": 1.2665,
+    "access_path_selection_with_aggregate": 1.2546,
+    "physical_operator": 1.1407,
+    "physical_operator_w_idx": 1.346,
+    "join_order": 1.0528,
+    "job_w_optimal_w_idxs": 1.9305,
+    "job_complex_w_optimal_w_idxs": 6.8192
+   },
+   "wrong_picks": {
+    "access_path_selection": 95,
+    "access_path_selection_with_aggregate": 89,
+    "physical_operator": 28,
+    "physical_operator_w_idx": 51,
+    "join_order": 40,
+    "job_w_optimal_w_idxs": 71,
+    "job_complex_w_optimal_w_idxs": 20
+   },
+   "imdb_200k_median_qerror": 1.242
+  },
+  "pm-zs_sumo-hi-PostgresEstLoopsIdxCond-hidden_dim256-subpW10-RMP-epochs20-limitpf10050-PPV50-JIT (pp50)": {
+   "selected_s": {
+    "access_path_selection": 306.8,
+    "access_path_selection_with_aggregate": 360.3,
+    "physical_operator": 319.3,
+    "physical_operator_w_idx": 283.6,
+    "join_order": 1161.8,
+    "job_w_optimal_w_idxs": 282.1,
+    "job_complex_w_optimal_w_idxs": 272.6
+   },
+   "ratio": {
+    "access_path_selection": 1.0803,
+    "access_path_selection_with_aggregate": 1.0817,
+    "physical_operator": 1.028,
+    "physical_operator_w_idx": 1.1585,
+    "join_order": 1.2008,
+    "job_w_optimal_w_idxs": 1.8153,
+    "job_complex_w_optimal_w_idxs": 5.0295
+   },
+   "wrong_picks": {
+    "access_path_selection": 70,
+    "access_path_selection_with_aggregate": 54,
+    "physical_operator": 21,
+    "physical_operator_w_idx": 27,
+    "join_order": 44,
+    "job_w_optimal_w_idxs": 71,
+    "job_complex_w_optimal_w_idxs": 20
+   },
+   "imdb_200k_median_qerror": null
+  },
+  "PostgreSQL cost choice": {
+   "selected_s": {
+    "access_path_selection": 310.5,
+    "access_path_selection_with_aggregate": 357.4,
+    "physical_operator": 319.6,
+    "physical_operator_w_idx": 280.8,
+    "join_order": 980.5,
+    "job_w_optimal_w_idxs": 305.3,
+    "job_complex_w_optimal_w_idxs": 565.5
+   },
+   "ratio": {
+    "access_path_selection": 1.0933,
+    "access_path_selection_with_aggregate": 1.073,
+    "physical_operator": 1.029,
+    "physical_operator_w_idx": 1.1471,
+    "join_order": 1.0134,
+    "job_w_optimal_w_idxs": 1.9646,
+    "job_complex_w_optimal_w_idxs": 10.4336
+   },
+   "wrong_picks": null,
+   "imdb_200k_median_qerror": null
+  }
+ },
+ "reference": {
+  "name": "pm-zeroshot-pg_opt (pp3)",
+  "ratio": {
+   "access_path_selection": 1.5067,
+   "access_path_selection_with_aggregate": 1.4728,
+   "physical_operator": 1.1858,
+   "physical_operator_w_idx": 1.3668,
+   "join_order": 1.0766,
+   "job_w_optimal_w_idxs": 2.3526,
+   "job_complex_w_optimal_w_idxs": 6.928
+  },
+  "imdb_200k_median_qerror": 1.251
+ }
+}
