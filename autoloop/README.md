@@ -71,6 +71,33 @@ python3 -m autoloop.harness resume                        # after writing autolo
 - [ ] First real start: `tmux new -s autoloop 'python3 -m autoloop.harness driver 2>&1 | tee -a ~/autoloop-driver.log'`.
 - [ ] In the wandb settings, enable "Scriptable run alerts", e-mail.
 
+## Watching the loop (also after an ssh disconnect)
+
+The driver runs in tmux and keeps going when your ssh connection drops.
+
+```bash
+tmux attach -t autoloop                      # back into the driver session (Ctrl-b d to leave it running)
+cd ~/zs-autoloop
+python3 -m autoloop.harness watch            # status, runs, driver log, the agent's current/latest phase
+python3 -m autoloop.harness watch -f         # ... and stream the agent live (Ctrl-c to stop watching)
+python3 -m autoloop.harness watch --phase plan-r1 -v   # a past phase with full command outputs
+python3 -m autoloop.harness costs            # every agent call: tokens x prices = USD
+```
+
+Everything is on labstore under `/mnt/labstore/vweidinger/agent_zs-autoloop/state/`:
+
+| file | content |
+|---|---|
+| `driver.log` | timestamped driver events: submits, run ends, kills and why, subplex analyses, agent phases, pushes |
+| `agent_logs/<time>-<phase>.prompt.md` | the exact prompt of each agent phase |
+| `agent_logs/<time>-<phase>.out.jsonl` | the agent's complete event stream, written live: messages, commands with output and exit code, file edits, tokens |
+| `ledger.jsonl` | tokens and USD per agent call (OpenAI shows you nothing; this is the record) |
+| `driver.json`, `runs/<run>/state.json` | the loop's state (round, phase) and each run's state (node, GPU, epoch, gates) |
+
+Codex additionally keeps its own session records, including reasoning summaries, in `~/.codex/sessions/`.
+In git you find what the agent decided: hypotheses, analyses, `NOTEBOOK.md`, `FRAMEWORK_REPORT.md` and
+`framework_usage/`.
+
 ## Review cycle with Claude Code
 
 When the driver stops in `AWAITING_REVIEW`:

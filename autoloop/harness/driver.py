@@ -28,6 +28,15 @@ from .spec import Spec, load_spec, validate_spec
 
 
 
+def log(cfg: Config, msg: str) -> None:
+    """Timestamped driver event, to stderr and to <agent_root>/state/driver.log (survives without tee)."""
+    line = f"{time.strftime('%Y-%m-%d %H:%M:%S')} {msg}"
+    print(line, file=sys.stderr, flush=True)
+    cfg.state_dir.mkdir(parents=True, exist_ok=True)
+    with open(cfg.state_dir / "driver.log", "a") as f:
+        f.write(line + "\n")
+
+
 def _state_path(cfg: Config) -> Path:
     return cfg.state_dir / "driver.json"
 
@@ -103,7 +112,7 @@ def push_progress(cfg: Config, dry_run: bool = False) -> Optional[str]:
            "refs/heads/agent/*:refs/heads/agent/*"]
     p = subprocess.run(cmd, capture_output=True, text=True, timeout=120, env={**os.environ, "GIT_TERMINAL_PROMPT": "0"})
     msg = (p.stdout + p.stderr).strip().splitlines()[-1:] or [""]
-    print(f"[driver] push: rc={p.returncode} {msg[0]}", file=sys.stderr)
+    log(cfg, f"push: rc={p.returncode} {msg[0]}")
     return None if p.returncode == 0 else msg[0]
 
 
@@ -125,7 +134,9 @@ def _run_subplex(cfg: Config, spec: Spec, run: Runner, dry_run: bool) -> None:
         has_ckpt = any((cfg.agent_root / "models" / rid).rglob(f"*_{seed}.pt"))
         if st.get("subplex") or st.get("status") not in ("finished", "killed") or not (has_ckpt or dry_run):
             continue
+        log(cfg, f"subplex analysis {rid} started")
         res = subplex_analysis.run_analysis(cfg, spec, seed, _local_gpu(cfg, run), dry_run=dry_run)
+        log(cfg, f"subplex analysis {rid} done: {res.get('returncode')}")
         launcher.write_state(cfg, rid, subplex=res)
 
 
@@ -154,7 +165,7 @@ def step(cfg: Config, run: Runner, dry_run: bool = False, history=watcher.wandb_
     # 1. watch (no LLM)
     if not dry_run:
         for ev in watcher.tick(cfg, run, history):
-            print(f"[driver] {ev}", file=sys.stderr)
+            log(cfg, f"run event: {ev}")
 
     # 2. analyse experiments whose runs all ended
     for exp in rnd["experiments"]:
@@ -165,7 +176,9 @@ def step(cfg: Config, run: Runner, dry_run: bool = False, history=watcher.wandb_
         prompt = agent.render_prompt("analyse", experiment=exp, round=st["round"],
                                      subplex_root=cfg.agent_root / "subplex",
                                      status=_status_text(cfg), budget_left=_budget_left(cfg))
-        agent.run_phase(cfg, f"analyse-{exp}", prompt, dry_run=dry_run)
+        log(cfg, f"agent ANALYSE {exp} started")
+        r = agent.run_phase(cfg, f"analyse-{exp}", prompt, dry_run=dry_run)
+        log(cfg, f"agent ANALYSE {exp} done: rc={r.get('returncode')} usd={r.get('usd')}")
         _commit_generated(cfg, dry_run)
         push_progress(cfg, dry_run)
         rnd["analysed"].append(exp)
@@ -180,7 +193,9 @@ def step(cfg: Config, run: Runner, dry_run: bool = False, history=watcher.wandb_
             max_full=cfg["loop"]["max_full_runs_per_round"], next_id=f"e{next_experiment_number(cfg):03d}",
             status=_status_text(cfg), budget_left=_budget_left(cfg), review=review,
             subplex_root=cfg.agent_root / "subplex")
-        agent.run_phase(cfg, f"plan-r{st['round']}", prompt, dry_run=dry_run)
+        log(cfg, f"agent PLAN round {st['round']} started")
+        r = agent.run_phase(cfg, f"plan-r{st['round']}", prompt, dry_run=dry_run)
+        log(cfg, f"agent PLAN round {st['round']} done: rc={r.get('returncode')} usd={r.get('usd')}")
         _commit_generated(cfg, dry_run)
         push_progress(cfg, dry_run)
         done_before = [e for r in st["rounds"].values() for e in r["experiments"]]
@@ -201,7 +216,7 @@ def step(cfg: Config, run: Runner, dry_run: bool = False, history=watcher.wandb_
     specs = [load_spec(cfg.experiments_dir / e / "spec.yaml") for e in rnd["experiments"]]
     started = launcher.submit(cfg, specs, run, dry_run=dry_run)
     if started:
-        print(f"[driver] started {started}", file=sys.stderr)
+        log(cfg, f"submitted runs: {started}")
 
     # 5. round complete?
     if rnd["experiments"] and all(e in rnd["analysed"] for e in rnd["experiments"]):
@@ -227,7 +242,7 @@ def _enforce_round_caps(cfg: Config, specs: List[Spec]) -> List[Spec]:
     for s in specs:
         errs = validate_spec(s, cfg)
         if errs:
-            print(f"[driver] rejecting {s.id}: {errs}", file=sys.stderr)
+            log(cfg, f"rejected spec {s.id}: {errs}")
             continue
         n = len(s.seeds)
         if runs + n > cfg["loop"]["max_runs_per_round"]:

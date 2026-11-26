@@ -77,15 +77,23 @@ def run_phase(cfg: Config, phase: str, prompt: str, model: Optional[str] = None,
     else:
         stdin = prompt
     t0 = time.time()
-    try:
-        p = subprocess.run(argv, input=stdin, capture_output=True, text=True, cwd=cfg.repo,
-                           env=agent_env(cfg), timeout=cfg["agent"]["phase_timeout_min"] * 60)
-        out, rc = p.stdout, p.returncode
-        err = p.stderr
-    except subprocess.TimeoutExpired as e:
-        out, rc, err = (e.stdout or b"").decode() if isinstance(e.stdout, bytes) else (e.stdout or ""), -1, "timeout"
-    (logs / f"{stamp}-{phase}.out.jsonl").write_text(out)
-    (logs / f"{stamp}-{phase}.err.txt").write_text(err or "")
+    out_path, err_path = logs / f"{stamp}-{phase}.out.jsonl", logs / f"{stamp}-{phase}.err.txt"
+    (logs / "CURRENT").write_text(f"{stamp}-{phase}\n")      # what `harness watch` follows
+    # stream the agent's events to disk while it works, so `harness watch` can show them live
+    with open(out_path, "w") as out_f, open(err_path, "w") as err_f:
+        p = subprocess.Popen(argv, stdin=subprocess.PIPE if stdin is not None else None, stdout=out_f,
+                             stderr=err_f, text=True, cwd=cfg.repo, env=agent_env(cfg))
+        if stdin is not None:
+            p.stdin.write(stdin)
+            p.stdin.close()
+        try:
+            rc = p.wait(timeout=cfg["agent"]["phase_timeout_min"] * 60)
+        except subprocess.TimeoutExpired:
+            p.kill()
+            rc = -1
+            err_f.write("\n[harness] phase timeout - agent killed\n")
+    (logs / "CURRENT").write_text("")
+    out = out_path.read_text()
     usage = ledger.usage_from_output(out)
     usd = ledger.record(cfg, phase, model, usage, time.time() - t0, note=f"rc={rc}")
     from . import framework_trace

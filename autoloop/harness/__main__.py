@@ -26,6 +26,11 @@ def main(argv=None) -> int:
     sub.add_parser("status", help="runs, driver state, budget (offline)")
     sub.add_parser("leaderboard", help="regenerate autoloop/LEADERBOARD.md (offline)")
     sub.add_parser("framework-report", help="regenerate autoloop/FRAMEWORK_REPORT.md (offline)")
+    w = sub.add_parser("watch", help="driver status + what the agent is doing (readable)")
+    w.add_argument("--follow", "-f", action="store_true", help="keep streaming live")
+    w.add_argument("--phase", help="show a past phase, e.g. plan-r1 or analyse-e002")
+    w.add_argument("--verbose", "-v", action="store_true", help="full command outputs")
+    sub.add_parser("costs", help="every agent call: tokens x prices = USD")
     e = sub.add_parser("evaluate", help="selection metrics of an evaluation dir (offline)")
     e.add_argument("eval_dir", type=Path)
     p = sub.add_parser("probe", help="show GPU state on all nodes (ssh)")
@@ -58,6 +63,17 @@ def main(argv=None) -> int:
         return 0
     if a.cmd == "leaderboard":
         (cfg.autoloop_dir / "LEADERBOARD.md").write_text(evaluate.leaderboard(cfg))
+        return 0
+    if a.cmd == "watch":
+        from . import monitor
+        try:
+            monitor.watch(cfg, follow=a.follow, phase=a.phase, verbose=a.verbose)
+        except KeyboardInterrupt:
+            pass
+        return 0
+    if a.cmd == "costs":
+        from . import monitor
+        print(monitor.costs(cfg))
         return 0
     if a.cmd == "framework-report":
         from . import framework_trace
