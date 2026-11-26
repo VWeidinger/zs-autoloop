@@ -48,7 +48,7 @@ differences under about 5% in score as noise until a second seed agrees.
 4. **The only place you write data:** `/mnt/labstore/vweidinger/agent_zs-autoloop/`. Build your own datasets, statistics and caches there. Never write anywhere else on `/mnt`.
 5. **You never start, stop or ssh to anything.** You write `autoloop/experiments/<id>/spec.yaml` with `status: ready`; the driver validates and submits it. Check a spec offline with `python -m autoloop.harness validate <spec>`.
 6. **No secrets.** Do not look for keys or tokens and do not print environment variables.
-7. **Ignore** the subplex `proposal/` and `slides/` folders and everything about "models trained without JIT".
+7. **Ignore** the subplex `proposal/` and `slides/` folders and everything about "models trained without JIT". For subplex, read `autoloop/SUBPLEX_GUIDE.md` instead of the repository.
 8. **Never push** to `upstream` (the lab's repository); its push URL is disabled. Commit locally only.
 
 ## 3. Reference numbers
@@ -97,7 +97,7 @@ like-for-like references through this exact pipeline.
 - **Over-reaction to plan size.** On Hash Join, the table count moves the estimate +0.14 dex/SD while the truth moves −0.28. `est_children_card` is nearly ignored (0.03 vs 0.21). Sum-over-children aggregation is a plausible cause.
 - **Output-column statistics are misused.** Multiplying n_distinct by 10 moves 41–46% of predictions, although the true effect is about 0.
 - **Most of the residual is explainable from inputs the model already gets.** A GBM surrogate on the model's own inputs reaches R² 0.79. So the problem is how inputs are used and what is supervised, more than missing features.
-- **JIT features are weak.** On QO benchmarks, zeroing them changes selection by ≤ 3%. JIT cost is not localised to the compiling node. Tiny scans pay ~440 ms of JIT in jit+inline+optimize queries and all models predict them as a constant.
+- **JIT is real but under-modelled, not weak.** Tiny scans in jit+inline+optimize queries pay about 440 ms of compile time, and every model predicts them as a constant. JIT information is worth having: a surrogate on the received features reaches R² 0.836 without `jit_class` and 0.885 with it. But the models use it weakly and in the wrong place: with JIT features, tiny paying scans get 259 ms (actual ~442), and subplans of JIT queries that do *not* compile gain about 55 ms. The cost is not localised to the compiling node (`jit_compiled_here`). On the QO benchmarks, zeroing the features changes selection by ≤ 3%, so the open question is whether *localising* JIT cost changes picks. That is a legitimate target, measured with step 2 slices on tiny scans and step 3 JIT on/off. DECISIONS.md 2026-11-05.
 - **Floor:** QLoss models show a ~750 ms prediction floor in annotations, and its cause is not settled. Selection is unaffected by monotone rescaling, but floors flatten small plans.
 - **Reproducibility traps:** set `reproducible_message_passing` (RMP), because otherwise the same plan gets different predictions depending on batch composition. Evaluate the *best* checkpoint, not the last (ldb_models' test does this already).
 
@@ -188,6 +188,11 @@ the reference models in `.../subplex/_reference/{ref-zs-pg_opt, ref-zs-ppv50-jit
   - JOB and JOB-complex: "(Index) Nested Loop vs Hash Join". The selected side is under-estimated by up to 1.4 dex, with cardinality errors > 10× in 83–90% of the picks, so this is driven by cardinality estimates.
   - Physical operator with indexes: "Merge Join vs Hash Join".
 
+**Step 3 on the training data (step 7)** goes from an IMDB failure back to the training set: are there labelled
+training examples like the failing subplans, do the training databases agree with IMDB, and is it noise.
+This is the tool for **tuning the training data** (which workloads to add, drop or reweight). The tested
+recipe, the matching levels and the existing reports are in `autoloop/SUBPLEX_GUIDE.md`.
+
 **Commands you may run yourself (CPU only, on your runs' outputs):**
 
 ```bash
@@ -217,9 +222,11 @@ uv run --frozen python -m subplex.external_model --name <run_id> --architecture 
 - `hypothesis.md` must contain the sections `## Step 1`, `## Step 2`, `## Step 3`, `## Change` and `## Predicted framework change`. The harness rejects the spec otherwise.
   - Each step section names its subplex evidence: file and numbers.
   - The prediction table says which step-1, step-2 and step-3 quantities the change will move, and by how much.
-- `analysis.md` must contain `## Verdict`, `## Step 1`, `## Step 2`, `## Step 3` and `## Explanation`.
+- `analysis.md` must contain `## Verdict`, `## Step 1`, `## Step 2`, `## Step 3`, `## Explanation` and `## Framework value` (what only subplex showed, and where subplex fell short).
   - It holds before/after values for exactly those quantities.
   - The leaderboard marks experiments without it as "not explained".
+- Every subplex command you run is recorded automatically (`autoloop/framework_usage/`) and summarised in `autoloop/FRAMEWORK_REPORT.md`. Use subplex deliberately, because this is the evidence for the framework.
+- If subplex lacks something you need, write it into `autoloop/SUBPLEX_FEEDBACK.md`.
 - **Confirmed** means the score moved *and* the predicted framework quantities moved. Score only = inconclusive; framework only = a real finding, worth reporting even when the score does not move.
 
 ## 10. Idea backlog (ordered by expected value; challenge it)
@@ -230,7 +237,9 @@ uv run --frozen python -m subplex.external_model --name <run_id> --architecture 
 4. **SUMO-style operator supervision** (`subplan_estimation`, weighted operator loss, softplus sum). Targets training-target support.
 5. **Learn from timeouts** (`include_timeout_queries`, `learn_from_timeout`), so that bad plans are not dropped.
 6. **Ranking-validation checkpoint selection** (section 6). Makes every later comparison honest.
-7. Tail control: an asymmetric or quantile loss against both-sided tail errors.
-8. Only after the above: hidden_dim, lr, batch size and epochs.
+7. **Training-data tuning guided by step 7.** Find the failure modes whose subplans have no labelled training twin, or whose training databases disagree with IMDB. Add, drop or reweight the workloads that cover them (hinted, scan-only, complex, many-joins), and show the support change with `evidence_for`.
+8. **Localise JIT cost** (parsed_plans50: `jit_compiled_here` / `jit_functions` as node inputs, the cost on the compiling node only). Measure it on step 2 tiny-scan slices and step 3 JIT on/off, then check whether picks change.
+9. Tail control: an asymmetric or quantile loss against both-sided tail errors.
+10. Only after the above: hidden_dim, lr, batch size and epochs.
 
 Combine ideas only after each has been shown to help alone.

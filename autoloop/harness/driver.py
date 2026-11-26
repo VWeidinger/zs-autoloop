@@ -77,6 +77,21 @@ def _experiment_runs_ended(cfg: Config, exp: str) -> bool:
     return all(s in ("finished", "failed", "killed", "launch_failed") for s in sts)
 
 
+def _commit_generated(cfg: Config, dry_run: bool = False) -> None:
+    """Regenerate LEADERBOARD.md / FRAMEWORK_REPORT.md and commit them with the framework usage log."""
+    from . import framework_trace
+    if dry_run:
+        return
+    (cfg.autoloop_dir / "LEADERBOARD.md").write_text(evaluate.leaderboard(cfg))
+    (cfg.autoloop_dir / "FRAMEWORK_REPORT.md").write_text(framework_trace.report(cfg))
+    paths = ["autoloop/LEADERBOARD.md", "autoloop/FRAMEWORK_REPORT.md", "autoloop/framework_usage"]
+    git = ["git", "-C", str(cfg.repo)]
+    subprocess.run(git + ["add", "--", *paths], capture_output=True)
+    if subprocess.run(git + ["diff", "--cached", "--quiet"]).returncode != 0:
+        subprocess.run(git + ["commit", "-q", "-m", "autoloop: leaderboard, framework report, framework usage log"],
+                       capture_output=True)
+
+
 def push_progress(cfg: Config, dry_run: bool = False) -> Optional[str]:
     """Push the agent's local commits (main + agent/* branches) to origin after every phase.
 
@@ -151,6 +166,7 @@ def step(cfg: Config, run: Runner, dry_run: bool = False, history=watcher.wandb_
                                      subplex_root=cfg.agent_root / "subplex",
                                      status=_status_text(cfg), budget_left=_budget_left(cfg))
         agent.run_phase(cfg, f"analyse-{exp}", prompt, dry_run=dry_run)
+        _commit_generated(cfg, dry_run)
         push_progress(cfg, dry_run)
         rnd["analysed"].append(exp)
         save_state(cfg, st)
@@ -165,6 +181,7 @@ def step(cfg: Config, run: Runner, dry_run: bool = False, history=watcher.wandb_
             status=_status_text(cfg), budget_left=_budget_left(cfg), review=review,
             subplex_root=cfg.agent_root / "subplex")
         agent.run_phase(cfg, f"plan-r{st['round']}", prompt, dry_run=dry_run)
+        _commit_generated(cfg, dry_run)
         push_progress(cfg, dry_run)
         done_before = [e for r in st["rounds"].values() for e in r["experiments"]]
         specs = ready_specs(cfg, exclude=done_before)

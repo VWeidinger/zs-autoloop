@@ -29,7 +29,7 @@ class SpecError(ValueError):
 # The research goal is to improve the model THROUGH the subplex framework: every experiment names the
 # framework finding it targets (step 1 where, step 2 what, step 3 why) and the change it predicts there.
 HYPOTHESIS_SECTIONS = ["## Step 1", "## Step 2", "## Step 3", "## Change", "## Predicted framework change"]
-ANALYSIS_SECTIONS = ["## Step 1", "## Step 2", "## Step 3", "## Explanation", "## Verdict"]
+ANALYSIS_SECTIONS = ["## Verdict", "## Step 1", "## Step 2", "## Step 3", "## Explanation", "## Framework value"]
 
 
 def framework_errors(path: Path, sections: List[str], min_chars: int = 40) -> List[str]:

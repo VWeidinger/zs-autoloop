@@ -25,6 +25,7 @@ def main(argv=None) -> int:
     v.add_argument("spec", type=Path)
     sub.add_parser("status", help="runs, driver state, budget (offline)")
     sub.add_parser("leaderboard", help="regenerate autoloop/LEADERBOARD.md (offline)")
+    sub.add_parser("framework-report", help="regenerate autoloop/FRAMEWORK_REPORT.md (offline)")
     e = sub.add_parser("evaluate", help="selection metrics of an evaluation dir (offline)")
     e.add_argument("eval_dir", type=Path)
     p = sub.add_parser("probe", help="show GPU state on all nodes (ssh)")
@@ -57,6 +58,10 @@ def main(argv=None) -> int:
         return 0
     if a.cmd == "leaderboard":
         (cfg.autoloop_dir / "LEADERBOARD.md").write_text(evaluate.leaderboard(cfg))
+        return 0
+    if a.cmd == "framework-report":
+        from . import framework_trace
+        (cfg.autoloop_dir / "FRAMEWORK_REPORT.md").write_text(framework_trace.report(cfg))
         return 0
     if a.cmd == "evaluate":
         print(json.dumps(evaluate.evaluate_dir(cfg, a.eval_dir), indent=1, default=str))

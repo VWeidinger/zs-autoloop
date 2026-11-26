@@ -19,3 +19,8 @@ cause you named, or did the score move for another reason?
 ## Explanation
 Why the change helped or did not, told through steps 1 to 3, plus side effects on other benchmarks
 and what remains wrong.
+
+## Framework value
+What subplex showed that the score alone would not have: the failure mode, the cause, a side effect, or
+a reason the change worked differently than expected. Also note where subplex fell short: what you would
+have needed and could not get. This section is collected for the thesis.

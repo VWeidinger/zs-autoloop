@@ -84,8 +84,13 @@ loop:
 
 agent:
   cli: codex                 # codex | claude
-  model: gpt-5.6-terra
-  escalation_model: gpt-5.6-sol
+  model: gpt-5.6-sol         # fallback
+  # research quality matters most: the strongest model for both phases at the start; after the first
+  # review the ledger shows the real cost per phase, then ANALYSE can move to terra if it is fine there
+  phase_models:
+    plan: gpt-5.6-sol
+    analyse: gpt-5.6-sol
+  reasoning_effort: high     # codex model_reasoning_effort (low | medium | high)
   phase_timeout_min: 60
   # command templates; {model} {repo} {agent_root} {prompt_file} are filled in
   # Codex's own sandbox needs bubblewrap + user namespaces, which AppArmor blocks here and which only an
@@ -100,7 +105,7 @@ agent:
     extra_rw: []
   commands:
     codex: ["python3", "-m", "autoloop.harness.sandbox", "--profile", "agent", "--",
-            "codex", "exec", "--json", "-m", "{model}", "-C", "{repo}",
+            "codex", "exec", "--json", "-m", "{model}", "-c", "model_reasoning_effort={effort}", "-C", "{repo}",
             "--dangerously-bypass-approvals-and-sandbox", "-"]
     claude: ["claude", "-p", "--output-format", "json", "--model", "{model}",
              "--max-turns", "80"]

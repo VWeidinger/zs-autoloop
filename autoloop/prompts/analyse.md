@@ -23,7 +23,8 @@ Do this:
 3. If the run was killed, use the gate verdicts in runs/<run>/state.json and train.log to decide
    whether the idea or the gate was wrong. Its subplex output exists if a checkpoint was written.
 4. Write autoloop/experiments/{{experiment}}/analysis.md from the template, with all sections: Verdict,
-   Step 1, Step 2, Step 3, Explanation.
+   Step 1, Step 2, Step 3, Explanation, Framework value. Framework value covers what only subplex showed,
+   and where it fell short. If something was missing, add a proposal to autoloop/SUBPLEX_FEEDBACK.md.
    - The explanation must say whether the change acted through the cause you named in step 3. A score
      gain without the predicted framework change is "inconclusive", not "confirmed".
    - The leaderboard marks an experiment without a complete analysis.md as not explained.

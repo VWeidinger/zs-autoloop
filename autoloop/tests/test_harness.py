@@ -298,7 +298,7 @@ def test_leaderboard_marks_unexplained(cfg):
                           evaluate.load_reference(cfg))
     assert "NO - not a result yet" in evaluate.leaderboard(cfg)
     (exp / "analysis.md").write_text("\n".join(f"{h}\n{'y' * 60}\n" for h in
-                                               ["## Verdict", "## Step 1", "## Step 2", "## Step 3", "## Explanation"]))
+                                               ["## Verdict", "## Step 1", "## Step 2", "## Step 3", "## Explanation", "## Framework value"]))
     assert "| yes |" in evaluate.leaderboard(cfg)
 
 
@@ -329,3 +329,24 @@ def test_sandbox_blocks_secrets_and_allows_repo(tmp_path):
                        cwd=Path(__file__).resolve().parents[2], capture_output=True, text=True, timeout=60)
     assert r.returncode == 0, r.stderr
     assert allowed.read_text() == "x"
+
+
+# --- framework usage tracing --------------------------------------------------------------------
+
+def test_framework_trace_classifies_codex_commands(cfg):
+    from autoloop.harness import framework_trace as ft
+    log = "\n".join(json.dumps({"type": "item.completed", "item": {"type": "command_execution", "command": c,
+                                                                    "exit_code": 0}}) for c in [
+        "cat /mnt/labstore/vweidinger/agent_zs-autoloop/subplex/e002-s9/report/summary.json",
+        "head subplex/_reference/ref-zs-pg_opt/report/decisive_job_w_optimal_w_idxs.csv",
+        "uv run python -m subplex.step4.emm --model e002-s9 --dataset subplex_join_order",
+        "sed -n 1,80p ~/subplex/tmp_with_jit/step6/REPORT.md",
+        "uv run python - <<EOF\nfrom subplex.step7.training_evidence import evidence_for\nEOF",
+        "git status --short",
+    ])
+    steps = [r["step"] for r in ft.extract(log)]
+    assert steps == ["step1-where", "step1-where", "step2-what (step4)", "step3-why (step5/6)",
+                     "step3-training (step7)"]
+    ft.record_phase(cfg, "analyse-e002-x", "20261126-000000", log)
+    rep = ft.report(cfg)
+    assert "analyse-e002-x | 2 | 1 | 1 | 1 |" in rep and "e000-baseline-pgopt-proxy" in rep
