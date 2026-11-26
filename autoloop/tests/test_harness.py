@@ -264,3 +264,44 @@ def test_leaderboard_shows_every_benchmark(cfg, tmp_path):
 def test_inner_script_pins_shared_interpreter(cfg):
     inner = command.inner_script(cfg, _spec(cfg), 9, cfg.agent_root / "venvs" / "x")
     assert f"--python {cfg['cluster']['python']}" in inner and "UV_PYTHON_INSTALL_DIR" in inner
+
+
+# --- framework enforcement ----------------------------------------------------------------------
+
+def _agent_exp(cfg, hypothesis_text):
+    d = cfg.experiments_dir / "e002-log-card"
+    d.mkdir()
+    spec = yaml.safe_load((cfg.experiments_dir / "e000-baseline-pgopt-proxy" / "spec.yaml").read_text())
+    spec.update(id="e002-log-card", branch="agent/e002-log-card")
+    (d / "spec.yaml").write_text(yaml.safe_dump(spec))
+    (d / "hypothesis.md").write_text(hypothesis_text)
+    return load_spec(d / "spec.yaml")
+
+
+def test_hypothesis_without_framework_sections_is_rejected(cfg):
+    s = _agent_exp(cfg, "# e002\nLog cards should help.\n")
+    errs = validate_spec(s, cfg)
+    assert any("## Step 1" in e for e in errs) and any("## Predicted framework change" in e for e in errs)
+
+
+def test_template_shaped_hypothesis_is_accepted(cfg):
+    body = "x" * 60
+    text = "\n".join(f"{h}\n{body}\n" for h in
+                     ["## Step 1 - where", "## Step 2 - what", "## Step 3 - why", "## Change",
+                      "## Predicted framework change"])
+    assert validate_spec(_agent_exp(cfg, text), cfg) == []
+
+
+def test_leaderboard_marks_unexplained(cfg):
+    exp = cfg.experiments_dir / "e000-baseline-pgopt-proxy"
+    evaluate.write_result(cfg, exp, {"e000-baseline-pgopt-proxy-s9": {"score": 1.2, "ratios": {"join_order": 1.0}}},
+                          evaluate.load_reference(cfg))
+    assert "NO - not a result yet" in evaluate.leaderboard(cfg)
+    (exp / "analysis.md").write_text("\n".join(f"{h}\n{'y' * 60}\n" for h in
+                                               ["## Verdict", "## Step 1", "## Step 2", "## Step 3", "## Explanation"]))
+    assert "| yes |" in evaluate.leaderboard(cfg)
+
+
+def test_inner_script_reuses_prebuilt_venv(cfg):
+    inner = command.inner_script(cfg, _spec(cfg), 9, cfg.agent_root / "venvs" / "x")
+    assert "[ -x " in inner and "|| flock" in inner

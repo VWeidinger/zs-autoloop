@@ -39,6 +39,8 @@ def main(argv=None) -> int:
     d.add_argument("--dry-run", action="store_true", help="no ssh, no agent, no wandb; print prompts")
     d.add_argument("--max-steps", type=int, default=None)
     sub.add_parser("pause", help="stop the driver at its next tick (trainings continue)")
+    rd = sub.add_parser("reference-diagnosis", help="subplex steps 1-2 of the reference models (CPU, existing annotations)")
+    rd.add_argument("--dry-run", action="store_true")
     r = sub.add_parser("resume")
     r.add_argument("--force", action="store_true")
     a = ap.parse_args(argv)
@@ -63,6 +65,11 @@ def main(argv=None) -> int:
         cfg.state_dir.mkdir(parents=True, exist_ok=True)
         (cfg.state_dir / "STOP").touch()
         print("driver will stop at its next tick; trainings keep running")
+        return 0
+    if a.cmd == "reference-diagnosis":
+        from . import subplex_analysis
+        for k, v in subplex_analysis.reference_diagnosis(cfg, dry_run=a.dry_run).items():
+            print(k, v)
         return 0
     if a.cmd == "resume":
         print(driver.resume(cfg, force=a.force))

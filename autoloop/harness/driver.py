@@ -145,7 +145,8 @@ def step(cfg: Config, run: Runner, dry_run: bool = False, history=watcher.wandb_
         prompt = agent.render_prompt(
             "plan", round=st["round"], max_runs=cfg["loop"]["max_runs_per_round"],
             max_full=cfg["loop"]["max_full_runs_per_round"], next_id=f"e{next_experiment_number(cfg):03d}",
-            status=_status_text(cfg), budget_left=_budget_left(cfg), review=review)
+            status=_status_text(cfg), budget_left=_budget_left(cfg), review=review,
+            subplex_root=cfg.agent_root / "subplex")
         agent.run_phase(cfg, f"plan-r{st['round']}", prompt, dry_run=dry_run)
         done_before = [e for r in st["rounds"].values() for e in r["experiments"]]
         specs = ready_specs(cfg, exclude=done_before)

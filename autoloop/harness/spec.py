@@ -26,6 +26,30 @@ class SpecError(ValueError):
     pass
 
 
+# The research goal is to improve the model THROUGH the subplex framework: every experiment names the
+# framework finding it targets (step 1 where, step 2 what, step 3 why) and the change it predicts there.
+HYPOTHESIS_SECTIONS = ["## Step 1", "## Step 2", "## Step 3", "## Change", "## Predicted framework change"]
+ANALYSIS_SECTIONS = ["## Step 1", "## Step 2", "## Step 3", "## Explanation", "## Verdict"]
+
+
+def framework_errors(path: Path, sections: List[str], min_chars: int = 40) -> List[str]:
+    """Missing or empty framework sections in hypothesis.md / analysis.md."""
+    if not path.exists():
+        return [f"{path.name} is missing"]
+    text = path.read_text()
+    errs = []
+    for i, head in enumerate(sections):
+        pos = text.find(head)
+        if pos < 0:
+            errs.append(f"{path.name}: section '{head}' missing")
+            continue
+        rest = text[pos + len(head):]
+        nxt = min([rest.find(h) for h in sections if rest.find(h) > 0] + [len(rest)])
+        if len(rest[:nxt].strip()) < min_chars:
+            errs.append(f"{path.name}: section '{head}' is empty")
+    return errs
+
+
 @dataclass
 class Gate:
     epoch: int
@@ -150,6 +174,8 @@ def validate_spec(spec: Spec, cfg: Config, check_files: bool = True) -> List[str
             errs.append(f"gate ref {g.ref!r} has no baselines/{g.ref}.json")
         # gates may use the per-epoch IMDB benchmark curves: they only ever ABORT a run,
         # they never select a checkpoint or a winner, so they do not leak the test set.
+    if spec.path is not None and spec.id.startswith("e") and not spec.id.startswith(("e000-", "e001-")):
+        errs += framework_errors(spec.path.parent / "hypothesis.md", HYPOTHESIS_SECTIONS)
     if spec.tier == "full" and not spec.parent:
         errs.append("a full run must name the proxy experiment it promotes (parent)")
     return errs

@@ -46,8 +46,9 @@ def analysis_command(cfg: Config, spec: Spec, seed: int, stages: Optional[List[s
         cmd.append("--ppv50")
     if "reproducible_message_passing" not in spec.model_type:
         cmd.append("--batch-independent")
-    if stages:
-        cmd += ["--stages", *stages]
+    if stages is None:
+        stages = ["annotate-benchmarks", "annotate-subplans", "report", "step4"] + (["step3"] if s.get("step3") else [])
+    cmd += ["--stages", *stages]
     return cmd
 
 
@@ -65,3 +66,66 @@ def run_analysis(cfg: Config, spec: Spec, seed: int, gpu: str, dry_run: bool = F
     summary = root / "report" / "summary.json"
     return {"returncode": code, "summary": str(summary) if summary.exists() else None,
             "log": str(root / "analysis.log")}
+
+
+# --- reference diagnosis: steps 1-2 of the reference models, from their existing annotations ----------
+
+LDB = Path("/mnt/labstore/vweidinger/subplex/learned_db")
+REFERENCE_MODELS = {
+    # short name: (registry name, checkpoint, architecture, ppv50, batch_independent)
+    "ref-zs-pg_opt": ("pm-zeroshot-pg_opt",
+                      "/mnt/labstore/SIGs/ML/learned_db/models/pm-zeroshot-pg_opt/imdb/pm-zeroshot-pg_opt_9.pt",
+                      "pm-zeroshot-include_pg_opt_workloads-join_repr_modesum", False, True),
+    "ref-zs-ppv50-jit": ("pm-zeroshot-pg_opt-RMP-epochs200-limitpf10050-PPV50-JIT",
+                         str(LDB / "models/pm-zeroshot-pg_opt-RMP-epochs200-limitpf10050-PPV50-JIT/imdb/"
+                                   "pm-zeroshot-pg_opt-RMP-epochs200-limitpf10050-PPV50-JIT_9.pt"),
+                         "pm-zeroshot-include_pg_opt_workloads-reproducible_message_passing-epochs200"
+                         "-limit_plans_per_file10050-parsed_plans_version50-use_jit_features", True, False),
+    "ref-sumo-ppv50-jit": ("pm-zs_sumo-hi-PostgresEstLoopsIdxCond-hidden_dim256-subpW10-RMP-epochs20-limitpf10050-PPV50-JIT",
+                           str(LDB / "models/pm-zs_sumo-hi-PostgresEstLoopsIdxCond-hidden_dim256-subpW10-RMP-epochs20"
+                                     "-limitpf10050-PPV50-JIT/imdb/pm-zs_sumo-hi-PostgresEstLoopsIdxCond-hidden_dim256"
+                                     "-subpW10-RMP-epochs20-limitpf10050-PPV50-JIT_9.pt"),
+                           "pm-zs_sumo-include_hint_idx_workloads-PostgresEstLoopsIdxCond-hidden_dim256-subplan_weight10"
+                           "-reproducible_message_passing-epochs20-limit_plans_per_file10050-parsed_plans_version50"
+                           "-use_jit_features", True, False),
+}
+
+
+def reference_diagnosis(cfg: Config, dry_run: bool = False) -> Dict[str, str]:
+    """Steps 1-2 (CPU) for the reference models into <agent_root>/subplex/_reference/<short>/.
+
+    Their existing annotations are linked (read-only), nothing is re-predicted. Step 3 of the
+    reference Zero-Shot exists already in ~/subplex/tmp_with_jit/step6/ (REPORT.md, counterfactual/)."""
+    results = {}
+    for short, (registry, ckpt, arch, ppv50, bi) in REFERENCE_MODELS.items():
+        root = cfg.agent_root / "subplex" / "_reference" / short
+        src = LDB / "annotate_subplans" / registry
+        dst = root / "annotate_subplans" / short
+        cmd = [cfg["subplex"]["uv"], "run", "--frozen", "--project", cfg["subplex"]["repo"], "python", "-m",
+               "subplex.external_model", "--name", short, "--architecture", arch, "--checkpoint", ckpt,
+               "--out-root", str(root), "--stages", "report", "step4",
+               "--subplan-datasets", *cfg["subplex"]["subplan_datasets"]]
+        if registry != cfg["subplex"]["reference_pp3"]:
+            cmd += ["--reference", cfg["subplex"]["reference_pp3"]]
+        if ppv50:
+            cmd.append("--ppv50")
+        if bi:
+            cmd.append("--batch-independent")
+        if dry_run:
+            results[short] = " ".join(cmd)
+            continue
+        (dst / "benchmarks").mkdir(parents=True, exist_ok=True)
+        for f in list((src / "benchmarks").glob("*.candidates.csv.gz")) + list((src / "benchmarks").glob("subplex_*.json")):
+            link = dst / "benchmarks" / f.name
+            if not link.exists():
+                link.symlink_to(f)
+        for ds in cfg["subplex"]["subplan_datasets"]:
+            link = dst / f"{ds}.json"
+            if not link.exists() and (src / f"{ds}.json").exists():
+                link.symlink_to(src / f"{ds}.json")
+        env = {**os.environ, "SUBPLEX_TMP_DIR": str(root / "tmp"), "CUDA_VISIBLE_DEVICES": ""}
+        with open(root / "analysis.log", "w") as log:
+            code = subprocess.run(cmd, stdout=log, stderr=subprocess.STDOUT, env=env,
+                                  cwd=cfg["subplex"]["repo"]).returncode
+        results[short] = f"exit {code}: {root}"
+    return results

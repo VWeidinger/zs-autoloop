@@ -65,7 +65,8 @@ subplex:
   repo: /home/vweidinger/subplex
   uv: uv
   local_host: c02            # the driver runs the (minutes-long) annotation on a free GPU here, else CPU
-  timeout_min: 90
+  timeout_min: 120
+  step3: true               # counterfactual elasticities (GPU, ~10-30 min)
   subplan_datasets: [subplex_complex_workload_200k_s1]   # add subplex_workload_200k_s1 for the full 200k (slower)
   # registry models whose benchmark annotations exist; picks are compared statement by statement
   reference_pp3: pm-zeroshot-pg_opt
@@ -93,12 +94,10 @@ agent:
 budget:
   total_usd: 100
   max_usd_per_phase: 10
-  # USD per 1M tokens. CONSERVATIVE DEFAULTS (the higher of the published list prices, 2026-07..11;
-  # cached input assumed at 10 % of input). Real bills are likely lower; the key cannot report prices
-  # or usage (that needs an organization admin key), so this ledger is the only spend record.
-  # The driver refuses to call a model that has no price here.
+  # USD per 1M tokens, current list prices (OpenAI, after the 2026-07-30 price change; cached input
+  # at 10 % of input). The key cannot report usage, so this ledger is the spend record.
   prices:
-    gpt-5.6-terra: {input: 2.50, cached_input: 0.25, output: 15.00}
+    gpt-5.6-terra: {input: 2.00, cached_input: 0.20, output: 12.00}
     gpt-5.6-sol:   {input: 5.00, cached_input: 0.50, output: 30.00}
 
 notify:

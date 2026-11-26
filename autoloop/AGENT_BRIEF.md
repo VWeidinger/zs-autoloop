@@ -1,9 +1,19 @@
-# Agent brief: make Zero-Shot pick better plans
+# Agent brief: improve Zero-Shot's plan selection *through* the subplex framework
 
 You improve the Zero-Shot learned cost model in this repository (a private copy of `ldb_models`) so
-that it **selects better query plans** on IMDB. You work in rounds: propose experiments, implement
-them on branches, let the harness train them on the GPU cluster, read the results, and learn.
-Training is slow (up to ~9 h for a full run), so think before you spend a run.
+that it **selects better query plans** on IMDB.
+
+**The research question is not "can a model get better" but "does the subplex framework show what
+is wrong and why a change helps".** Every experiment therefore runs the same cycle:
+1. **diagnose** with subplex steps 1–3;
+2. **target** one diagnosed failure mode;
+3. **change** the model or training;
+4. **re-run** subplex;
+5. **explain** the result through the same subplex quantities.
+
+A better score that the framework cannot explain is not a result (section 9).
+
+You work in rounds. Training is slow (up to ~9 h for a full run), so think before you spend a run.
 
 ## 1. Objective: per benchmark
 
@@ -140,7 +150,7 @@ it is a good early experiment, because it unlocks honest checkpoint selection.
 
 ## 8. How to run an experiment
 
-1. Pick **one** hypothesis tied to a finding above. Write `autoloop/experiments/<id>/hypothesis.md` covering: the finding, the change, the predicted effect on the score and on Q-error, and what would refute it.
+1. **Diagnose, then target.** Choose ONE failure mode from the subplex diagnosis (section 9). Write `autoloop/experiments/<id>/hypothesis.md` from `autoloop/experiments/_template/hypothesis.md`, with the three framework steps, the change, and the predicted framework change.
 2. Implement the change in a git worktree: `git worktree add worktrees/<id> -b agent/<id> main`. Commit it there. Keep changes small and behind config flags so the baseline is unaffected.
 3. Smoke-test on CPU in the worktree. Use a tiny `--cap_training_samples`, 1 epoch, ≤ 10 min, and write into `/mnt/labstore/vweidinger/agent_zs-autoloop/scratch/`.
 4. Write `autoloop/experiments/<id>/spec.yaml` from `autoloop/experiments/_template/spec.yaml`, with `branch: agent/<id>` and `status: ready`. Run `python -m autoloop.harness validate autoloop/experiments/<id>/spec.yaml`.
@@ -151,60 +161,66 @@ it is a good early experiment, because it unlocks honest checkpoint selection.
    - `full`: ≤ 200 epochs, ≤ 2 seeds, about 9 h. Only promote a proxy that beat the baseline proxy, and set `parent: <proxy id>`.
 7. Commit the experiment folder on `main` ("e00X: hypothesis + spec").
 
-After a run, the harness writes `autoloop/experiments/<id>/result.json` and the driver asks you to analyse it.
-Write `analysis.md` (confirmed / refuted / inconclusive, and why), append ≤ 8 lines to
-`autoloop/NOTEBOOK.md`, and commit.
+After a run, the harness writes `autoloop/experiments/<id>/result.json` and runs subplex steps 1–3 on it. The driver then asks you
+to analyse it. Write `analysis.md` from the template (section 9), append ≤ 8 lines to `autoloop/NOTEBOOK.md`, and commit.
 
-## 9. Using subplex, the analysis framework (this is how you learn *why*)
+## 9. The subplex framework: three steps for every experiment
 
-subplex (`/home/vweidinger/subplex`) is the framework that produced every finding in section 4. The
-harness runs it on every finished run, and on killed runs that have a checkpoint, **before** it calls
-you to analyse. It uses `python -m subplex.external_model`, which runs the subplex steps on any
-checkpoint. Output: `/mnt/labstore/vweidinger/agent_zs-autoloop/subplex/<run_id>/`.
+subplex (`/home/vweidinger/subplex`) produced every finding in section 4. It analyses a model in
+three steps. The code folder names do not match the step numbers; the mapping is in brackets.
 
-| file | subplex step | what it tells you |
-|---|---|---|
-| `report/summary.json` | step 1 | Per benchmark: slowdown, wrong picks, and **diagnosis counts** (`selected plan under-estimated` / `optimal plan over-estimated` / both / `too close to rank`). Also better/worse/same statements vs the reference model. |
-| `report/overview.csv` | step 1 | The new model next to the reference: optimal, selected, PostgreSQL-cost choice, unhinted. |
-| `report/critical_<b>.csv` | step 1 | The wrong picks that make up 80% of the runtime lost: slowdown, rank of the picked plan, diagnosis. |
-| `report/flips_<b>.csv` | step 1 | Statement by statement: did this model pick better or worse than the reference, and by how many seconds. |
-| `report/compare_<b>_worst<k>_step<n>.csv` | step 1 | **Node by node**, the selected vs the optimal plan of the worst picks: operator, actual and estimated cardinality, actual time vs the model's prediction. This shows the node where the ranking flips. |
-| `annotate_subplans/<run_id>/subplex_complex_workload_200k_s1.json` | step 2 | The model's prediction on every subplan of the IMDB complex workload. |
-| `tmp/step4/<run_id>/...` and `curve.log`, `diagnose.log` | step 4 | Where on the subplans the error sits: error curve per operator/slice, shape diagnosis. |
+| step | question | subplex code | computed for every run (harness) | files in `<run>/` |
+|---|---|---|---|---|
+| **1 – where** | Which picks fail, per benchmark, and at which node of the plan is the pick decided wrongly? | `step1.benchmark_selection` | yes | `report/summary.json`, `decisive_<b>.csv`, `critical_<b>.csv`, `flips_<b>.csv`, `compare_<b>_worst<k>_*.csv` |
+| **2 – what** | How does the model behave on those subplans: which slices are under- or over-estimated, and by how much, along the runtime curve? | `step4` (curve, emm, recalibration, diagnose) | yes: curve for each benchmark's subplans and IMDB complex | `tmp/step4/<run>/subplex_<benchmark>/`, `tmp/step4/<run>/subplex_complex_workload_200k_s1/` |
+| **3 – why** | Which input or training cause drives it: elasticities to est_card / table size / operator, missing training support, feature scaling? | `step6.counterfactual` (also step5 input gap, step6 surrogate, step7 training evidence) | yes: counterfactual on IMDB complex | `tmp/step6/counterfactual/<run>/subplex_complex_workload_200k_s1/` |
 
-**Further subplex analyses you may run yourself (CPU only, on your run's annotations):**
+`<run>` = `/mnt/labstore/vweidinger/agent_zs-autoloop/subplex/<run_id>/`. The same analysis exists for
+the reference models in `.../subplex/_reference/{ref-zs-pg_opt, ref-zs-ppv50-jit, ref-sumo-ppv50-jit}/`
+(steps 1–2). Step 3 of the reference Zero-Shot is in
+`~/subplex/tmp_with_jit/step6/REPORT.md` and `~/subplex/tmp_with_jit/step6/counterfactual/pm-zeroshot-pg_opt/`.
+
+**Step 1 in detail.**
+- `summary.json`, per benchmark: wrong picks (and the reference's), diagnosis counts (`selected plan under-estimated`, `optimal plan over-estimated`, both, `too close to rank`, plus the reference's counts), better/worse/same statements vs the reference, and `decisive`.
+- **The decisive node** of a wrong pick is the topmost node where the two plans choose a different operator and the model ranks the selected subtree cheaper although it is slower. `decisive` gives the top operator pairs, the seconds lost per pair, the median time error of both sides (log10 est/act, so < 0 means under-estimated), and the share of picks with a > 10× cardinality error at that node.
+- **The reference diagnosis (Zero-Shot PPV50-JIT), for orientation:**
+  - Access path: lost mainly on "Index Scan vs Seq Scan" (74 s). The Index Scan is under-estimated by 0.21 dex, with no cardinality error, so this is a model bias.
+  - JOB and JOB-complex: "(Index) Nested Loop vs Hash Join". The selected side is under-estimated by up to 1.4 dex, with cardinality errors > 10× in 83–90% of the picks, so this is driven by cardinality estimates.
+  - Physical operator with indexes: "Merge Join vs Hash Join".
+
+**Commands you may run yourself (CPU only, on your runs' outputs):**
 
 ```bash
 cd /home/vweidinger/subplex
 R=/mnt/labstore/vweidinger/agent_zs-autoloop/subplex/<run_id>
 export SUBPLEX_TMP_DIR=$R/tmp          # all subplex output stays in your area
-uv run --frozen python -m subplex.step4.curve    --model <run_id> --dataset subplex_complex_workload_200k_s1 --subplans-dir $R/annotate_subplans
-uv run --frozen python -m subplex.step4.emm      --model <run_id> --dataset subplex_complex_workload_200k_s1 --subplans-dir $R/annotate_subplans   # slices where the model is exceptionally wrong
+# step 2, deeper: exceptional slices, calibration, shape diagnosis (dataset = subplex_<benchmark> or subplex_complex_workload_200k_s1)
+uv run --frozen python -m subplex.step4.emm      --model <run_id> --dataset subplex_job_w_optimal_w_idxs --subplans-dir $R/annotate_subplans
 uv run --frozen python -m subplex.step4.recalibration --run <run_id>=$R/annotate_subplans --dataset subplex_complex_workload_200k_s1
 uv run --frozen python -m subplex.step4.diagnose --model <run_id> --dataset subplex_complex_workload_200k_s1 --subplans-dir $R/annotate_subplans
-# re-run only the step-1 report, e.g. against a different reference (no GPU):
+# step 1 again, against another reference (no GPU)
 uv run --frozen python -m subplex.external_model --name <run_id> --architecture <model_type> \
     --model-dir /mnt/labstore/vweidinger/agent_zs-autoloop/models/<run_id> --out-root $R --stages report \
     --reference pm-zs_sumo-hi-PostgresEstLoopsIdxCond-hidden_dim256-subpW10-RMP-epochs20-limitpf10050-PPV50-JIT
 ```
 
-In Python, `subplex.step1.benchmark_selection` gives the objects behind the report.
-`load_benchmark(model, benchmark)` returns a `BenchmarkRun`, whose `.steps` carry `.selected`,
-`.optimal`, `.diagnosis`, `.selected_rank` and `.regret_ms`. `compare_plans(selected_plan,
-optimal_plan)` gives the node table. Register your run first with `subplex.external_model.register`,
-or call `external_model.main([... "--stages", "report"])`.
-
-**Reference models for comparison:** `pm-zeroshot-pg_opt` (pp3), `pm-zeroshot-pg_opt-RMP-epochs200-limitpf10050-PPV50-JIT` and `pm-zs_sumo-hi-PostgresEstLoopsIdxCond-hidden_dim256-subpW10-RMP-epochs20-limitpf10050-PPV50-JIT` (pp50). Their annotations are read-only.
+- **Python access:** `subplex.step1.benchmark_selection.load_benchmark(model, benchmark)` returns a `BenchmarkRun`. Its `.steps` carry `.selected`, `.optimal`, `.diagnosis`, `.selected_rank` and `.regret_ms`, and `compare_plans(sel, opt)` gives the node table.
+- **Registering a run first:** do it via `subplex.external_model` (`--stages report`).
+- **Reference models available for comparison:** `pm-zeroshot-pg_opt`, `pm-zeroshot-pg_opt-RMP-epochs200-limitpf10050-PPV50-JIT`, `pm-zs_sumo-hi-PostgresEstLoopsIdxCond-hidden_dim256-subpW10-RMP-epochs20-limitpf10050-PPV50-JIT`.
 
 **Rules for subplex:**
-- Never run its GPU stages (`annotate-*`) yourself; the harness does that.
-- Never write into `/mnt/labstore/vweidinger/subplex/`.
-- Do not run subplex modules on the reference models, because that writes caches next to their files. Compare through `--reference` instead.
+- Never run its GPU stages (`annotate-*`, `step3`) yourself; the harness does that.
+- Never write into `/mnt/labstore/vweidinger/subplex/` or `~/subplex/tmp*`.
+- Do not run subplex modules directly on the registry models, because that writes caches next to their files. Use `_reference/` and `--reference` instead.
 
-**How to use it in a hypothesis:**
-- State which diagnosis count, flip set or step-4 slice your change should move. Example: "the 33 JOB picks diagnosed `selected plan under-estimated` should drop, because ...".
-- In the analysis, check exactly that.
-- A score change that does not come with the predicted change in subplex terms is not a confirmation.
+**How the framework enters every experiment (enforced):**
+- `hypothesis.md` must contain the sections `## Step 1`, `## Step 2`, `## Step 3`, `## Change` and `## Predicted framework change`. The harness rejects the spec otherwise.
+  - Each step section names its subplex evidence: file and numbers.
+  - The prediction table says which step-1, step-2 and step-3 quantities the change will move, and by how much.
+- `analysis.md` must contain `## Verdict`, `## Step 1`, `## Step 2`, `## Step 3` and `## Explanation`.
+  - It holds before/after values for exactly those quantities.
+  - The leaderboard marks experiments without it as "not explained".
+- **Confirmed** means the score moved *and* the predicted framework quantities moved. Score only = inconclusive; framework only = a real finding, worth reporting even when the score does not move.
 
 ## 10. Idea backlog (ordered by expected value; challenge it)
 

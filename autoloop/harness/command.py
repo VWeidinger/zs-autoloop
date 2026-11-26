@@ -73,7 +73,8 @@ export PYTHONHASHSEED=0
 export WANDB_RUN_GROUP={cfg['wandb']['group']}
 # one venv per uv.lock hash on labstore; the first run builds it, the others wait on the lock
 mkdir -p {venv.parent}
-flock {venv}.lock {uv} sync --frozen --no-install-project --project {code} --python {cfg['cluster']['python']}
+# built once on c02 (needs git credentials for ldb_schema); nodes only use it
+[ -x {venv}/bin/python ] || flock {venv}.lock {uv} sync --frozen --no-install-project --project {code} --python {cfg['cluster']['python']}
 cd {code}/src/ldb_models
 {uv} run --frozen --no-sync --project {code} {cmd}
 """

@@ -57,12 +57,26 @@ python3 -m autoloop.harness resume                        # after writing autolo
 
 ## Setup state (2026-11-26)
 
-- [x] Repository pushed to `VWeidinger/zs-autoloop`. Lab tokens were removed from the whole history; uv reads `ldb_schema` access from `~/.git-credentials`.
-- [x] Codex CLI 0.172.0 is in `~/.local/bin/codex` and logged in with the API key (`~/.codex/auth.json`, mode 600).
-- [x] The shared venv is at `<agent_root>/venvs/3fedfb092158`, on a labstore interpreter (`<agent_root>/python`), so every node can use it.
-- [x] Prices: conservative defaults in the config. The API key cannot report prices or usage.
-- [x] subplex can be called for any checkpoint: `python -m subplex.external_model` (in `~/subplex`).
-- [ ] c04/c05: the host keys are missing from `~/.ssh/known_hosts`. Check the fingerprints, then run `ssh-keyscan -H c04.lab.tuda.systems c05.lab.tuda.systems >> ~/.ssh/known_hosts`.
+- [x] Repository pushed to `VWeidinger/zs-autoloop`. Lab tokens were removed from the whole history; uv reads `ldb_schema` access from `~/.git-credentials`, on c02 only.
+- [x] The shared venv is at `<agent_root>/venvs/3fedfb092158`, on a labstore interpreter. Nodes only reuse it and never download.
+- [x] The Codex CLI package (0.172.0, with bundled bubblewrap) is in `~/.local/share/codex-package`, linked from `~/.local/bin/codex`, and logged in with the API key.
+- [ ] **Codex sandbox: needs sudo once.** Ubuntu blocks unprivileged user namespaces (`kernel.apparmor_restrict_unprivileged_userns=1`), so Codex's bubblewrap sandbox fails with `bwrap: loopback: Failed RTM_NEWADDR`. Allow it for exactly this binary:
+
+  ```bash
+  sudo tee /etc/apparmor.d/codex-bwrap >/dev/null <<'PROFILE'
+  abi <abi/4.0>,
+  include <tunables/global>
+  profile codex-bwrap /home/vweidinger/.local/share/codex-package/codex-resources/bwrap flags=(unconfined) {
+    userns,
+  }
+  PROFILE
+  sudo apparmor_parser -r /etc/apparmor.d/codex-bwrap
+  codex sandbox linux -- echo ok        # must print ok
+  ```
+
+  Do not run the loop with `--dangerously-bypass-approvals-and-sandbox`: the agent would then be able to read your ssh keys and secrets.
+- [x] c01–c05 host keys are in `known_hosts`.
+- [x] The subplex reference diagnosis (steps 1–2 of the three reference models) is in `<agent_root>/subplex/_reference/`. Rebuild it with `python3 -m autoloop.harness reference-diagnosis`.
 - [ ] First real start: `tmux new -s autoloop 'python3 -m autoloop.harness driver 2>&1 | tee -a ~/autoloop-driver.log'`.
 - [ ] In the wandb settings, enable "Scriptable run alerts", e-mail.
 
