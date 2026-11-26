@@ -1,0 +1,20 @@
+# Copy to autoloop/experiments/<id>/spec.yaml. Validate: python -m autoloop.harness validate <path>
+id: e00X-short-name                 # must match the folder name
+tier: proxy                         # proxy (<= 40 epochs, 1 seed) | full (<= 200 epochs, <= 2 seeds, needs parent)
+parent: null                        # for full runs: the proxy experiment this promotes
+hypothesis: >-
+  Finding X (brief section 4) predicts Y; changing Z should lower the score on JOB/AP/PO by ~N %
+  while the IMDB 200k q-error stays within the guard.
+branch: agent/e00X-short-name       # holds the code; the harness snapshots exactly this commit
+model_type: pm-zeroshot-include_pg_opt_workloads-reproducible_message_passing-epochs40
+statistics_file: feature_statistics/parsed_plans3_feature_statistics_v20260309.json
+plans_dir: runs/parsed_plans3       # workload_names are expanded over all non-IMDB databases here
+workload_names: [workload_200k_s1]
+train_workloads: []                 # optional extra explicit files (relative to data_root or absolute)
+seeds: [9]
+version: 5
+extra_args: []                      # e.g. ["--cap_training_samples", "50000"]; harness-owned flags are rejected
+gates:                              # early-abort predictions; a missed gate kills the run
+  - {epoch: 10, metric: job_ratio_mean, op: "<=", ref: zs-pg_opt_pp3, factor: 1.25}
+  - {epoch: 20, metric: val_q50, op: "<=", value: 2.0}
+status: draft                       # draft | ready (the driver only submits ready specs)

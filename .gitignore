@@ -170,3 +170,9 @@ relevancy_test.ipynb
 src/ldb_models/classes/configs/removed_config_params_backup.md
 .DS_Store
 src/ldb_models/models/zeroshot/specific_models/OBS-sum_of_operators.py
+
+# autoloop: never commit secrets or runtime state
+.env
+autoloop/.secrets/
+autoloop/state/
+*.secrets.env

@@ -1,0 +1,210 @@
+"""The loop. Plain Python: it waits for free (no tokens) and calls the agent only to PLAN and ANALYSE.
+
+    round r:  PLAN (agent writes <= N specs)  ->  submit to free GPUs  ->  watch (gates, no LLM)
+              -> every finished/killed experiment: evaluate (harness) + ANALYSE (agent)
+              -> when all experiments of the round are analysed: next round
+    after `rounds_before_review` rounds: AWAITING_REVIEW, notify, exit. You review, edit
+    autoloop/REVIEW.md, then `python -m autoloop.harness resume` and start the driver again.
+    `touch <agent_root>/state/STOP` (or `python -m autoloop.harness pause`) stops the driver at
+    the next tick; trainings keep running and are picked up when the driver starts again.
+"""
+
+from __future__ import annotations
+
+import json
+import re
+import subprocess
+import sys
+import time
+from pathlib import Path
+from typing import Dict, List, Optional
+
+from . import agent, evaluate, launcher, ledger, notify, watcher
+from .config import Config
+from .remote import Runner
+from .spec import Spec, load_spec, validate_spec
+
+
+
+def _state_path(cfg: Config) -> Path:
+    return cfg.state_dir / "driver.json"
+
+
+def load_state(cfg: Config) -> Dict:
+    p = _state_path(cfg)
+    if p.exists():
+        return json.loads(p.read_text())
+    return {"phase": "RUNNING", "round": 1, "rounds_since_review": 0, "rounds": {}, "review_started": None}
+
+
+def save_state(cfg: Config, st: Dict) -> None:
+    cfg.state_dir.mkdir(parents=True, exist_ok=True)
+    _state_path(cfg).write_text(json.dumps(st, indent=1))
+
+
+def _round(st: Dict) -> Dict:
+    return st["rounds"].setdefault(str(st["round"]), {"planned": False, "experiments": [], "analysed": []})
+
+
+def ready_specs(cfg: Config, exclude: List[str]) -> List[Spec]:
+    out = []
+    for p in sorted(cfg.experiments_dir.glob("e*/spec.yaml")):
+        s = load_spec(p)
+        if s.status == "ready" and s.id not in exclude:
+            out.append(s)
+    return out
+
+
+def next_experiment_number(cfg: Config) -> int:
+    nums = [int(m.group(1)) for p in cfg.experiments_dir.glob("e*")
+            if (m := re.match(r"e(\d{3})-", p.name))]
+    return max(nums, default=0) + 1
+
+
+def _status_text(cfg: Config) -> str:
+    lines = []
+    for rid, s in launcher.all_states(cfg).items():
+        lines.append(f"- {rid}: {s.get('status')} host={s.get('host')} gpu={s.get('gpu')} "
+                     f"epoch={s.get('last_epoch')} {s.get('kill_reason', '')}")
+    return "\n".join(lines) or "(no runs yet)"
+
+
+def _experiment_runs_ended(cfg: Config, exp: str) -> bool:
+    spec = load_spec(cfg.experiments_dir / exp / "spec.yaml")
+    sts = [launcher.read_state(cfg, rid).get("status") for rid in spec.run_ids()]
+    return all(s in ("finished", "failed", "killed", "launch_failed") for s in sts)
+
+
+def _write_result(cfg: Config, exp: str) -> None:
+    spec = load_spec(cfg.experiments_dir / exp / "spec.yaml")
+    runs = {}
+    for rid in spec.run_ids():
+        p = cfg.runs_dir / rid / "eval.json"
+        st = launcher.read_state(cfg, rid)
+        runs[rid] = json.loads(p.read_text()) if p.exists() else {"status": st.get("status"),
+                                                                  "kill_reason": st.get("kill_reason"),
+                                                                  "score": None}
+    ref_path = cfg.baselines_dir / "reference_eval.json"
+    ref = json.loads(ref_path.read_text()) if ref_path.exists() else None
+    evaluate.write_result(cfg, cfg.experiments_dir / exp, runs, ref)
+    (cfg.autoloop_dir / "LEADERBOARD.md").write_text(evaluate.leaderboard(cfg))
+
+
+def step(cfg: Config, run: Runner, dry_run: bool = False, history=watcher.wandb_history) -> str:
+    if (cfg.state_dir / "STOP").exists():
+        return "paused"
+    st = load_state(cfg)
+    if st["phase"] == "AWAITING_REVIEW":
+        return "awaiting_review"
+    rnd = _round(st)
+
+    # 1. watch (no LLM)
+    if not dry_run:
+        for ev in watcher.tick(cfg, run, history):
+            print(f"[driver] {ev}", file=sys.stderr)
+
+    # 2. analyse experiments whose runs all ended
+    for exp in rnd["experiments"]:
+        if exp in rnd["analysed"] or not _experiment_runs_ended(cfg, exp):
+            continue
+        _write_result(cfg, exp)
+        prompt = agent.render_prompt("analyse", experiment=exp, round=st["round"],
+                                     status=_status_text(cfg), budget_left=_budget_left(cfg))
+        agent.run_phase(cfg, f"analyse-{exp}", prompt, dry_run=dry_run)
+        rnd["analysed"].append(exp)
+        save_state(cfg, st)
+
+    # 3. plan the round
+    if not rnd["planned"]:
+        rf = cfg.autoloop_dir / "REVIEW.md"
+        review = rf.read_text() if rf.exists() else "(no review yet)"
+        prompt = agent.render_prompt(
+            "plan", round=st["round"], max_runs=cfg["loop"]["max_runs_per_round"],
+            max_full=cfg["loop"]["max_full_runs_per_round"], next_id=f"e{next_experiment_number(cfg):03d}",
+            status=_status_text(cfg), budget_left=_budget_left(cfg), review=review)
+        agent.run_phase(cfg, f"plan-r{st['round']}", prompt, dry_run=dry_run)
+        done_before = [e for r in st["rounds"].values() for e in r["experiments"]]
+        specs = ready_specs(cfg, exclude=done_before)
+        specs = _enforce_round_caps(cfg, specs)
+        rnd["experiments"] = [s.id for s in specs]
+        rnd["planned"] = True
+        save_state(cfg, st)
+        if not specs:
+            st["phase"] = "AWAITING_REVIEW"
+            st["review_started"] = time.time()
+            save_state(cfg, st)
+            notify.notify(cfg, f"{cfg['name']}: agent planned nothing",
+                          f"Round {st['round']}: no valid ready spec. Review needed.", dry_run)
+            return "awaiting_review"
+
+    # 4. submit what fits
+    specs = [load_spec(cfg.experiments_dir / e / "spec.yaml") for e in rnd["experiments"]]
+    started = launcher.submit(cfg, specs, run, dry_run=dry_run)
+    if started:
+        print(f"[driver] started {started}", file=sys.stderr)
+
+    # 5. round complete?
+    if rnd["experiments"] and all(e in rnd["analysed"] for e in rnd["experiments"]):
+        st["rounds_since_review"] += 1
+        st["round"] += 1
+        if st["rounds_since_review"] >= cfg["loop"]["rounds_before_review"]:
+            st["phase"] = "AWAITING_REVIEW"
+            st["review_started"] = time.time()
+            save_state(cfg, st)
+            notify.notify(cfg, f"{cfg['name']}: review needed",
+                          f"{st['rounds_since_review']} rounds done, spent ${ledger.spent(cfg):.2f}. "
+                          f"Read autoloop/NOTEBOOK.md and LEADERBOARD.md, write autoloop/REVIEW.md, then resume.",
+                          dry_run)
+            return "awaiting_review"
+        save_state(cfg, st)
+        return "round_done"
+    save_state(cfg, st)
+    return "waiting"
+
+
+def _enforce_round_caps(cfg: Config, specs: List[Spec]) -> List[Spec]:
+    out, runs, full = [], 0, 0
+    for s in specs:
+        errs = validate_spec(s, cfg)
+        if errs:
+            print(f"[driver] rejecting {s.id}: {errs}", file=sys.stderr)
+            continue
+        n = len(s.seeds)
+        if runs + n > cfg["loop"]["max_runs_per_round"]:
+            continue
+        if s.tier == "full":
+            if full + n > cfg["loop"]["max_full_runs_per_round"]:
+                continue
+            full += n
+        runs += n
+        out.append(s)
+    return out
+
+
+def _budget_left(cfg: Config) -> str:
+    return f"{cfg['budget']['total_usd'] - ledger.spent(cfg):.2f} USD"
+
+
+def run_loop(cfg: Config, run: Runner, dry_run: bool = False, max_steps: Optional[int] = None) -> str:
+    n = 0
+    while True:
+        r = step(cfg, run, dry_run=dry_run)
+        n += 1
+        if r in ("paused", "awaiting_review") or (max_steps and n >= max_steps):
+            return r
+        if r != "round_done":
+            time.sleep(0 if dry_run else cfg["loop"]["poll_interval_s"])
+
+
+def resume(cfg: Config, force: bool = False) -> str:
+    st = load_state(cfg)
+    (cfg.state_dir / "STOP").unlink(missing_ok=True)
+    if st["phase"] == "AWAITING_REVIEW":
+        rf = cfg.autoloop_dir / "REVIEW.md"
+        reviewed = rf.exists() and st.get("review_started") and rf.stat().st_mtime > st["review_started"]
+        if not (reviewed or force):
+            return "write autoloop/REVIEW.md first (or --force)"
+        st["phase"] = "RUNNING"
+        st["rounds_since_review"] = 0
+        save_state(cfg, st)
+    return "resumed"

@@ -1,0 +1,16 @@
+# Human-written baseline: the proxy tier of the reference model, so agent proxies have a like-for-like comparison.
+id: e000-baseline-pgopt-proxy
+tier: proxy
+hypothesis: >-
+  Reference measurement: Zero-Shot pg_opt with reproducible message passing, 40 epochs on parsed_plans3,
+  gives the proxy-tier score every agent proxy is compared with.
+branch: main
+model_type: pm-zeroshot-include_pg_opt_workloads-reproducible_message_passing-epochs40
+statistics_file: feature_statistics/parsed_plans3_feature_statistics_v20260309.json
+plans_dir: runs/parsed_plans3
+workload_names: [workload_200k_s1]
+seeds: [9]
+version: 5
+gates:
+  - {epoch: 3, metric: train_loss, op: "<=", value: 1.0e+6}
+status: ready

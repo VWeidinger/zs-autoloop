@@ -1,0 +1,221 @@
+"""Offline tests: no ssh, no wandb, no agent. Run: python3 -m pytest autoloop/tests -q"""
+
+from __future__ import annotations
+
+import json
+import shutil
+from pathlib import Path
+
+import pytest
+import yaml
+
+from autoloop.harness import command, curves, driver, evaluate, launcher, ledger, watcher
+from autoloop.harness.config import load_config
+from autoloop.harness.remote import dry_runner, free_slots
+from autoloop.harness.spec import Gate, load_spec, validate_spec
+
+REPO_EXPS = Path(__file__).resolve().parents[1] / "experiments"
+
+
+@pytest.fixture
+def cfg(tmp_path):
+    exps = tmp_path / "autoloop" / "experiments"
+    shutil.copytree(REPO_EXPS, exps)
+    return load_config(overrides={
+        "paths": {"agent_root": str(tmp_path / "agent_root"), "experiments": str(exps),
+                  "secrets_file": str(tmp_path / "no_secrets.env")},
+        "cluster": {"probe_interval_s": 0},
+        "notify": {"wandb_alert": False},
+    })
+
+
+def _spec(cfg, name="e000-baseline-pgopt-proxy"):
+    return load_spec(cfg.experiments_dir / name / "spec.yaml")
+
+
+# --- spec validation ----------------------------------------------------------------------------
+
+def test_baseline_specs_valid(cfg):
+    for e in ("e000-baseline-pgopt-proxy", "e001-baseline-pgopt-full"):
+        assert validate_spec(_spec(cfg, e), cfg) == []
+
+
+def test_imdb_training_rejected(cfg):
+    s = _spec(cfg)
+    s.train_workloads = ["runs/parsed_plans3/imdb_scaled1/workload_200k_s1.json"]
+    assert any("IMDB" in e for e in validate_spec(s, cfg))
+
+
+def test_workload_names_never_expand_to_imdb(cfg):
+    files = _spec(cfg).expanded_train_workloads(cfg)
+    assert len(files) == 19 and not any("imdb" in f for f in files)
+
+
+def test_tier_caps_and_reserved_args(cfg):
+    s = _spec(cfg)
+    s.model_type = s.model_type.replace("epochs40", "epochs120")
+    s.extra_args = ["--model_dir", "/tmp/x"]
+    errs = validate_spec(s, cfg)
+    assert any("cap" in e for e in errs) and any("--model_dir" in e for e in errs)
+
+
+def test_full_needs_parent_and_outside_paths_rejected(cfg):
+    s = _spec(cfg, "e001-baseline-pgopt-full")
+    s.parent = None
+    s.statistics_file = "/home/someone/stats.json"
+    errs = validate_spec(s, cfg, check_files=False)
+    assert any("parent" in e for e in errs) and any("outside" in e for e in errs)
+
+
+# --- command ------------------------------------------------------------------------------------
+
+def test_command_writes_only_to_agent_root(cfg):
+    s = _spec(cfg)
+    cmd = command.train_command(cfg, s, 9)
+    for flag in ("--model_dir", "--target_dir"):
+        assert cmd[cmd.index(flag) + 1].startswith(str(cfg.agent_root))
+    train = cmd[cmd.index("--workload_runs") + 1: cmd.index("--test_workload_runs")]
+    test = cmd[cmd.index("--test_workload_runs") + 1: cmd.index("--qo_eval_after_each_epoch")]
+    assert not any("imdb" in t for t in train)
+    assert all("imdb_scaled1" in t for t in test) and len(test) == 8
+    assert cmd[cmd.index("--wandb_group") + 1] == "zs-autoloop"
+
+
+def test_scripts_use_run_exp_shared(cfg):
+    out = command.outer_script(cfg, _spec(cfg), 9, gpu=1)
+    assert "run_exp -m" in out and " -ex " not in out and "CUDA_VISIBLE_DEVICES=1" in out
+    inner = command.inner_script(cfg, _spec(cfg), 9, cfg.agent_root / "venvs" / "x")
+    assert "flock" in inner and "PYTHONPATH" in inner
+
+
+# --- evaluation ---------------------------------------------------------------------------------
+
+def _pred_csv(path: Path, rows):
+    path.write_text("label,prediction,sql,hint\n" + "".join(f"{l},{p},{s},h\n" for s, l, p in rows))
+
+
+def test_selection_metrics(tmp_path):
+    p = tmp_path / "join_order_9v5_test_pred.csv"
+    # q1: picks 2.0 (optimal 1.0); q2: picks optimal 3.0; q3 single candidate -> ignored
+    _pred_csv(p, [("q1", 1.0, 0.9), ("q1", 2.0, 0.5), ("q2", 3.0, 0.1), ("q2", 5.0, 0.2), ("q3", 9.0, 1.0)])
+    m = evaluate.selection_metrics(p)
+    assert m["num_queries"] == 2
+    assert m["total_selected_runtime"] == 5.0 and m["total_optimal_runtime"] == 4.0
+    assert m["pick_rate"] == 0.5
+
+
+def test_find_pred_csv_does_not_mix_benchmarks(tmp_path):
+    for n in ("access_path_selection_9v5_test_pred.csv", "access_path_selection_with_aggregate_9v5_test_pred.csv"):
+        (tmp_path / n).write_text("label,prediction,sql\n")
+    assert evaluate.find_pred_csv(tmp_path, "access_path_selection").name.startswith("access_path_selection_9")
+
+
+# --- gates --------------------------------------------------------------------------------------
+
+def test_gate_against_real_baseline(cfg):
+    base = curves.load_baseline(cfg.baselines_dir, "zs-pg_opt_pp3")
+    assert curves.check_gates(base, [Gate(10, "job_ratio_mean", "<=", ref="zs-pg_opt_pp3", factor=1.0)],
+                              cfg.baselines_dir)[0]["passed"] is True
+    worse = [dict(r) for r in base]
+    for r in worse:
+        for k in list(r):
+            if k.endswith("total_selected_runtime"):
+                r[k] *= 2
+    v = curves.check_gates(worse, [Gate(10, "job_ratio_mean", "<=", ref="zs-pg_opt_pp3", factor=1.25)],
+                           cfg.baselines_dir)[0]
+    assert v["passed"] is False
+
+
+def test_gate_not_evaluated_before_epoch(cfg):
+    rows = [{"epoch": 1, "mean_train_loss": 1.0}]
+    assert curves.check_gates(rows, [Gate(5, "train_loss", "<=", value=0.1)], cfg.baselines_dir) == []
+
+
+# --- slots / launcher ---------------------------------------------------------------------------
+
+def test_free_slots_respects_busy(cfg):
+    run = dry_runner(free={"c01": [0, 1], "c03": [1]})
+    assert free_slots(cfg, run, busy={("c01", 0)}) == [("c01", 1), ("c03", 1)]
+
+
+def test_submit_dry_run_respects_cap(cfg):
+    cfg.raw["cluster"]["max_concurrent"] = 1
+    log = []
+    run = dry_runner(log=log, free={"c01": [0, 1], "c02": [0, 1]})
+    specs = [_spec(cfg), _spec(cfg, "e001-baseline-pgopt-full")]
+    started = launcher.submit(cfg, specs, run, dry_run=True)
+    assert started == ["e000-baseline-pgopt-proxy-s9"]
+    assert any("screen -dmS zsal-e000" in l for l in log)
+    assert launcher.submit(cfg, specs, run, dry_run=True) == []  # cap reached
+
+
+# --- watcher ------------------------------------------------------------------------------------
+
+def test_watcher_kills_on_missed_gate_and_evaluates_finished(cfg, tmp_path):
+    log = []
+    run = dry_runner(log=log, free={"c01": [0, 1]})
+    s0, s1 = _spec(cfg), _spec(cfg, "e001-baseline-pgopt-full")
+    launcher.submit(cfg, [s0, s1], run, dry_run=True)
+    # e000: wandb shows a diverging loss beyond the gate -> killed
+    def history(c, name):
+        if "e000" in name:
+            return [{"epoch": e, "mean_train_loss": 1e7} for e in range(5)]
+        return []
+    # e001: finished with prediction files
+    rd = command.run_dir(cfg, "e001-baseline-pgopt-full-s9")
+    (rd / "exit_code").write_text("0")
+    ev_dir = cfg.agent_root / "evaluation" / "e001-baseline-pgopt-full-s9"
+    ev_dir.mkdir(parents=True)
+    _pred_csv(ev_dir / "join_order_9v5_test_pred.csv", [("q", 1.0, 0.2), ("q", 2.0, 0.1)])
+    events = watcher.tick(cfg, run, history)
+    kinds = {e["run"]: e["type"] for e in events}
+    assert kinds == {"e000-baseline-pgopt-proxy-s9": "killed", "e001-baseline-pgopt-full-s9": "finished"}
+    assert launcher.read_state(cfg, "e000-baseline-pgopt-proxy-s9")["status"] == "killed"
+    assert any("pkill" in l for l in log)
+    assert json.loads((rd / "eval.json").read_text())["benchmarks"]["join_order"]["ratio"] == 2.0
+
+
+# --- ledger -------------------------------------------------------------------------------------
+
+def test_ledger_parses_codex_jsonl_and_enforces_budget(cfg):
+    out = "\n".join([
+        json.dumps({"type": "thread.started"}),
+        json.dumps({"type": "item.completed", "item": {"type": "agent_message"}}),
+        json.dumps({"type": "turn.completed", "usage": {"input_tokens": 1_000_000, "cached_input_tokens": 400_000,
+                                                         "output_tokens": 100_000}}),
+    ])
+    u = ledger.usage_from_output(out)
+    assert u == {"input": 1_000_000, "cached_input": 400_000, "output": 100_000}
+    m = cfg["agent"]["model"]
+    assert not ledger.price_known(cfg, m)          # prices are deliberately unset in the repo config
+    cfg.raw["budget"]["prices"][m] = {"input": 2.0, "cached_input": 0.5, "output": 10.0}
+    assert ledger.cost_usd(cfg, m, u) == pytest.approx(0.6 * 2 + 0.4 * 0.5 + 0.1 * 10)
+    cfg.raw["budget"].update(total_usd=5, max_usd_per_phase=3)
+    ledger.record(cfg, "plan", m, u, 1.0)
+    assert ledger.spent(cfg) == pytest.approx(2.4)
+    assert not ledger.can_afford_phase(cfg)
+
+
+# --- driver -------------------------------------------------------------------------------------
+
+def test_driver_dry_run_plans_round_and_submits(cfg):
+    run = dry_runner(free={n: [0, 1] for n in cfg["cluster"]["nodes"]})
+    r = driver.step(cfg, run, dry_run=True)
+    st = driver.load_state(cfg)
+    assert r == "waiting"
+    assert st["rounds"]["1"]["experiments"] == ["e000-baseline-pgopt-proxy", "e001-baseline-pgopt-full"]
+    assert set(launcher.active_runs(cfg)) == {"e000-baseline-pgopt-proxy-s9", "e001-baseline-pgopt-full-s9"}
+    prompts = list((cfg.state_dir / "agent_logs").glob("*plan-r1.prompt.md"))
+    assert prompts and "{{" not in prompts[0].read_text()
+
+
+def test_pause_and_review_gate(cfg):
+    cfg.state_dir.mkdir(parents=True)
+    (cfg.state_dir / "STOP").touch()
+    assert driver.step(cfg, dry_runner(), dry_run=True) == "paused"
+    st = driver.load_state(cfg)
+    st.update(phase="AWAITING_REVIEW", review_started=9e12)
+    driver.save_state(cfg, st)
+    assert "REVIEW.md" in driver.resume(cfg)
+    assert driver.resume(cfg, force=True) == "resumed"
+    assert not (cfg.state_dir / "STOP").exists()

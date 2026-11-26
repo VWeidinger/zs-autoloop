@@ -1,0 +1,17 @@
+# Human-written baseline: the full reference incl. access path and physical operator (no existing run has them).
+id: e001-baseline-pgopt-full
+tier: full
+parent: e000-baseline-pgopt-proxy
+hypothesis: >-
+  Reference measurement: the same model for 200 epochs gives the full-tier reference for all seven
+  benchmarks and the IMDB 200k q-error guard.
+branch: main
+model_type: pm-zeroshot-include_pg_opt_workloads-reproducible_message_passing-epochs200
+statistics_file: feature_statistics/parsed_plans3_feature_statistics_v20260309.json
+plans_dir: runs/parsed_plans3
+workload_names: [workload_200k_s1]
+seeds: [9]
+version: 5
+gates:
+  - {epoch: 3, metric: train_loss, op: "<=", value: 1.0e+6}
+status: ready

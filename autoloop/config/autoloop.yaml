@@ -1,0 +1,89 @@
+# zs-autoloop configuration. Read by every harness command.
+# Everything the agent must not change lives here or in the harness code, not in the prompts.
+name: zs-autoloop
+
+paths:
+  repo: /home/vweidinger/zs-autoloop
+  # the ONLY place runs, models, evaluations, datasets and statistics are written
+  agent_root: /mnt/labstore/vweidinger/agent_zs-autoloop
+  # read-only inputs (training data, feature statistics, prior evaluations)
+  read_only_data:
+    - /mnt/labstore/SIGs/ML/learned_db
+    - /mnt/labstore/vweidinger/subplex/learned_db
+  # relative workload paths in a spec are resolved against this root
+  data_root: /mnt/labstore/SIGs/ML/learned_db
+  secrets_file: ~/.config/zs-autoloop/secrets.env
+
+wandb:
+  entity: learneddb
+  project: subplex-train
+  group: zs-autoloop
+
+cluster:
+  nodes: [c01, c02, c03, c04, c05]
+  gpus_per_node: 2
+  max_concurrent: 6          # hard cap over all nodes (energy)
+  free_mem_mib: 500          # a GPU is free below this memory use ...
+  free_probes: 2             # ... with no compute process, in this many probes in a row
+  probe_interval_s: 30
+  ssh_connect_timeout_s: 10
+  ssh_key: ~/.ssh/id_ed25519
+  run_exp_exclusive: false   # shared, like octopus' default
+  # uv on the node; the venv lives on labstore, one per uv.lock hash
+  uv: uv
+
+tiers:
+  proxy: {max_epochs: 40, expected_runtime: "04:00", max_seeds: 1}
+  full:  {max_epochs: 200, expected_runtime: "10:00", max_seeds: 2}
+
+# fixed IMDB test set (target database). Never used for training or checkpoint selection.
+test_workloads:
+  - runs/parsed_plans3/imdb_scaled1/workload_200k_s1.json
+  - runs/parsed_plans3/imdb_scaled1/join_order.json
+  - runs/parsed_plans3/imdb_scaled1/job_w_optimal_w_idxs.json
+  - runs/parsed_plans3/imdb_scaled1/job_complex_w_optimal_w_idxs.json
+  - runs/parsed_plans3/imdb_scaled1/access_path_selection.json
+  - runs/parsed_plans3/imdb_scaled1/access_path_selection_with_aggregate.json
+  - runs/parsed_plans3/imdb_scaled1/physical_operator.json
+  - runs/parsed_plans3/imdb_scaled1/physical_operator_w_idx.json
+
+objective:
+  # benchmarks (pred-csv stems) that make up the score; each counts equally (mean of selected/optimal)
+  benchmarks: [join_order, job_w_optimal_w_idxs, job_complex_w_optimal_w_idxs,
+               access_path_selection, access_path_selection_with_aggregate,
+               physical_operator, physical_operator_w_idx]
+  aggregate: mean_ratio      # mean_ratio | total_runtime
+  # guard: IMDB 200k median q-error may be at most this factor worse than the reference
+  qerror_guard_factor: 1.4
+  reference_baseline: zs-pg_opt_pp3
+
+loop:
+  rounds_before_review: 2
+  max_runs_per_round: 6
+  max_full_runs_per_round: 3
+  poll_interval_s: 600
+  stale_log_minutes: 60      # kill a run whose log has not changed for this long
+
+agent:
+  cli: codex                 # codex | claude
+  model: gpt-5.6-terra
+  escalation_model: gpt-5.6-sol
+  phase_timeout_min: 60
+  # command templates; {model} {repo} {agent_root} {prompt_file} are filled in
+  commands:
+    codex: ["codex", "exec", "--json", "-m", "{model}", "-C", "{repo}",
+            "--sandbox", "workspace-write", "--add-dir", "{agent_root}", "-"]
+    claude: ["claude", "-p", "--output-format", "json", "--model", "{model}",
+             "--max-turns", "80"]
+
+budget:
+  total_usd: 100
+  max_usd_per_phase: 10
+  # USD per 1M tokens. MUST be filled in from the provider's pricing page before the loop starts;
+  # the driver refuses to call the agent while the price of the configured model is missing.
+  prices:
+    gpt-5.6-terra: {input: null, cached_input: null, output: null}
+    gpt-5.6-sol:   {input: null, cached_input: null, output: null}
+
+notify:
+  wandb_alert: true          # e-mail via the wandb account (enable "scriptable run alerts" in wandb settings)
