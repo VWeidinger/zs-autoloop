@@ -6,3 +6,4 @@ An experiment only counts as a result when its analysis.md explains it through s
 | rank | experiment | score | JOB-light | JOB | JOB-cx | AP | AP-agg | PO | PO-idx | won/lost | q-error guard | IMDB 200k q50 | explained by subplex |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 | - | reference | 1.808 | 1.077 | 2.353 | 6.928 | 1.507 | 1.473 | 1.186 | 1.367 | - | - | 1.251 | - |
+| 1 | e000-baseline-pgopt-proxy | - | - | - | - | - | - | - | - | 0/0 | ok | - | NO - not a result yet |

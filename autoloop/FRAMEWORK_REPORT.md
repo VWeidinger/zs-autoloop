@@ -7,6 +7,7 @@ Built by `python -m autoloop.harness framework-report` from the hypotheses, anal
 | phase | step 1 where | step 2 what | step 3 why | step 3 training (step 7) | guide/other |
 |---|---|---|---|---|---|
 | plan-r1 | 3 | 6 | 0 | 4 | 3 |
+| analyse-e000-baseline-pgopt-proxy | 0 | 0 | 0 | 0 | 3 |
 
 ## Experiments
 
@@ -16,7 +17,7 @@ Built by `python -m autoloop.harness framework-report` from the hypotheses, anal
 - **behaviour (step 2):** -
 - **cause (step 3):** -
 - **change:** -
-- **score:** -
+- **score:** None
 - **verdict:** -
 - **what only subplex showed:** -
 
