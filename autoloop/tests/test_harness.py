@@ -425,3 +425,39 @@ def test_session_usage_reads_live_codex_totals(tmp_path):
 def test_phase_limits_by_kind(cfg):
     cfg.raw["budget"]["max_usd_per_phase"] = {"plan": 20, "analyse": 8}
     assert ledger.phase_limit(cfg, "plan-r1") == 20 and ledger.phase_limit(cfg, "analyse-e002-x") == 8
+
+
+# --- fixes after the first real round -------------------------------------------------------------
+
+def test_run_scripts_need_no_uv_and_report_the_real_exit_code(cfg):
+    inner = command.inner_script(cfg, _spec(cfg), 9, cfg.agent_root / "venvs" / "x")
+    run_line = [l for l in inner.splitlines() if "main.py" in l][0]
+    assert run_line.startswith(str(cfg.agent_root / "venvs" / "x" / "bin" / "python")) and "uv run" not in inner
+    assert "inner_exit_code" in inner
+    outer = command.outer_script(cfg, _spec(cfg), 9, gpu=0)
+    assert "inner_exit_code ]; then cat" in outer
+
+
+def test_exit_zero_without_predictions_is_a_failure(cfg):
+    run = dry_runner(free={"c01": [0]})
+    launcher.submit(cfg, [_spec(cfg)], run, dry_run=True)
+    rd = command.run_dir(cfg, "e000-baseline-pgopt-proxy-s9")
+    (rd / "exit_code").write_text("0")                   # e.g. 'uv: command not found' behind run_exp
+    ev = watcher.tick(cfg, run, lambda c, n: [])
+    assert ev[0]["type"] == "failed" and "no test predictions" in ev[0]["reason"]
+
+
+def test_replan_adds_to_the_round_and_halts_when_empty(cfg, monkeypatch):
+    from autoloop.harness import agent
+    st = driver.load_state(cfg)
+    st["rounds"]["1"] = {"planned": False, "experiments": ["e000-baseline-pgopt-proxy", "e001-baseline-pgopt-full"],
+                         "analysed": []}
+    driver.save_state(cfg, st)
+    monkeypatch.setattr(watcher, "tick", lambda *a, **k: [])
+    monkeypatch.setattr(driver, "push_progress", lambda *a, **k: None)
+    monkeypatch.setattr(driver, "_commit_generated", lambda *a, **k: None)
+    monkeypatch.setattr(agent, "run_phase", lambda *a, **k: {"returncode": 0})
+    assert driver.step(cfg, dry_runner()) == "awaiting_review"          # the agent planned nothing new
+    st = driver.load_state(cfg)
+    assert st["stop_reason"] == "plan without experiments"
+    assert st["rounds"]["1"]["experiments"] == ["e000-baseline-pgopt-proxy", "e001-baseline-pgopt-full"]

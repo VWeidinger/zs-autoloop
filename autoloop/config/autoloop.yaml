@@ -30,7 +30,7 @@ cluster:
   ssh_key: ~/.ssh/vw_encrypted   # IdentityFile of c01-c05 in ~/.ssh/config; passphrase from secrets
   run_exp_exclusive: false   # shared, like octopus' default
   # uv on the node; the venv lives on labstore, one per uv.lock hash
-  uv: uv
+  uv: /mnt/labstore/vweidinger/agent_zs-autoloop/bin/uv   # only to build a missing venv; on labstore (home is per node)
   # interpreter on labstore (home directories are local per node); the shared venv is built on it
   python: /mnt/labstore/vweidinger/agent_zs-autoloop/python/cpython-3.12.7-linux-x86_64-gnu/bin/python3.12
 

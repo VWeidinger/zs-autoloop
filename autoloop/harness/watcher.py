@@ -41,9 +41,13 @@ def tick(cfg: Config, run: Runner, history: History = wandb_history) -> List[Dic
         ec = rd / "exit_code"
         if ec.exists():
             code = int(ec.read_text().strip() or 1)
-            status = "finished" if code == 0 else "failed"
-            launcher.write_state(cfg, rid, status=status, exit_code=code, ended_at=time.time())
-            ev = {"type": status, "run": rid, "experiment": st["experiment"]}
+            preds = list((cfg.agent_root / "evaluation" / rid).glob("*_test_pred.csv"))
+            status = "finished" if code == 0 and preds else "failed"
+            reason = None if status == "finished" else (
+                f"exit code {code}" if code != 0 else "exit 0 but no test predictions were written")
+            launcher.write_state(cfg, rid, status=status, exit_code=code, ended_at=time.time(),
+                                 **({"fail_reason": reason} if reason else {}))
+            ev = {"type": status, "run": rid, "experiment": st["experiment"], **({"reason": reason} if reason else {})}
             if status == "finished":
                 res = evaluate.evaluate_dir(cfg, cfg.agent_root / "evaluation" / rid, evaluate.load_reference(cfg))
                 (rd / "eval.json").write_text(json.dumps(res, indent=1, default=str))

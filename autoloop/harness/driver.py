@@ -241,11 +241,18 @@ def step(cfg: Config, run: Runner, dry_run: bool = False, history=watcher.wandb_
         _commit_generated(cfg, dry_run)
         push_progress(cfg, dry_run)
         done_before = [e for r in st["rounds"].values() for e in r["experiments"]]
-        specs = ready_specs(cfg, exclude=done_before)
-        specs = _enforce_round_caps(cfg, specs)
-        rnd["experiments"] = [s.id for s in specs]
+        existing = [load_spec(cfg.experiments_dir / e / "spec.yaml") for e in rnd["experiments"]]
+        specs = _enforce_round_caps(cfg, ready_specs(cfg, exclude=done_before), already=existing)
+        # a re-plan (e.g. after a harness fix) adds to the round, it never drops what is already in it
+        new_ids = [s.id for s in specs]
+        rnd["experiments"] = rnd["experiments"] + new_ids
+        specs = existing + specs
         rnd["planned"] = True
         save_state(cfg, st)
+        if not dry_run and not new_ids and existing:
+            # the agent planned nothing of its own (it reports why in the notebook): let the human look first
+            return _halt(cfg, st, "plan without experiments",
+                         "PLAN added no experiment of the agent; see the end of autoloop/NOTEBOOK.md", dry_run)
         if not specs:
             st["phase"] = "AWAITING_REVIEW"
             st["review_started"] = time.time()
@@ -279,8 +286,11 @@ def step(cfg: Config, run: Runner, dry_run: bool = False, history=watcher.wandb_
     return "waiting"
 
 
-def _enforce_round_caps(cfg: Config, specs: List[Spec]) -> List[Spec]:
-    out, runs, full = [], 0, 0
+def _enforce_round_caps(cfg: Config, specs: List[Spec], already: Optional[List[Spec]] = None) -> List[Spec]:
+    already = already or []
+    out = []
+    runs = sum(len(s.seeds) for s in already)
+    full = sum(len(s.seeds) for s in already if s.tier == "full")
     for s in specs:
         errs = validate_spec(s, cfg)
         if errs:

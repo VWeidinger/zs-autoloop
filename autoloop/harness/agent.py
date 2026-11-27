@@ -45,6 +45,10 @@ def agent_env(cfg: Config) -> Dict[str, str]:
     xdg.mkdir(parents=True, exist_ok=True)
     env["XDG_CONFIG_HOME"] = str(xdg)
     env["MPLCONFIGDIR"] = str(cfg.agent_root / "mpl_cache")   # matplotlib (subplex) caches here
+    # DGL reads ~/.dgl/config.json unless told otherwise; ~ is outside the sandbox
+    env["DGLBACKEND"] = "pytorch"
+    env["DGLDEFAULTDIR"] = str(cfg.agent_root / "dgl")
+    (cfg.agent_root / "dgl").mkdir(parents=True, exist_ok=True)
     return env
 
 
