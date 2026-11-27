@@ -16,3 +16,8 @@ Format per entry: `## <date> <round/experiment>` then ≤ 8 lines: what, numbers
 ## Harness problem
 - CPU smoke test failed before collection: `uv run --frozen pytest -q src/ldb_models/tests/test_zeroshot_subplan_loss.py` in `worktrees/e003-subplan-loss`.
 - Error: DGL could not read `/home/vweidinger/.dgl/config.json` (`PermissionError: [Errno 13] Permission denied`). Per policy, no environment workaround was attempted; no experiment specs were marked ready.
+
+## Harness problem
+- e000 run was marked `finished` with exit 0, but produced no evaluation or run-specific subplex output.
+- Command: `bash /mnt/labstore/vweidinger/agent_zs-autoloop/runs/e000-baseline-pgopt-proxy-s9/inner.sh`.
+- Error: `inner.sh: line 17: uv: command not found`; no analysis was attempted.
